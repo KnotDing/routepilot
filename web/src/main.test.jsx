@@ -54,6 +54,22 @@ it('defaults DIRECT conservatism on and saves an explicit opt-out',async()=>{
  expect(screen.getByText(/未来连接仍可能命中不同策略/)).toBeInTheDocument();
 });
 
+it('keeps routing configuration on its dedicated page and preserves it when saving other settings',async()=>{
+ const routing={mode:'hybrid',fake_ip_backend:'static',dns_backend:'bgp',static_fake_ip_configured:true};
+ const settings={general:{web_listen:'127.0.0.1:1055',name:'Controller'},routing,security:{tls_cert:''}};
+ const fetch=vi.fn().mockResolvedValue({ok:true,status:200,json:async()=>({csrf:'new-csrf'})});
+ vi.stubGlobal('fetch',fetch);
+ render(<Settings settings={settings} refresh={()=>{}} notify={()=>{}}/>);
+ expect(screen.queryByRole('button',{name:'路由后端',exact:true})).not.toBeInTheDocument();
+ expect(screen.queryByLabelText('路由模式')).not.toBeInTheDocument();
+ fireEvent.change(screen.getByLabelText('名称'),{target:{value:'Updated'}});
+ fireEvent.click(screen.getByRole('button',{name:'保存设置'}));
+ await waitFor(()=>expect(fetch).toHaveBeenCalledTimes(2));
+ const saved=JSON.parse(fetch.mock.calls[0][1].body);
+ expect(saved.routing).toEqual(routing);
+ expect(saved.general.name).toBe('Updated');
+});
+
 it('shows configured DIRECT separately from confirmed connection context',()=>{
  render(<Queries rows={[{context:{client_ip:'192.0.2.10',received_at:'2026-10-08T00:00:00Z',question:{Name:'configured.test.',Qtype:1}},result:{decision:'DIRECT',source:'surge',confidence:'configured',reason:'按配置采用 Surge DIRECT 结果'},latency:0,answers:[]}]}/>);
  fireEvent.click(screen.getByRole('cell',{name:'configured.test.'}));

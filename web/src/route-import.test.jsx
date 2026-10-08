@@ -8,7 +8,7 @@ afterEach(()=>{cleanup();localStorage.clear();selectBackend('');vi.unstubAllGlob
 const prefixes=['91.108.56.0/22','2001:b28:f23d::/48'];
 function prepare(locale='zh-CN'){
  localStorage.setItem('routepilot.locale',locale);
- const fetch=vi.fn(async(url,options)=>({ok:true,status:200,json:async()=>String(url).endsWith('import-url')?{prefixes,skipped:[{line:3,reason:'duplicate route destination'}]}:{imported:JSON.parse(options.body).prefixes.length,skipped:0}}));
+ const fetch=vi.fn(async(url,options)=>({ok:true,status:200,json:async()=>String(url).endsWith('/feeds')?[]:String(url).endsWith('import-url')?{prefixes,skipped:[{line:3,reason:'duplicate route destination'}]}:{imported:JSON.parse(options.body).prefixes.length,skipped:0}}));
  vi.stubGlobal('fetch',fetch);return fetch;
 }
 async function preview(){fireEvent.change(screen.getByRole('textbox',{name:/路由列表 URL|Route list URL/}),{target:{value:'https://core.telegram.org/resources/cidr.txt'}});fireEvent.click(screen.getByRole('button',{name:/获取并预览|Fetch and preview/}));await screen.findByText(prefixes[1]);}
@@ -19,7 +19,8 @@ it('previews mixed-family destinations and imports one atomic snapshot with dist
  fireEvent.change(screen.getByLabelText('健康绑定'),{target:{value:'surge'}});
  fireEvent.click(screen.getByRole('button',{name:'导入所选 2 项'}));
  await waitFor(()=>expect(close).toHaveBeenCalled());
- const body=JSON.parse(fetch.mock.calls[1][1].body);
+ const imported=fetch.mock.calls.find(([url])=>String(url).endsWith('/bgp/routes/import'));
+ const body=JSON.parse(imported[1].body);
  expect(body).toMatchObject({prefixes,next_hop4:'192.168.20.5',next_hop6:'fd00:20::5',health_binding:'surge',enabled:true,local_preference:100});expect(refresh).toHaveBeenCalledTimes(1);
 });
 it('allows IPv4-only import when an IPv6 next hop is unavailable, through the selected remote backend',async()=>{
@@ -29,9 +30,10 @@ it('allows IPv4-only import when an IPv6 next hop is unavailable, through the se
  fireEvent.click(screen.getByLabelText('Import IPv6 (1 entries)'));
  expect(screen.getByRole('button',{name:'Import 1 selected entries'})).toBeEnabled();
  fireEvent.click(screen.getByRole('button',{name:'Import 1 selected entries'}));
- await waitFor(()=>expect(fetch).toHaveBeenCalledTimes(2));
- expect(fetch.mock.calls[1][0]).toBe('/api/v1/management/relay/remote-peer/bgp/routes/import');
- expect(JSON.parse(fetch.mock.calls[1][1].body).prefixes).toEqual([prefixes[0]]);
+ await waitFor(()=>expect(fetch.mock.calls.some(([url])=>String(url).endsWith('/bgp/routes/import'))).toBe(true));
+ const imported=fetch.mock.calls.find(([url])=>String(url).endsWith('/bgp/routes/import'));
+ expect(imported[0]).toBe('/api/v1/management/relay/remote-peer/bgp/routes/import');
+ expect(JSON.parse(imported[1].body).prefixes).toEqual([prefixes[0]]);
  const walker=document.createTreeWalker(document.body,NodeFilter.SHOW_TEXT);let node;while(node=walker.nextNode())expect(node.textContent).not.toMatch(/[\u4e00-\u9fff]/);
 });
 it('invalidates the preview after a URL edit and retains selections after an atomic import failure',async()=>{

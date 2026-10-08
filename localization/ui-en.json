@@ -482,5 +482,6 @@
   "此版本没有适用于本机的安装包": "This release has no installer for this Mac",
   "RoutePilot 已是最新版本": "RoutePilot is up to date",
   "检查更新失败": "Update check failed",
-  "RoutePilot 未升级": "RoutePilot was not upgraded"
+  "RoutePilot 未升级": "RoutePilot was not upgraded",
+  "从不": "Never"
 }

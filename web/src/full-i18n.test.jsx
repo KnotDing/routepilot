@@ -1,6 +1,6 @@
 import React from 'react';
 import {it,expect,vi,afterEach} from 'vitest';
-import {render,screen,fireEvent,cleanup,waitFor} from '@testing-library/react';
+import {render,screen,fireEvent,cleanup,waitFor,within} from '@testing-library/react';
 import {App} from './main';
 import {selectBackend} from './client';
 import {message,translate} from './i18n';
@@ -11,7 +11,7 @@ function fixture(path){
  if(path==='session')return {authenticated:true,csrf:'test'};
  if(path==='status')return {state:'HEALTHY',mode:'auto',name:'Controller',fake_ip_enabled:true,queries_per_minute:1,counters:{Queries:1,Direct:0,Surge:1,Reject:0,Unknown:0,Errors:0,Intercepted:1,Addressed:0},software:{name:'RoutePilot',version:'0.4.5',build:'14',os:'darwin',arch:'arm64',go_version:'go1.26.0'}};
  if(path==='settings')return settings;
- if(path==='health')return [{name:'Controller',state:'UP',latency_ms:0,last_error:''},{name:'Transparent DNS',state:'UP',latency_ms:0,last_error:''}];
+ if(path==='health')return [{name:'Controller',state:'UP',latency_ms:1.49,last_failure:'0001-01-01T00:00:00Z',last_error:''},{name:'Transparent DNS',state:'UP',latency_ms:1.5,last_failure:'2026-10-08T00:00:00Z',last_error:''}];
  if(path==='bgp/status')return {enabled:true,mode:'hybrid',advertised:1,limit:128,peers:[{address:'192.0.2.1',state:'ESTABLISHED',uptime_seconds:100,prefixes:1}],routes:[{prefix:'8.8.8.8/32',kind:'dns-interception',backend:'bgp',next_hop:'192.0.2.2',installed:true,announced:true,route_state:'announced'}]};
  if(path==='routing/status')return {mode:'hybrid',routes:[{prefix:'198.18.0.0/16',kind:'fake-ip',backend:'static',next_hop:'192.0.2.2',route_state:'external-unconfirmed',installed:null,verified:false}]};
  if(path==='bgp/peers')return [peer];
@@ -36,7 +36,7 @@ it('localizes every page, settings category, editor and query detail through the
   if(page==='Rule test'){fireEvent.click(screen.getByRole('button',{name:'Test rules'}));await screen.findByText('Raw evaluation result');noUntranslatedText()}
   if(page==='Local DNS'){fireEvent.click(screen.getByRole('button',{name:'Import from Surge'}));await screen.findByText('Imported 1 / skipped 1');noUntranslatedText()}
   if(page==='BGP neighbors'){fireEvent.click(screen.getByRole('button',{name:'Preview FRR configuration'}));await screen.findByText(/Mac's reachable address/);noUntranslatedText()}
-  if(page==='Settings')for(let category=1;category<=10;category++){fireEvent.click(document.querySelector('.tabs button:nth-child('+category+')'));noUntranslatedText()}
+  if(page==='Settings')for(let category=1;category<=9;category++){fireEvent.click(document.querySelector('.tabs button:nth-child('+category+')'));noUntranslatedText()}
  }
  fireEvent.click(screen.getByRole('button',{name:'Local service · Switch'}));await screen.findByRole('dialog',{name:'Manage backends'});noUntranslatedText();fireEvent.click(screen.getByRole('button',{name:'Add remote backend'}));noUntranslatedText();expect(screen.getAllByLabelText(/页面语言|Page language/)).toHaveLength(1);
 });
@@ -44,4 +44,21 @@ it('formats diagnostics without changing domain names, policy values, or DNS rec
 it('uses localized diagnostic templates for nested resolver failures',()=>{
  expect(message('real resolver failed: context deadline exceeded','zh-CN')).toBe('真实 DNS 解析失败：操作超时');
  expect(message('real resolver failed: upstream DNS returned SERVFAIL','zh-CN')).toBe('真实 DNS 解析失败：上游 DNS 返回 SERVFAIL');
+});
+
+it('shows never for unset health times and rounds monitoring latency to integer milliseconds',async()=>{
+ vi.stubGlobal('EventSource',class{addEventListener(){}close(){}});
+ vi.stubGlobal('fetch',vi.fn(async url=>({ok:true,status:200,json:async()=>fixture(String(url).replace('/api/v1/',''))})));
+ render(<App/>);
+ await screen.findByRole('heading',{level:1,name:'仪表盘'});
+ const dashboard=await screen.findByRole('row',{name:'控制器 正常 1'});
+ expect(within(dashboard).getByRole('cell',{name:'1',exact:true})).toBeInTheDocument();
+ fireEvent.click(screen.getByRole('navigation').querySelectorAll('button')[12]);
+ await screen.findByRole('heading',{level:1,name:'健康状态'});
+ const rows=screen.getAllByRole('row');
+ expect(within(rows[1]).getAllByRole('cell',{name:'从不'})).toHaveLength(2);
+ expect(within(rows[2]).getByRole('cell',{name:'2026-10-08T00:00:00Z'})).toBeInTheDocument();
+ expect(within(rows[2]).getByRole('cell',{name:'2',exact:true})).toBeInTheDocument();
+ expect(screen.queryByText('0001-01-01T00:00:00Z')).not.toBeInTheDocument();
+ expect(screen.queryByText('1.49')).not.toBeInTheDocument();
 });
