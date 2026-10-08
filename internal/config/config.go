@@ -11,6 +11,7 @@ import (
 	"strings"
 	"surge-controller/internal/model"
 	"surge-controller/internal/resolver"
+	"time"
 )
 
 type General struct {
@@ -125,9 +126,6 @@ func BackendURL(raw string) (*url.URL, error) {
 	if _, e := netip.ParseAddr(u.Hostname()); e != nil && u.Hostname() != "localhost" {
 		return nil, errors.New("backend host must be a concrete IP or localhost")
 	}
-	if u.Scheme == "http" && !isLoopback(u.Hostname()) {
-		return nil, errors.New("remote backend requires HTTPS; HTTP is only allowed on loopback")
-	}
 	if port := u.Port(); port != "" {
 		if n, e := strconv.Atoi(port); e != nil || n < 1 || n > 65535 {
 			return nil, errors.New("invalid backend port")
@@ -153,8 +151,6 @@ type Peer struct {
 	ID               string `json:"id"`
 	Address          string `json:"address"`
 	ASN              uint32 `json:"asn"`
-	LocalASN         uint32 `json:"local_asn"`
-	RouterID         string `json:"router_id"`
 	HoldSeconds      uint64 `json:"hold_seconds"`
 	KeepaliveSeconds uint64 `json:"keepalive_seconds"`
 	Port             uint32 `json:"port"`
@@ -171,6 +167,26 @@ type Route struct {
 	Enabled         bool     `json:"enabled"`
 	Description     string   `json:"description"`
 	Binding         string   `json:"health_binding"`
+	SourceID        string   `json:"source_id,omitempty"`
+}
+type RouteFeed struct {
+	ID              string    `json:"id"`
+	URL             string    `json:"url"`
+	IntervalMinutes int       `json:"interval_minutes"`
+	SyncIPv4        bool      `json:"sync_ipv4"`
+	SyncIPv6        bool      `json:"sync_ipv6"`
+	NextHop4        string    `json:"next_hop4"`
+	NextHop6        string    `json:"next_hop6"`
+	MED             uint32    `json:"med"`
+	LocalPreference uint32    `json:"local_preference"`
+	Communities     []string  `json:"communities"`
+	Binding         string    `json:"health_binding"`
+	Enabled         bool      `json:"enabled"`
+	RouteEnabled    bool      `json:"route_enabled"`
+	Description     string    `json:"description"`
+	LastAttempt     time.Time `json:"last_attempt,omitempty"`
+	LastUpdated     time.Time `json:"last_updated,omitempty"`
+	LastError       string    `json:"last_error,omitempty"`
 }
 type Interception struct {
 	ID      string `json:"id"`
@@ -191,6 +207,7 @@ type Document struct {
 	Settings     Settings       `json:"settings"`
 	Peers        []Peer         `json:"peers"`
 	Routes       []Route        `json:"routes"`
+	RouteFeeds   []RouteFeed    `json:"route_feeds"`
 	Interception []Interception `json:"interception"`
 	Overrides    []Override     `json:"overrides"`
 	Hosts        []Host         `json:"hosts"`
@@ -247,6 +264,10 @@ func (d Document) Clone() Document {
 	for i := range c.Routes {
 		c.Routes[i].Communities = append([]string{}, d.Routes[i].Communities...)
 	}
+	c.RouteFeeds = append([]RouteFeed{}, d.RouteFeeds...)
+	for i := range c.RouteFeeds {
+		c.RouteFeeds[i].Communities = append([]string{}, d.RouteFeeds[i].Communities...)
+	}
 	c.Interception = append([]Interception{}, d.Interception...)
 	c.Overrides = append([]Override{}, d.Overrides...)
 	c.Hosts = append([]Host{}, d.Hosts...)
@@ -262,11 +283,11 @@ func Default() Document {
 		General: General{"Surge Controller", "127.0.0.1:1055", "auto", "system"},
 		DNS:     DNS{Listeners: []string{"127.0.0.1:1053"}, PreserveOriginal: true, TimeoutMS: 2000, SourcePortFirst: 20000, SourcePortLast: 20999, Upstreams: []resolver.ResolverEndpoint{{Name: "Cloudflare", Protocol: "udp", Address: "1.1.1.1:53", Enabled: true}}},
 		Surge:   Surge{CLIPath: "/Applications/Surge.app/Contents/Applications/surge-cli", DNS: "198.18.0.2:53", FakePrefixes: []string{"198.18.0.0/15"}},
-		BGP:     BGP{LocalASN: 64512, RouterID: "192.168.20.2", ListenPort: 179, RouteLimit: 128, HoldSeconds: 30, KeepaliveSeconds: 10},
+		BGP:     BGP{LocalASN: 64512, ListenPort: 179, RouteLimit: 128, HoldSeconds: 30, KeepaliveSeconds: 10},
 		Cache:   Cache{Capacity: 10000, ResponseCapacity: 10000, Workers: 8, Queue: 256, TimeoutMS: 500, DirectTTLSeconds: 300, SurgeTTLSeconds: 300, UnknownTTLSeconds: 10, ErrorTTLSeconds: 1, InvalidateDirectOnSelectionChange: true, InvalidateRejectOnSelectionChange: true},
 		Health:  Health{1000, 3, 3, 60, 3, "example.com"}, Logging: Logging{"info", true, 1000, true, 2000},
 		Security: Security{Username: "admin", SessionMinutes: 60, AllowedNetworks: []string{"127.0.0.0/8", "::1/128"}},
-	}, Peers: []Peer{}, Routes: []Route{}, Interception: []Interception{}, Overrides: []Override{}}
+	}, Peers: []Peer{}, Routes: []Route{}, RouteFeeds: []RouteFeed{}, Interception: []Interception{}, Overrides: []Override{}}
 }
 
 func Prefix(s string) (netip.Prefix, error) {
@@ -332,8 +353,8 @@ func (d Document) Validate() error {
 	if e != nil || web.Port() == 0 || web.Addr().IsUnspecified() {
 		return errors.New("management listen must be a concrete IP:port")
 	}
-	if !web.Addr().IsLoopback() && (!s.Security.Authentication || s.Security.PasswordHash == "" || s.Security.TLSCert == "" || s.Security.TLSKey == "") {
-		return errors.New("remote management requires authentication and TLS")
+	if !web.Addr().IsLoopback() && (!s.Security.Authentication || s.Security.PasswordHash == "") {
+		return errors.New("remote management requires authentication")
 	}
 	if s.Security.Authentication && (s.Security.Username == "" || s.Security.PasswordHash == "") {
 		return errors.New("authentication requires a username and password")
@@ -359,6 +380,9 @@ func (d Document) Validate() error {
 		if p != "" && !filepath.IsAbs(p) {
 			return errors.New("TLS paths must be absolute")
 		}
+	}
+	if (s.Security.TLSCert == "") != (s.Security.TLSKey == "") {
+		return errors.New("TLS certificate and key must both be configured or both be empty")
 	}
 	if ap, e := netip.ParseAddrPort(s.Surge.DNS); e != nil || ap.Port() == 0 {
 		return errors.New("invalid Surge DNS endpoint")
@@ -450,8 +474,11 @@ func (d Document) Validate() error {
 	if routing.UsesBGP() && (s.BGP.LocalASN == 0 || s.BGP.RouteLimit < 1 || s.BGP.RouteLimit > 10000 || s.BGP.ListenPort < 0 || s.BGP.ListenPort > 65535 || s.BGP.HoldSeconds < 3 || s.BGP.KeepaliveSeconds == 0 || s.BGP.KeepaliveSeconds*3 > s.BGP.HoldSeconds) {
 		return errors.New("invalid BGP settings")
 	}
-	if a, e := netip.ParseAddr(s.BGP.RouterID); routing.UsesBGP() && (e != nil || !a.Is4() || a.IsUnspecified() || a.IsMulticast()) {
-		return errors.New("BGP router ID must be IPv4")
+	if routing.UsesBGP() && s.BGP.Enabled {
+		a, e := netip.ParseAddr(s.BGP.RouterID)
+		if e != nil || !a.Is4() || a.IsUnspecified() || a.IsMulticast() {
+			return errors.New("BGP router ID must be IPv4 when BGP is enabled")
+		}
 	}
 	ids := map[string]bool{}
 	checkID := func(id string) bool {
@@ -482,7 +509,7 @@ func (d Document) Validate() error {
 	if len(s.Surge.FakePrefixes) == 0 {
 		return errors.New("Fake-IP prefix required")
 	}
-	if len(s.Surge.FakePrefixes) > 16 || len(d.Peers) > 128 || len(d.Overrides) > 1000 {
+	if len(s.Surge.FakePrefixes) > 16 || len(d.Peers) > 128 || len(d.Overrides) > 1000 || len(d.RouteFeeds) > 128 {
 		return errors.New("configuration resource limits exceeded")
 	}
 	allUpstreams := append([]resolver.ResolverEndpoint{}, s.DNS.Upstreams...)
@@ -533,10 +560,32 @@ func (d Document) Validate() error {
 			count++
 		}
 	}
+	feedIDs := map[string]bool{}
+	for _, f := range d.RouteFeeds {
+		u, urlErr := url.Parse(f.URL)
+		if !checkID(f.ID) || urlErr != nil || u == nil || (u.Scheme != "https" && u.Scheme != "http") || u.Hostname() == "" || u.User != nil || u.Fragment != "" || len(f.URL) > 4096 || f.IntervalMinutes < 15 || f.IntervalMinutes > 10080 || !f.SyncIPv4 && !f.SyncIPv6 || (f.Binding != "none" && f.Binding != "surge" && f.Binding != "controller" && f.Binding != "dns") {
+			return errors.New("invalid route URL update source")
+		}
+		if err := addr(f.NextHop4, 4); err != nil {
+			return err
+		}
+		if err := addr(f.NextHop6, 6); err != nil {
+			return err
+		}
+		if f.SyncIPv4 && f.NextHop4 == "" || f.SyncIPv6 && f.NextHop6 == "" {
+			return errors.New("automatic route URL updates require a next hop for each selected address family")
+		}
+		feedIDs[f.ID] = true
+		for _, c := range f.Communities {
+			if _, err := Community(c); err != nil {
+				return err
+			}
+		}
+	}
 	for _, r := range d.Routes {
 		p, e := Prefix(r.Prefix)
 		next, ne := netip.ParseAddr(r.NextHop)
-		if e != nil || ne != nil || next.IsUnspecified() || next.IsMulticast() || next.Is4() != p.Addr().Is4() || !checkID(r.ID) || networks[r.Prefix] {
+		if e != nil || ne != nil || next.IsUnspecified() || next.IsMulticast() || next.Is4() != p.Addr().Is4() || !checkID(r.ID) || networks[r.Prefix] || r.SourceID != "" && !feedIDs[r.SourceID] {
 			return errors.New("invalid/duplicate manual route")
 		}
 		networks[r.Prefix] = true
@@ -561,13 +610,10 @@ func (d Document) Validate() error {
 	peers := map[string]bool{}
 	for _, p := range d.Peers {
 		a, e := netip.ParseAddr(p.Address)
-		if e != nil || a.IsUnspecified() || a.IsMulticast() || p.ASN == 0 || p.LocalASN != 0 && p.LocalASN != s.BGP.LocalASN || !checkID(p.ID) || peers[p.Address] || p.Port > 65535 {
+		if e != nil || a.IsUnspecified() || a.IsMulticast() || p.ASN == 0 || !checkID(p.ID) || peers[p.Address] || p.Port > 65535 {
 			return errors.New("invalid/duplicate BGP peer")
 		}
 		peers[p.Address] = true
-		if p.RouterID != "" && p.RouterID != s.BGP.RouterID {
-			return errors.New("peer router ID must match the local BGP router ID")
-		}
 		if p.HoldSeconds != 0 && (p.HoldSeconds < 3 || p.KeepaliveSeconds == 0 || p.KeepaliveSeconds*3 > p.HoldSeconds) {
 			return errors.New("invalid peer timers")
 		}

@@ -100,6 +100,7 @@ func (p *policy) Classify(ctx context.Context, q model.DNSQueryContext) (model.D
 
 type Runtime struct {
 	routingMu                                        sync.RWMutex
+	routingWake                                      chan struct{}
 	hosts                                            *localdns.Resolver
 	closeOnce                                        sync.Once
 	closeErr                                         error
@@ -141,11 +142,14 @@ type App struct {
 	bus            *events.Bus
 	security       *security.Manager
 	remote         *remote.Manager
+	control        *api.API
 	ctx            context.Context
 	dir            string
 	webChanged     chan struct{}
 	closing        atomic.Bool
 }
+
+const managementRecoveryAddress = "127.0.0.1:1055"
 
 func Open(ctx context.Context, path string) (*App, error) {
 	store, e := database.Open(path)
@@ -182,6 +186,8 @@ func Open(ctx context.Context, path string) (*App, error) {
 	a.remote = remote.New(func() []config.Backend { return a.Configuration().Settings.RemoteBackends })
 	a.eventRetention.Store(int64(d.Settings.Logging.EventRetention))
 	a.setLogging(d.Settings.Logging.Level)
+	a.control = &api.API{Service: a, Store: a.store, Bus: a.bus}
+	go a.control.RunRouteFeedScheduler(ctx)
 	rt, e := a.build(d)
 	if e != nil {
 		store.Close()
@@ -219,7 +225,7 @@ func (a *App) build(d config.Document) (rt *Runtime, err error) {
 		return nil, err
 	}
 	ctx, cancel := context.WithCancel(a.ctx)
-	rt = &Runtime{cancel: cancel, done: make(chan struct{}), settings: d, started: time.Now(), machine: state.New(d.Settings.Health, d.Settings.General.Mode), health: state.NewHealth(d.Settings.Health.Successes, d.Settings.Health.Failures)}
+	rt = &Runtime{cancel: cancel, done: make(chan struct{}), routingWake: make(chan struct{}, 1), settings: d, started: time.Now(), machine: state.New(d.Settings.Health, d.Settings.General.Mode), health: state.NewHealth(d.Settings.Health.Successes, d.Settings.Health.Failures)}
 	failed := true
 	// Error returns assign nil to the named result. Keep the allocated runtime
 	// separately so partial initialization is cleaned up without panicking.
@@ -614,6 +620,7 @@ func (a *App) monitor(ctx context.Context, rt *Runtime) {
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
+		case <-rt.routingWake:
 		}
 	}
 }
@@ -691,7 +698,7 @@ func (a *App) Apply(ctx context.Context, d config.Document) error {
 				return errors.New("management TLS certificate/key could not be loaded")
 			}
 		}
-		if d.Settings.General.WebListen != old.Settings.General.WebListen {
+		if d.Settings.General.WebListen != old.Settings.General.WebListen && d.Settings.General.WebListen != managementRecoveryAddress {
 			listener, e := net.Listen("tcp", d.Settings.General.WebListen)
 			if e != nil {
 				return errors.New("management address cannot be bound")
@@ -723,10 +730,24 @@ func (a *App) Apply(ctx context.Context, d config.Document) error {
 	newRuntime.Peers = nil
 	oldRuntime.Routes = nil
 	newRuntime.Routes = nil
+	oldRuntime.RouteFeeds = nil
+	newRuntime.RouteFeeds = nil
 	oldRuntime.Hosts = nil
 	newRuntime.Hosts = nil
 	oldRuntime.Overrides = nil
 	newRuntime.Overrides = nil
+	peerOnlyRoutingChange := !reflect.DeepEqual(old.Peers, d.Peers) &&
+		reflect.DeepEqual(old.Settings.BGP, d.Settings.BGP) &&
+		reflect.DeepEqual(old.Settings.Routing, d.Settings.Routing) &&
+		reflect.DeepEqual(old.Routes, d.Routes) &&
+		old.Settings.Surge.NextHop4 == d.Settings.Surge.NextHop4 &&
+		old.Settings.Surge.NextHop6 == d.Settings.Surge.NextHop6
+	routesOnlyRoutingChange := !reflect.DeepEqual(old.Routes, d.Routes) &&
+		reflect.DeepEqual(old.Peers, d.Peers) &&
+		reflect.DeepEqual(old.Settings.BGP, d.Settings.BGP) &&
+		reflect.DeepEqual(old.Settings.Routing, d.Settings.Routing) &&
+		old.Settings.Surge.NextHop4 == d.Settings.Surge.NextHop4 &&
+		old.Settings.Surge.NextHop6 == d.Settings.Surge.NextHop6
 	if !reflect.DeepEqual(oldRuntime, newRuntime) {
 		a.mu.RLock()
 		previous := a.runtime
@@ -741,9 +762,9 @@ func (a *App) Apply(ctx context.Context, d config.Document) error {
 				a.mu.Lock()
 				a.runtime = restored
 				a.mu.Unlock()
-				return errors.New("DNS 配置无法启用，已恢复原配置；请检查接口、监听端口和网络后台服务")
+				return fmt.Errorf("DNS 配置无法启用，已恢复原配置；原因：%v", e)
 			}
-			return errors.New("runtime configuration could not be applied; inspect health before retrying")
+			return fmt.Errorf("DNS 配置无法启用，恢复也失败；启用失败：%v；恢复失败：%v", e, re)
 		}
 		if e = a.store.Save(ctx, d); e != nil {
 			_ = next.close(context.Background(), false)
@@ -761,30 +782,56 @@ func (a *App) Apply(ctx context.Context, d config.Document) error {
 		if routingChanged {
 			rt := a.runtime
 			rt.routingMu.Lock()
-			expiry := rt.machine.SuspendRouting()
-			rt.machine.DrainResponses()
-			if old.Settings.Routing.Effective().FakeIPBackend == "bgp" && time.Now().Before(expiry) {
-				timer := time.NewTimer(time.Until(expiry))
-				<-timer.C
-			}
-			if e := rt.routes.Close(context.Background()); e != nil {
+			canSyncPeers := peerOnlyRoutingChange && (!d.Settings.BGP.Enabled || rt.routes.Status().Enabled)
+			canUpdateRoutes := routesOnlyRoutingChange && (!d.Settings.BGP.Enabled || rt.routes.Status().Enabled)
+			if canSyncPeers {
+				if e := rt.routes.SyncPeers(ctx, d); e != nil {
+					rt.routingMu.Unlock()
+					return fmt.Errorf("BGP neighbor update failed: %w", e)
+				}
+				if e := a.store.Save(ctx, d); e != nil {
+					_ = rt.routes.SyncPeers(context.Background(), old)
+					rt.routingMu.Unlock()
+					return errors.New("routing configuration transaction failed")
+				}
 				rt.routingMu.Unlock()
-				return errors.New("old BGP backend could not be released; DNS remains running")
-			}
-			next := routing.New(a.ctx, d, func(severity, message string) { a.event(severity, "routing", message) })
-			if e := a.store.Save(ctx, d); e != nil {
-				next.Close(context.Background())
-				restored := routing.New(a.ctx, old, nil)
+			} else if canUpdateRoutes {
+				if e := a.store.Save(ctx, d); e != nil {
+					rt.routingMu.Unlock()
+					return errors.New("routing configuration transaction failed")
+				}
+				rt.routes.UpdateDocument(d)
+				rt.routingMu.Unlock()
+				select {
+				case rt.routingWake <- struct{}{}:
+				default:
+				}
+			} else {
+				expiry := rt.machine.SuspendRouting()
+				rt.machine.DrainResponses()
+				if old.Settings.Routing.Effective().FakeIPBackend == "bgp" && time.Now().Before(expiry) {
+					timer := time.NewTimer(time.Until(expiry))
+					<-timer.C
+				}
+				if e := rt.routes.Close(context.Background()); e != nil {
+					rt.routingMu.Unlock()
+					return errors.New("old BGP backend could not be released; DNS remains running")
+				}
+				next := routing.New(a.ctx, d, func(severity, message string) { a.event(severity, "routing", message) })
+				if e := a.store.Save(ctx, d); e != nil {
+					next.Close(context.Background())
+					restored := routing.New(a.ctx, old, nil)
+					a.mu.Lock()
+					rt.routes = restored
+					a.mu.Unlock()
+					rt.routingMu.Unlock()
+					return errors.New("routing configuration transaction failed")
+				}
 				a.mu.Lock()
-				rt.routes = restored
+				rt.routes = next
 				a.mu.Unlock()
 				rt.routingMu.Unlock()
-				return errors.New("routing configuration transaction failed")
 			}
-			a.mu.Lock()
-			rt.routes = next
-			a.mu.Unlock()
-			rt.routingMu.Unlock()
 		} else if e := a.store.Save(ctx, d); e != nil {
 			return errors.New("configuration transaction failed")
 		}
@@ -959,11 +1006,10 @@ func (a *App) Metrics() string {
 	return b.String()
 }
 func (a *App) Handler() http.Handler {
-	control := &api.API{Service: a, Store: a.store, Bus: a.bus}
 	mux := http.NewServeMux()
 	mux.Handle("/api/v1/management/relay/", a.remote)
-	mux.Handle("/api/", control.Handler())
-	mux.Handle("/metrics", control.Handler())
+	mux.Handle("/api/", a.control.Handler())
+	mux.Handle("/metrics", a.control.Handler())
 	mux.Handle("/", web.Handler())
 	requests := make(chan struct{}, 128)
 	bounded := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -1020,6 +1066,23 @@ func (a *App) Serve(ctx context.Context) error {
 			}
 		}()
 		slog.Info("management ready", "address", c.General.WebListen)
+		var recoveryListener net.Listener
+		var recoveryServer *http.Server
+		if c.General.WebListen != managementRecoveryAddress {
+			recoveryListener, e = net.Listen("tcp", managementRecoveryAddress)
+			if e != nil {
+				slog.Warn("local management recovery listener unavailable", "address", managementRecoveryAddress, "error", e)
+			} else {
+				recoveryListener = netutil.LimitListener(recoveryListener, 64)
+				recoveryServer = &http.Server{Handler: a.Handler(), ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 10 * time.Second, IdleTimeout: 60 * time.Second, MaxHeaderBytes: 16384}
+				go func() {
+					if serveErr := recoveryServer.Serve(recoveryListener); serveErr != nil && !errors.Is(serveErr, http.ErrServerClosed) {
+						slog.Error("local management recovery listener stopped", "error", serveErr)
+					}
+				}()
+				slog.Info("local management recovery ready", "address", managementRecoveryAddress)
+			}
+		}
 		restart := false
 		select {
 		case <-ctx.Done():
@@ -1035,6 +1098,10 @@ func (a *App) Serve(ctx context.Context) error {
 		// Shutdown can run before the Serve goroutine registers the listener.
 		// Close our listener explicitly so a fast restart cannot leak the port.
 		_ = listener.Close()
+		if recoveryServer != nil {
+			_ = recoveryServer.Shutdown(shutdown)
+			_ = recoveryListener.Close()
+		}
 		cancel()
 		if !restart {
 			return e

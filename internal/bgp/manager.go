@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"surge-controller/internal/config"
 	"sync"
 )
 
@@ -20,21 +21,43 @@ type Status struct {
 	LastError  string          `json:"last_error"`
 }
 type Manager struct {
-	mu        sync.Mutex
-	speaker   Speaker
-	limit     int
-	installed map[string]installed
-	notify    func(string, string)
-	status    Status
+	mu             sync.Mutex
+	speaker        Speaker
+	limit          int
+	installed      map[string]installed
+	notify         func(string, string)
+	status         Status
+	reconcileError string
 }
 
 func NewManager(s Speaker, limit int, notify func(string, string)) *Manager {
 	return &Manager{speaker: s, limit: limit, installed: map[string]installed{}, notify: notify, status: Status{Enabled: s != nil, Limit: limit, Peers: []PeerStatus{}, Routes: []Advertisement{}}}
 }
+
+// SyncPeers keeps the current speaker and its installed routes while applying
+// peer-only configuration changes. Speakers without this capability fall back
+// to the normal runtime replacement path.
+func (m *Manager) SyncPeers(ctx context.Context, d config.Document) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if m.speaker == nil {
+		return nil
+	}
+	updater, ok := m.speaker.(interface {
+		SyncPeers(context.Context, config.Document) error
+	})
+	if !ok {
+		return errors.New("BGP speaker does not support in-place peer updates")
+	}
+	return updater.SyncPeers(ctx, d)
+}
+
 func (m *Manager) Reconcile(ctx context.Context, desired []Advertisement) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	if len(desired) > m.limit {
+		m.reconcileError = "hard BGP route limit exceeded"
+		m.status.LastError = m.reconcileError
 		if m.notify != nil {
 			m.notify("CRITICAL", "Hard BGP route limit exceeded; advertisements rejected")
 		}
@@ -43,10 +66,13 @@ func (m *Manager) Reconcile(ctx context.Context, desired []Advertisement) error 
 	if m.speaker == nil {
 		return nil
 	}
+	m.reconcileError = ""
 	want := map[string]Advertisement{}
 	for _, r := range desired {
 		if _, ok := want[r.Prefix]; ok {
-			return errors.New("duplicate advertised prefix")
+			m.reconcileError = "duplicate advertised prefix"
+			m.status.LastError = m.reconcileError
+			return errors.New(m.reconcileError)
 		}
 		want[r.Prefix] = r
 	}
@@ -56,7 +82,8 @@ func (m *Manager) Reconcile(ctx context.Context, desired []Advertisement) error 
 		b, _ := json.Marshal(next)
 		if !exists || string(a) != string(b) {
 			if e := m.speaker.Delete(ctx, old.UUID); e != nil {
-				m.status.LastError = "BGP withdrawal failed"
+				m.reconcileError = "BGP withdrawal failed"
+				m.status.LastError = m.reconcileError
 				return e
 			}
 			delete(m.installed, prefix)
@@ -70,11 +97,14 @@ func (m *Manager) Reconcile(ctx context.Context, desired []Advertisement) error 
 			continue
 		}
 		if len(m.installed) >= m.limit {
-			return errors.New("hard BGP route limit exceeded")
+			m.reconcileError = "hard BGP route limit exceeded"
+			m.status.LastError = m.reconcileError
+			return errors.New(m.reconcileError)
 		}
 		id, e := m.speaker.Add(ctx, r)
 		if e != nil {
-			m.status.LastError = "BGP advertisement failed"
+			m.reconcileError = "BGP advertisement failed"
+			m.status.LastError = m.reconcileError
 			return e
 		}
 		m.installed[prefix] = installed{r, id}
@@ -135,7 +165,7 @@ func (m *Manager) Refresh(ctx context.Context) (bool, error) {
 		}
 		m.status.Routes = append(m.status.Routes, row)
 	}
-	m.status.LastError = ""
+	m.status.LastError = m.reconcileError
 	return ready && fakeCount > 0, nil
 }
 func (m *Manager) Status() Status {

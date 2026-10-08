@@ -49,7 +49,7 @@ func failure(w http.ResponseWriter, status int, message string) {
 // endpoints. SSE remains local; remote dashboards poll their selected backend.
 func allowed(path, method string) bool {
 	read := map[string]bool{"session": true, "settings": true, "configuration/export": true, "mode": true, "status": true, "health": true, "dns/queries": true, "dns/cache": true, "surge/status": true, "surge/hosts": true, "bgp/status": true, "routing/status": true, "events": true}
-	post := map[string]bool{"login": true, "logout": true, "configuration/import": true, "bgp/export-frr": true, "bgp/routes/import-url": true, "bgp/routes/import": true, "dns/hosts/import-surge": true, "routing/verify": true, "test/domain": true, "dns/cache/flush": true}
+	post := map[string]bool{"login": true, "logout": true, "configuration/import": true, "bgp/export-frr": true, "bgp/routes/import-url": true, "bgp/routes/import": true, "dns/hosts/import-surge": true, "routing/verify": true, "test/domain": true, "dns/cache/flush": true, "resources/bulk-delete": true}
 	if method == "GET" && read[path] || method == "POST" && post[path] || method == "PUT" && (path == "settings" || path == "mode") {
 		return true
 	}
@@ -166,7 +166,7 @@ func (m *Manager) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		sessionURL.RawQuery = ""
 		response, err := send(r, c, &sessionURL, "GET", nil, "")
 		if err != nil {
-			failure(w, 502, "无法连接远程后端，请检查地址、网络及 TLS 证书")
+			failure(w, 502, "无法连接远程后端，请检查地址和网络；使用 HTTPS 时请检查 TLS 证书")
 			return
 		}
 		data, readErr := io.ReadAll(io.LimitReader(response.Body, 8193))
@@ -183,7 +183,7 @@ func (m *Manager) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	response, err := send(r, c, target, r.Method, body, csrf)
 	if err != nil {
-		failure(w, 502, "无法连接远程后端，请检查地址、网络及 TLS 证书")
+		failure(w, 502, "无法连接远程后端，请检查地址和网络；使用 HTTPS 时请检查 TLS 证书")
 		return
 	}
 	defer response.Body.Close()

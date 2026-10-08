@@ -30,6 +30,12 @@ type Preview struct {
 	Skipped  []Skipped `json:"skipped"`
 }
 type Request struct {
+	URL             string   `json:"url"`
+	AutoUpdate      bool     `json:"auto_update"`
+	IntervalMinutes int      `json:"interval_minutes"`
+	SyncIPv4        bool     `json:"sync_ipv4"`
+	SyncIPv6        bool     `json:"sync_ipv6"`
+	SourceID        string   `json:"source_id,omitempty"`
 	Prefixes        []string `json:"prefixes"`
 	NextHop4        string   `json:"next_hop4"`
 	NextHop6        string   `json:"next_hop6"`
@@ -116,12 +122,20 @@ func Parse(data []byte, d config.Document) (Preview, error) {
 // Append clones and validates the complete candidate. The caller applies it once.
 func Append(d config.Document, req Request) (config.Document, Result, error) {
 	out, result := d.Clone(), Result{}
-	if len(req.Prefixes) == 0 || len(req.Prefixes) > MaxPrefixes {
+	if len(req.Prefixes) == 0 && req.SourceID == "" || len(req.Prefixes) > MaxPrefixes {
 		return d, result, errors.New("select 1-1024 route destinations")
 	}
 	seen := existing(d)
 	if req.Binding == "" {
 		req.Binding = "none"
+	}
+	if req.AutoUpdate {
+		if _, err := validateURL(strings.TrimSpace(req.URL)); err != nil || req.IntervalMinutes < 15 || req.IntervalMinutes > 10080 || !req.SyncIPv4 && !req.SyncIPv6 {
+			return d, result, errors.New("automatic URL updates require a valid public URL and an interval from 15 minutes to 7 days")
+		}
+		req.SourceID = security.Token()[:22]
+		now := time.Now().UTC()
+		out.RouteFeeds = append(out.RouteFeeds, config.RouteFeed{ID: req.SourceID, URL: strings.TrimSpace(req.URL), IntervalMinutes: req.IntervalMinutes, SyncIPv4: req.SyncIPv4, SyncIPv6: req.SyncIPv6, NextHop4: req.NextHop4, NextHop6: req.NextHop6, MED: req.MED, LocalPreference: req.LocalPreference, Communities: append([]string{}, req.Communities...), Binding: req.Binding, Enabled: true, RouteEnabled: req.Enabled, Description: req.Description, LastAttempt: now, LastUpdated: now})
 	}
 	for _, s := range req.Prefixes {
 		p, err := destination(s)
@@ -137,7 +151,7 @@ func Append(d config.Document, req Request) (config.Document, Result, error) {
 		if p.Addr().Is6() {
 			next = strings.TrimSpace(req.NextHop6)
 		}
-		out.Routes = append(out.Routes, config.Route{ID: security.Token()[:22], Prefix: p.String(), NextHop: next, MED: req.MED, LocalPreference: req.LocalPreference, Communities: append([]string{}, req.Communities...), Binding: req.Binding, Enabled: req.Enabled, Description: req.Description})
+		out.Routes = append(out.Routes, config.Route{ID: security.Token()[:22], Prefix: p.String(), NextHop: next, MED: req.MED, LocalPreference: req.LocalPreference, Communities: append([]string{}, req.Communities...), Binding: req.Binding, Enabled: req.Enabled, Description: req.Description, SourceID: req.SourceID})
 		result.Imported++
 	}
 	if err := out.Validate(); err != nil {

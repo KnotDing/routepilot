@@ -8,6 +8,7 @@ import (
 	"github.com/osrg/gobgp/v3/pkg/server"
 	"google.golang.org/protobuf/types/known/anypb"
 	"net/netip"
+	"reflect"
 	"surge-controller/internal/config"
 	"sync"
 	"time"
@@ -41,6 +42,8 @@ type Speaker interface {
 }
 type GoBGP struct {
 	server    *server.BgpServer
+	peerMu    sync.Mutex
+	peers     map[string]config.Peer
 	closeOnce sync.Once
 	closeErr  error
 }
@@ -48,7 +51,7 @@ type GoBGP struct {
 func New(ctx context.Context, c config.Document) (*GoBGP, error) {
 	s := server.NewBgpServer()
 	go s.Serve()
-	g := &GoBGP{server: s}
+	g := &GoBGP{server: s, peers: map[string]config.Peer{}}
 	port := c.Settings.BGP.ListenPort
 	if port == 0 {
 		port = -1
@@ -74,33 +77,93 @@ func New(ctx context.Context, c config.Document) (*GoBGP, error) {
 		if !p.Enabled {
 			continue
 		}
-		hold, keep := p.HoldSeconds, p.KeepaliveSeconds
-		if hold == 0 {
-			hold, keep = c.Settings.BGP.HoldSeconds, c.Settings.BGP.KeepaliveSeconds
-		}
-		families := []*api.AfiSafi{}
-		for _, afi := range []api.Family_Afi{api.Family_AFI_IP, api.Family_AFI_IP6} {
-			family := &api.Family{Afi: afi, Safi: api.Family_SAFI_UNICAST}
-			families = append(families, &api.AfiSafi{Config: &api.AfiSafiConfig{Family: family, Enabled: true}, PrefixLimits: &api.PrefixLimit{Family: family, MaxPrefixes: uint32(c.Settings.BGP.RouteLimit), ShutdownThresholdPct: 100}})
-		}
-		local := c.Settings.DNS.Source4
-		if netip.MustParseAddr(p.Address).Is6() {
-			local = c.Settings.DNS.Source6
-		}
-		remotePort := p.Port
-		if remotePort == 0 {
-			remotePort = 179
-		}
-		peer := &api.Peer{Conf: &api.PeerConf{NeighborAddress: p.Address, PeerAsn: p.ASN, LocalAsn: c.Settings.BGP.LocalASN, Description: p.Description}, Timers: &api.Timers{Config: &api.TimersConfig{HoldTime: hold, KeepaliveInterval: keep, ConnectRetry: 3}}, Transport: &api.Transport{LocalAddress: local, RemotePort: remotePort}, AfiSafis: families,
-			// Reject received routes: this application originates a bounded route set
-			// and must never become a transit route reflector or re-export peer routes.
-			ApplyPolicy: &api.ApplyPolicy{ImportPolicy: &api.PolicyAssignment{DefaultAction: api.RouteAction_REJECT}, ExportPolicy: &api.PolicyAssignment{DefaultAction: api.RouteAction_ACCEPT}}}
-		if e := s.AddPeer(ctx, &api.AddPeerRequest{Peer: peer}); e != nil {
+		if e := s.AddPeer(ctx, &api.AddPeerRequest{Peer: peerConfig(c, p)}); e != nil {
 			g.Close()
 			return nil, e
 		}
+		g.peers[p.ID] = p
 	}
 	return g, nil
+}
+
+func peerConfig(c config.Document, p config.Peer) *api.Peer {
+	hold, keep := p.HoldSeconds, p.KeepaliveSeconds
+	if hold == 0 {
+		hold, keep = c.Settings.BGP.HoldSeconds, c.Settings.BGP.KeepaliveSeconds
+	}
+	families := []*api.AfiSafi{}
+	for _, afi := range []api.Family_Afi{api.Family_AFI_IP, api.Family_AFI_IP6} {
+		family := &api.Family{Afi: afi, Safi: api.Family_SAFI_UNICAST}
+		families = append(families, &api.AfiSafi{Config: &api.AfiSafiConfig{Family: family, Enabled: true}, PrefixLimits: &api.PrefixLimit{Family: family, MaxPrefixes: uint32(c.Settings.BGP.RouteLimit), ShutdownThresholdPct: 100}})
+	}
+	local := c.Settings.DNS.Source4
+	if netip.MustParseAddr(p.Address).Is6() {
+		local = c.Settings.DNS.Source6
+	}
+	remotePort := p.Port
+	if remotePort == 0 {
+		remotePort = 179
+	}
+	return &api.Peer{Conf: &api.PeerConf{NeighborAddress: p.Address, PeerAsn: p.ASN, LocalAsn: c.Settings.BGP.LocalASN, Description: p.Description}, Timers: &api.Timers{Config: &api.TimersConfig{HoldTime: hold, KeepaliveInterval: keep, ConnectRetry: 3}}, Transport: &api.Transport{LocalAddress: local, RemotePort: remotePort}, AfiSafis: families,
+		// Reject received routes: this application originates a bounded route set
+		// and must never become a transit route reflector or re-export peer routes.
+		ApplyPolicy: &api.ApplyPolicy{ImportPolicy: &api.PolicyAssignment{DefaultAction: api.RouteAction_REJECT}, ExportPolicy: &api.PolicyAssignment{DefaultAction: api.RouteAction_ACCEPT}}}
+}
+
+// SyncPeers updates neighbor sessions without restarting the BGP speaker or
+// withdrawing its local RIB. This keeps already-issued Fake-IP routes active.
+func (g *GoBGP) SyncPeers(ctx context.Context, c config.Document) error {
+	g.peerMu.Lock()
+	defer g.peerMu.Unlock()
+	previous := make(map[string]config.Peer, len(g.peers))
+	for id, peer := range g.peers {
+		previous[id] = peer
+	}
+	wanted := map[string]config.Peer{}
+	for _, peer := range c.Peers {
+		if peer.Enabled {
+			wanted[peer.ID] = peer
+		}
+	}
+	if err := g.syncPeers(ctx, c, wanted); err != nil {
+		rollbackCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		if rollbackErr := g.syncPeers(rollbackCtx, c, previous); rollbackErr != nil {
+			return fmt.Errorf("peer update failed: %v; rollback failed: %w", err, rollbackErr)
+		}
+		return err
+	}
+	return nil
+}
+
+func (g *GoBGP) syncPeers(ctx context.Context, c config.Document, wanted map[string]config.Peer) error {
+	for id, old := range g.peers {
+		next, exists := wanted[id]
+		if exists && old.Address == next.Address {
+			continue
+		}
+		if err := g.server.DeletePeer(ctx, &api.DeletePeerRequest{Address: old.Address}); err != nil {
+			return err
+		}
+		delete(g.peers, id)
+	}
+	for id, next := range wanted {
+		old, exists := g.peers[id]
+		if !exists {
+			if err := g.server.AddPeer(ctx, &api.AddPeerRequest{Peer: peerConfig(c, next)}); err != nil {
+				return err
+			}
+			g.peers[id] = next
+			continue
+		}
+		if !reflect.DeepEqual(old, next) {
+			if _, err := g.server.UpdatePeer(ctx, &api.UpdatePeerRequest{Peer: peerConfig(c, next)}); err != nil {
+				return err
+			}
+			g.peers[id] = next
+		}
+	}
+	return nil
 }
 func family(p netip.Prefix) *api.Family {
 	afi := api.Family_AFI_IP

@@ -122,8 +122,25 @@ func (m *Manager) Wrap(next http.Handler) http.Handler {
 				allowed = true
 			}
 		}
+		// Loopback is always local. A process connecting to one of its own
+		// interface addresses also arrives from that same address; permit that
+		// case so a local operator can still authenticate after moving the
+		// management listener off loopback. Other clients remain subject to the
+		// configured allow-list.
+		if e == nil && ip.IsLoopback() {
+			allowed = true
+		}
+		if e == nil && !allowed {
+			if local, ok := r.Context().Value(http.LocalAddrContextKey).(net.Addr); ok {
+				if localHost, _, splitErr := net.SplitHostPort(local.String()); splitErr == nil {
+					if localIP, parseErr := netip.ParseAddr(localHost); parseErr == nil && localIP.Unmap() == ip.Unmap() {
+						allowed = true
+					}
+				}
+			}
+		}
 		if e != nil || !allowed {
-			http.Error(w, "forbidden", 403)
+			http.Error(w, "management client network is not allowed", 403)
 			return
 		}
 		if origin := r.Header.Get("Origin"); origin != "" {

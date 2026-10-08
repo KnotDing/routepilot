@@ -1,0 +1,78 @@
+name: Build and publish RoutePilot release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    # Register a Gitea Actions runner on macOS Apple Silicon with this label.
+    runs-on: macos-arm64
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      - name: Set release identity
+        shell: bash
+        run: |
+          set -euo pipefail
+          tag="${GITHUB_REF_NAME}"
+          version="${tag#v}"
+          [[ "$tag" == v* && "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+([-.][0-9A-Za-z.-]+)?$ ]]
+          python3 - "$version" "$GITHUB_RUN_NUMBER" <<'PY'
+          import json, pathlib, sys
+          path = pathlib.Path("internal/buildinfo/release.json")
+          release = json.loads(path.read_text())
+          release["version"], release["build"] = sys.argv[1], sys.argv[2]
+          path.write_text(json.dumps(release, ensure_ascii=False, indent=2) + "\n")
+          PY
+
+      - name: Build packages
+        run: |
+          npm --prefix web ci
+          make package
+
+      - name: Create checksums
+        run: |
+          cd artifacts
+          shasum -a 256 RoutePilot-macos-arm64.dmg RoutePilot-macos-arm64.zip surge-controller-macos-arm64.tar.gz > SHA256SUMS
+
+      - name: Publish Gitea release and assets
+        env:
+          GITEA_TOKEN: ${{ secrets.GITEA_TOKEN }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          TAG="${GITHUB_REF_NAME}"
+          BUILD_NUMBER="${GITHUB_RUN_NUMBER}"
+          : "${GITEA_TOKEN:?Gitea Actions token is unavailable}"
+          release=$(curl --fail --silent --show-error \
+            -H "Authorization: token ${GITEA_TOKEN}" \
+            -H 'Content-Type: application/json' \
+            -X POST "${GITHUB_API_URL}/repos/${GITHUB_REPOSITORY}/releases" \
+            --data "$(jq -n --arg tag "$TAG" --arg build "$BUILD_NUMBER" \
+              '{tag_name:$tag,name:("RoutePilot " + $tag),body:("Automatically built by Gitea Actions. Build " + $build + ".\n\nSee SHA256SUMS to verify downloaded assets."),draft:false,prerelease:false}')")
+          release_id=$(printf '%s' "$release" | jq -er '.id')
+          for asset in artifacts/RoutePilot-macos-arm64.dmg artifacts/RoutePilot-macos-arm64.zip artifacts/surge-controller-macos-arm64.tar.gz artifacts/SHA256SUMS; do
+            name=${asset##*/}
+            curl --fail --silent --show-error \
+              -H "Authorization: token ${GITEA_TOKEN}" \
+              -F "attachment=@${asset}" \
+              "${GITHUB_API_URL}/repos/${GITHUB_REPOSITORY}/releases/${release_id}/assets?name=${name}"
+          done

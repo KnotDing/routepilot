@@ -110,7 +110,7 @@ func (s *Store) migrate() error {
 	if max.Valid && max.Int64 > 2 {
 		return errors.New("database schema is newer than this application")
 	}
-	for _, table := range []string{"settings", "bgp_peers", "bgp_routes", "dns_interception_routes", "overrides", "local_dns_hosts"} {
+	for _, table := range []string{"settings", "bgp_peers", "bgp_routes", "bgp_route_feeds", "dns_interception_routes", "overrides", "local_dns_hosts"} {
 		if _, e = tx.Exec("CREATE TABLE IF NOT EXISTS " + table + "(id TEXT PRIMARY KEY, document BLOB NOT NULL)"); e != nil {
 			return e
 		}
@@ -176,7 +176,7 @@ func (s *Store) Save(ctx context.Context, d config.Document) error {
 	lists := []struct {
 		table string
 		items any
-	}{{"bgp_peers", d.Peers}, {"bgp_routes", d.Routes}, {"dns_interception_routes", d.Interception}, {"overrides", d.Overrides}, {"local_dns_hosts", d.Hosts}}
+	}{{"bgp_peers", d.Peers}, {"bgp_routes", d.Routes}, {"bgp_route_feeds", d.RouteFeeds}, {"dns_interception_routes", d.Interception}, {"overrides", d.Overrides}, {"local_dns_hosts", d.Hosts}}
 	for _, list := range lists {
 		raw, _ := json.Marshal(list.items)
 		var rows []json.RawMessage
@@ -222,7 +222,7 @@ func (s *Store) Load(ctx context.Context) (config.Document, error) {
 	for _, dest := range []struct {
 		table string
 		out   any
-	}{{"bgp_peers", &d.Peers}, {"bgp_routes", &d.Routes}, {"dns_interception_routes", &d.Interception}, {"overrides", &d.Overrides}, {"local_dns_hosts", &d.Hosts}} {
+	}{{"bgp_peers", &d.Peers}, {"bgp_routes", &d.Routes}, {"bgp_route_feeds", &d.RouteFeeds}, {"dns_interception_routes", &d.Interception}, {"overrides", &d.Overrides}, {"local_dns_hosts", &d.Hosts}} {
 		rows, e := s.DB.QueryContext(ctx, "SELECT document FROM "+dest.table+" ORDER BY id")
 		if e != nil {
 			return d, e

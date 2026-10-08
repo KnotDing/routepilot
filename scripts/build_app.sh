@@ -7,7 +7,7 @@ build_dir=$(mktemp -d "$project_dir/artifacts/app-build.XXXXXX")
 trap 'rm -rf "$build_dir"' EXIT
 app_dir="$build_dir/RoutePilot.app"
 mkdir -p "$app_dir/Contents/MacOS" "$app_dir/Contents/Resources/Service/bin" "$app_dir/Contents/Resources/Service/scripts" "$app_dir/Contents/Resources/Service/launchd" .cache/swift-module .cache/AppIcon.iconset
-xcrun swiftc -parse-as-library -swift-version 5 -target "$(uname -m)-apple-macos13.0" -module-cache-path "$project_dir/.cache/swift-module" -framework AppKit -framework WebKit -framework ServiceManagement native/main.swift native/installer.swift native/localization.swift -o "$app_dir/Contents/MacOS/RoutePilot"
+xcrun swiftc -parse-as-library -swift-version 5 -target "$(uname -m)-apple-macos13.0" -module-cache-path "$project_dir/.cache/swift-module" -framework AppKit -framework WebKit -framework ServiceManagement native/main.swift native/installer.swift native/localization.swift native/release_updater.swift -o "$app_dir/Contents/MacOS/RoutePilot"
 cp native/Info.plist "$app_dir/Contents/Info.plist"
 # Keep the native bundle aligned with the release identity embedded in Go and Vite.
 release_version=$(plutil -extract version raw -o - internal/buildinfo/release.json)
@@ -20,7 +20,7 @@ if ! iconutil -c icns .cache/AppIcon.iconset -o "$app_dir/Contents/Resources/App
   python3 scripts/pack_icon.py .cache/AppIcon.iconset "$app_dir/Contents/Resources/AppIcon.icns"
 fi
 cp bin/surge-controller "$app_dir/Contents/Resources/Service/bin/"
-cp scripts/install_macos.sh scripts/uninstall_macos.sh scripts/update_macos.sh "$app_dir/Contents/Resources/Service/scripts/"
+cp scripts/install_macos.sh scripts/uninstall_macos.sh scripts/update_macos.sh scripts/upgrade_app_macos.sh "$app_dir/Contents/Resources/Service/scripts/"
 cp launchd/com.routepilot.surge-controller.plist "$app_dir/Contents/Resources/Service/launchd/"
 cp README.md "$app_dir/Contents/Resources/README.md"
 cp localization/*.json "$app_dir/Contents/Resources/"
@@ -35,4 +35,9 @@ mv "$app_dir" "$project_dir/artifacts/RoutePilot.app"
 app_dir="$project_dir/artifacts/RoutePilot.app"
 if [ -n "${old_dir:-}" ]; then rm -rf "$old_dir"; fi
 ditto -c -k --sequesterRsrc --keepParent "$app_dir" "artifacts/RoutePilot-macos-$(uname -m).zip"
+dmg_stage=$(mktemp -d "$project_dir/.cache/dmg-stage.XXXXXX")
+trap 'rm -rf "$build_dir" "$dmg_stage"' EXIT
+ditto "$app_dir" "$dmg_stage/RoutePilot.app"
+ln -s /Applications "$dmg_stage/Applications"
+hdiutil create -volname RoutePilot -srcfolder "$dmg_stage" -ov -format UDZO "artifacts/RoutePilot-macos-$(uname -m).dmg"
 printf 'APP: %s\n' "$app_dir"

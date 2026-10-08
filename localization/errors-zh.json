@@ -6,7 +6,6 @@
   "invalid configuration version or controller name": "配置版本或控制器名称无效",
   "invalid mode": "运行模式无效",
   "management listen must be a concrete IP:port": "管理监听地址必须填写明确的 IP:端口",
-  "remote management requires authentication and TLS": "远程管理需要启用认证和 TLS",
   "remote management requires authentication": "远程管理需要启用认证",
   "authentication requires a username and password": "启用认证需要设置用户名和密码",
   "invalid management session or allowed networks": "管理会话或允许的网段配置无效",
@@ -29,7 +28,7 @@
   "invalid health settings": "健康检查设置无效",
   "invalid privacy retention": "日志保留数量无效",
   "invalid BGP settings": "BGP 设置无效",
-  "BGP router ID must be IPv4": "BGP Router ID 必须是 IPv4 地址",
+  "BGP router ID must be IPv4 when BGP is enabled": "启用 BGP 时必须填写 IPv4 Router ID",
   "configured Fake-IP routing requires a Surge next hop for every address family": "已配置的 Fake-IP 路由需要对应地址族的 Surge 下一跳",
   "duplicate fake prefix": "Fake-IP 网段重复",
   "Fake-IP prefix required": "需要配置 Fake-IP 网段",
@@ -97,6 +96,7 @@
   "authentication required": "需要登录认证",
   "invalid credentials": "用户名或密码错误",
   "invalid CSRF token": "登录会话验证失败，请重新登录",
+  "management client network is not allowed": "当前客户端不在允许的管理网段内；请从本机连接，或先将客户端网段加入允许列表",
   "forbidden": "访问被拒绝",
   "not found": "条目不存在",
   "Authorization failed.": "管理员授权失败",
@@ -261,5 +261,11 @@
   "invalid route URL": "路由列表 URL 无效",
   "route URL fetch failed; check connectivity and the URL": "无法获取路由列表，请检查网络连接和 URL",
   "route URL returned HTTP {status}": "路由列表 URL 返回 HTTP {status}",
-  "route URL response could not be read": "无法读取路由列表响应"
+  "route URL response could not be read": "无法读取路由列表响应",
+  "select between 1 and 512 rows to delete": "请选择 1 到 512 个表项进行删除",
+  "invalid or duplicate row ID": "表项 ID 无效或重复",
+  "one or more selected rows no longer exist": "部分所选表项已不存在，请刷新后重试",
+  "unsupported bulk delete resource": "此类表项不支持批量删除",
+  "TLS certificate and key must both be configured or both be empty": "TLS 证书和私钥必须同时配置或同时留空",
+  "无法连接远程后端，请检查地址和网络；使用 HTTPS 时请检查 TLS 证书": "无法连接远程后端，请检查地址和网络；若使用 HTTPS，请检查 TLS 证书"
 }

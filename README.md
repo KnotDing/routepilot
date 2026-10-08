@@ -24,6 +24,7 @@ IPv4 透明 UDP/TCP DNS 和回流防护已用 Docker macvlan、真实 macOS PF �
 
 首次启动默认管理地址为 `http://127.0.0.1:1055`，配置和私有日志保存到
 `~/Library/Application Support/RoutePilot`。已有本机服务会直接连接，避免重复启动。
+管理监听地址变更后，本机恢复入口仍为 `http://127.0.0.1:1055`；状态栏 APP 可在离线时更新已安装的网络后台服务。
 退出 APP 会停止自己启动的子进程并等待 DNS/BGP/PF 清理；独立网络服务继续运行。
 后台子进程异常退出会有限重试，可用“重新连接”重试并查看日志。
 
@@ -38,7 +39,7 @@ IPv4 透明 UDP/TCP DNS 和回流防护已用 Docker macvlan、真实 macOS PF �
 正常停止旧服务并释放自身 PF 规则后重新启动，保留已安装的数据库、密钥和配置。
 更新失败时尝试恢复旧程序；更新过程会短暂中断 DNS。
 
-“设置 → BGP”提供对端设备 FRR 配置预览和导出，详见
+“BGP 邻居”页面提供对端设备 FRR 配置预览和导出，详见
 [FRR 配置导出](docs/frr-export.md)。查询详情单独显示 DNS 响应状态、完整资源记录、
 TTL、权威段、附加段和失败原因；UNKNOWN 不等于直连，运行状态回退单独标注。
 
@@ -106,7 +107,18 @@ bin/surge-controller serve --database /ABSOLUTE/PRIVATE/DIRECTORY/controller.sql
 
 `make build` 编译前端并生成 `bin/surge-controller` 和 `bin/dns-probe`。
 `make verify` 运行前端测试、Go race 测试、go vet 并构建；`make package` 生成带
-SHA256SUMS 的 macOS 发布压缩包、原生 APP 和 APP ZIP。APP 构建另需 Apple Command Line Tools（Swift/AppKit/WebKit）；`make app` 可单独打包 APP。离线单元/集成测试不需要 Surge、真实路由器或外网。
+SHA256SUMS 的 macOS 发布压缩包、原生 APP、APP ZIP 和 DMG 安装镜像。APP 构建另需 Apple Command Line Tools（Swift/AppKit/WebKit）；`make app` 可单独打包 APP。离线单元/集成测试不需要 Surge、真实路由器或外网。
+
+### Gitea Release 与在线升级
+
+`.gitea/workflows/release.yaml` 在推送 `vMAJOR.MINOR.PATCH` 标签时构建并发布 macOS Apple Silicon 版本，包括 DMG、ZIP、后台服务归档和 SHA256SUMS。Gitea 仓库需启用 Actions，并注册一个 macOS Apple Silicon Runner，标签为 `macos-arm64`；工作流使用仓库内置 `GITEA_TOKEN` 创建 Release 和上传附件。示例：
+
+```sh
+git tag v0.4.7
+git push origin v0.4.7
+```
+
+状态栏 App 每 12 小时检查一次 Gitea 最新稳定 Release；有新版本时，菜单会显示“在线升级”。升级前会验证 Release 中的 SHA256SUMS，再经 macOS 管理员确认替换 App；已安装的 launchd 后台服务也会一并更新，配置数据库与密钥保留。远程管理模式下，此功能升级本机 App，不会升级远端主机上的服务。当前发布未使用 Developer ID 签名或 Apple 公证。
 
 ## 初始设置
 
@@ -177,11 +189,10 @@ SQLite、密钥与私有日志保留；需升级时可移除后安装新版本�
 本地 DNS、独立健康探测、事件和全部设置。手动路由默认 Health Binding=None，可显式绑定
 Controller、Surge 或 DNS（手动路由属于 BGP 资源）；没有从查询/回答生成 per-IP BGP 路由的路径。
 
-“手动路由 → 从 URL 导入”支持公开 HTTP/HTTPS 文本列表（每行 IPv4/IPv6 地址或规范 CIDR，支持 `#` 注释）。例如 Telegram 的 `https://core.telegram.org/resources/cidr.txt`。先预览，再选择网段或地址族，分别设置 IPv4/IPv6 下一跳，以及统一的健康绑定、MED、本地优先级、Communities、说明和启用状态；默认下一跳取自 Surge 配置。普通地址转为 `/32` 或 `/128`，重复、已有和无效行在预览中列出。保存为可独立编辑的手动路由快照，不自动刷新 URL；保存时再次去重，并一次性校验和应用整批配置，BGP 路由上限或下一跳校验失败不会留下部分导入。列表上限为 1 MiB、8192 行和 1024 个新目的地址。列表由当前选中的管理后端获取，远程模式也支持导入。
+“手动路由 → 从 URL 导入”支持公开 HTTP/HTTPS 文本列表（每行 IPv4/IPv6 地址或规范 CIDR，支持 `#` 注释）。例如 Telegram 的 `https://core.telegram.org/resources/cidr.txt`。先预览，再选择网段或地址族，分别设置 IPv4/IPv6 下一跳，以及统一的健康绑定、MED、本地优先级、Communities、说明和启用状态；默认下一跳取自 Surge 配置。普通地址转为 `/32` 或 `/128`，重复、已有和无效行在预览中列出。默认保存为可独立编辑的手动路由快照。也可启用定时更新（每小时、6/12 小时、每天或每周），并单独选择同步 IPv4、IPv6 或两者：服务端定期重新抓取 URL，同步该来源管理的路由；URL 中新增/移除的前缀会相应添加/撤下，停止更新时保留现有路由并转为手动路由。列表上限为 1 MiB、8192 行和 1024 个新目的地址。列表由当前选中的管理后端获取，远程模式也支持导入。
 
 REST `/api/v1`、SSE `/api/v1/events/stream` 和 Prometheus `/metrics` 使用同一管理
-网络边界。认证开启后需要管理会话；写操作始终要求 CSRF。远程管理必须配置认证、TLS
-和允许网段，默认拒绝任意域名 Host/跨来源请求以防 DNS rebinding。密码使用 bcrypt；
+网络边界。认证开启后需要管理会话；写操作始终要求 CSRF。远程管理必须配置认证和允许网段；HTTPS/TLS 可选但推荐，默认拒绝任意域名 Host/跨来源请求以防 DNS rebinding。密码使用 bcrypt；
 Surge API token 使用 AES-GCM 保存，导出不含 token 或密码哈希。导入空凭据保留现有密钥。
 
 查询历史只在有界内存中，开关、域名记录及容量可配置；不会把逐条 DNS 查询写入数据库
@@ -237,7 +248,7 @@ python3 -m unittest discover -s scripts -p 'test_*.py'
 Web 顶部“本地服务 · 切换”可添加、编辑、移除和切换远程 Controller。
 远程页面明确显示当前连接，登录、查询、配置、缓存和 FRR 导出均发送至选中的后端。
 详见 [远程后端管理](docs/remote-management.md)。BGP 概览仅保留引擎、会话汇总和 BGP 路由；
-邻居配置、实时会话详情和 FRR 导出集中在“BGP 邻居”，设置页面仍保留 BGP 配置导出入口。
+邻居配置、实时会话详情和 FRR 导出集中在“BGP 邻居”。
 
 Web 界面统一使用 42px 输入框／下拉框／操作按钮和明确的标题层级，
 支持明暗主题、键盘焦点、桌面和移动布局。查询弹窗中的结果卡片独立排版。

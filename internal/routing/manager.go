@@ -152,6 +152,34 @@ func (m *Manager) Reconcile(ctx context.Context, desired []bgp.Advertisement) er
 	}
 	return m.bgp.Reconcile(ctx, desired)
 }
+
+// SyncPeers updates only BGP neighbor configuration in place and leaves the
+// local RIB untouched. The caller serializes this with routing refreshes.
+func (m *Manager) SyncPeers(ctx context.Context, d config.Document) error {
+	if m.bgp != nil {
+		updater, ok := m.bgp.(interface {
+			SyncPeers(context.Context, config.Document) error
+		})
+		if !ok {
+			return errors.New("BGP backend does not support in-place peer updates")
+		}
+		if err := updater.SyncPeers(ctx, d); err != nil {
+			return err
+		}
+	}
+	m.mu.Lock()
+	m.document = d.Clone()
+	m.mu.Unlock()
+	return nil
+}
+
+// UpdateDocument replaces route declarations without recreating the speaker.
+// The app holds routingMu while calling this and the next reconciliation adds
+// or withdraws only the changed paths from the existing BGP session.
+func (m *Manager) UpdateDocument(d config.Document) {
+	m.document = d.Clone()
+}
+
 func (m *Manager) Refresh(ctx context.Context) (bool, error) {
 	var err error
 	s := bgp.Status{Limit: m.document.Settings.BGP.RouteLimit, Peers: []bgp.PeerStatus{}, Routes: []bgp.Advertisement{}}

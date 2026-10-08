@@ -38,6 +38,114 @@ type API struct {
 	RouteImportClient *http.Client
 }
 
+// RunRouteFeedScheduler keeps URL-managed route snapshots current while the
+// controller service is running. All changes pass through the same mutation
+// lock and configuration transaction as interactive edits.
+func (a *API) RunRouteFeedScheduler(ctx context.Context) {
+	ticker := time.NewTicker(30 * time.Second)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			a.refreshDueRouteFeeds(ctx)
+		}
+	}
+}
+
+func (a *API) refreshDueRouteFeeds(ctx context.Context) {
+	d := a.Service.Configuration()
+	now := time.Now().UTC()
+	for _, feed := range d.RouteFeeds {
+		if !feed.Enabled || !feed.LastAttempt.IsZero() && now.Sub(feed.LastAttempt) < time.Duration(feed.IntervalMinutes)*time.Minute {
+			continue
+		}
+		a.mutation.Lock()
+		current := a.Service.Configuration()
+		idx := -1
+		for i := range current.RouteFeeds {
+			if current.RouteFeeds[i].ID == feed.ID {
+				idx = i
+				break
+			}
+		}
+		if idx < 0 || !current.RouteFeeds[idx].Enabled {
+			a.mutation.Unlock()
+			continue
+		}
+		feed = current.RouteFeeds[idx]
+		base := current.Clone()
+		ownedIDs := make(map[string]string)
+		for _, route := range base.Routes {
+			if route.SourceID == feed.ID {
+				ownedIDs[route.Prefix] = route.ID
+			}
+		}
+		base.Routes = filterFeedRoutes(base.Routes, feed.ID)
+		ctxFetch, cancel := context.WithTimeout(ctx, 25*time.Second)
+		preview, err := routeimport.Fetch(ctxFetch, a.RouteImportClientOrDefault(), feed.URL, base)
+		cancel()
+		candidate := base
+		if err == nil {
+			if len(preview.Prefixes) == 0 {
+				err = errors.New("URL contains no usable route destinations")
+			}
+			prefixes := make([]string, 0, len(preview.Prefixes))
+			for _, prefix := range preview.Prefixes {
+				if strings.Contains(prefix, ":") && !feed.SyncIPv6 || !strings.Contains(prefix, ":") && !feed.SyncIPv4 {
+					continue
+				}
+				prefixes = append(prefixes, prefix)
+			}
+			if err == nil {
+				candidate, _, err = routeimport.Append(base, routeimport.Request{Prefixes: prefixes, SourceID: feed.ID, NextHop4: feed.NextHop4, NextHop6: feed.NextHop6, MED: feed.MED, LocalPreference: feed.LocalPreference, Communities: feed.Communities, Binding: feed.Binding, Enabled: feed.RouteEnabled, Description: feed.Description})
+				if err == nil {
+					for i := range candidate.Routes {
+						if id := ownedIDs[candidate.Routes[i].Prefix]; id != "" {
+							candidate.Routes[i].ID = id
+						}
+					}
+				}
+			}
+		}
+		updated := current.RouteFeeds[idx]
+		updated.LastAttempt = now
+		updated.LastError = ""
+		if err != nil {
+			updated.LastError = err.Error()
+			candidate = current
+		} else {
+			updated.LastUpdated = now
+		}
+		candidate.RouteFeeds[idx] = updated
+		if applyErr := a.Service.Apply(ctx, candidate); applyErr != nil {
+			// Preserve the existing installed route set and expose the failed attempt.
+			current.RouteFeeds[idx].LastAttempt = now
+			current.RouteFeeds[idx].LastError = "automatic route update could not be applied"
+			_ = a.Service.Apply(ctx, current)
+		}
+		a.mutation.Unlock()
+	}
+}
+
+func filterFeedRoutes(routes []config.Route, sourceID string) []config.Route {
+	out := make([]config.Route, 0, len(routes))
+	for _, route := range routes {
+		if route.SourceID != sourceID {
+			out = append(out, route)
+		}
+	}
+	return out
+}
+
+func (a *API) RouteImportClientOrDefault() *http.Client {
+	if a.RouteImportClient != nil {
+		return a.RouteImportClient
+	}
+	return routeimport.NewClient()
+}
+
 func write(w http.ResponseWriter, status int, value any) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
@@ -72,6 +180,50 @@ func (a *API) Handler() http.Handler {
 }
 func (a *API) serve(w http.ResponseWriter, r *http.Request) {
 	path := strings.TrimPrefix(r.URL.Path, "/api/v1/")
+	if path == "resources/bulk-delete" && r.Method == "POST" {
+		var body struct {
+			Resource string   `json:"resource"`
+			IDs      []string `json:"ids"`
+		}
+		if e := decode(w, r, &body); e != nil {
+			fail(w, 400, e)
+			return
+		}
+		if len(body.IDs) == 0 || len(body.IDs) > 512 {
+			fail(w, 400, errors.New("select between 1 and 512 rows to delete"))
+			return
+		}
+		a.mutation.Lock()
+		defer a.mutation.Unlock()
+		d := a.Service.Configuration()
+		var deleted int
+		var e error
+		switch body.Resource {
+		case "dns/interception":
+			d.Interception, deleted, e = removeIDs(d.Interception, body.IDs, func(v config.Interception) string { return v.ID })
+		case "bgp/peers":
+			d.Peers, deleted, e = removeIDs(d.Peers, body.IDs, func(v config.Peer) string { return v.ID })
+		case "bgp/routes":
+			d.Routes, deleted, e = removeIDs(d.Routes, body.IDs, func(v config.Route) string { return v.ID })
+		case "dns/hosts":
+			d.Hosts, deleted, e = removeIDs(d.Hosts, body.IDs, func(v config.Host) string { return v.ID })
+		case "overrides":
+			d.Overrides, deleted, e = removeIDs(d.Overrides, body.IDs, func(v config.Override) string { return v.ID })
+		default:
+			fail(w, 400, errors.New("unsupported bulk delete resource"))
+			return
+		}
+		if e != nil {
+			fail(w, 404, e)
+			return
+		}
+		if e = a.Service.Apply(r.Context(), d); e != nil {
+			fail(w, 409, e)
+			return
+		}
+		write(w, 200, map[string]int{"deleted": deleted})
+		return
+	}
 	if path == "bgp/routes/import-url" && r.Method == "POST" {
 		var body struct {
 			URL string `json:"url"`
@@ -216,6 +368,8 @@ func (a *API) serve(w http.ResponseWriter, r *http.Request) {
 			write(w, 200, d.Peers)
 		case "bgp/routes":
 			write(w, 200, d.Routes)
+		case "bgp/routes/feeds":
+			write(w, 200, d.RouteFeeds)
 		case "overrides":
 			write(w, 200, d.Overrides)
 		case "dns/hosts":
@@ -319,7 +473,7 @@ func (a *API) serve(w http.ResponseWriter, r *http.Request) {
 		key, id := path, ""
 		if len(parts) > 1 {
 			candidate := strings.Join(parts[:len(parts)-1], "/")
-			if candidate == "dns/interception" || candidate == "bgp/peers" || candidate == "bgp/routes" || candidate == "overrides" || candidate == "dns/hosts" || candidate == "management/backends" {
+			if candidate == "dns/interception" || candidate == "bgp/peers" || candidate == "bgp/routes" || candidate == "bgp/routes/feeds" || candidate == "overrides" || candidate == "dns/hosts" || candidate == "management/backends" {
 				key, id = candidate, parts[len(parts)-1]
 			}
 		}
@@ -346,6 +500,15 @@ func (a *API) serve(w http.ResponseWriter, r *http.Request) {
 					v.Binding = "none"
 				}
 			})
+		case "bgp/routes/feeds":
+			d.RouteFeeds, e = mutate(w, r, d.RouteFeeds, id, func(v *config.RouteFeed) { v.ID = id })
+			if r.Method == "DELETE" && e == nil {
+				for i := range d.Routes {
+					if d.Routes[i].SourceID == id {
+						d.Routes[i].SourceID = ""
+					}
+				}
+			}
 		case "dns/hosts":
 			d.Hosts, e = mutate(w, r, d.Hosts, id, func(v *config.Host) {
 				v.ID = id
@@ -384,6 +547,28 @@ func (a *API) serve(w http.ResponseWriter, r *http.Request) {
 		code = 201
 	}
 	write(w, code, a.Service.Configuration().Redacted())
+}
+
+func removeIDs[T any](items []T, ids []string, idOf func(T) string) ([]T, int, error) {
+	selected := make(map[string]bool, len(ids))
+	for _, id := range ids {
+		if id == "" || selected[id] {
+			return items, 0, errors.New("invalid or duplicate row ID")
+		}
+		selected[id] = true
+	}
+	keep := make([]T, 0, len(items))
+	for _, item := range items {
+		if selected[idOf(item)] {
+			delete(selected, idOf(item))
+			continue
+		}
+		keep = append(keep, item)
+	}
+	if len(selected) != 0 {
+		return items, 0, errors.New("one or more selected rows no longer exist")
+	}
+	return keep, len(ids), nil
 }
 func mergeSecrets(d, old *config.Document) error {
 	if d.Settings.Security.PasswordHash != "" {

@@ -9,7 +9,7 @@
 <key>CFBundleExecutable</key><string>RoutePilot</string>
 <key>CFBundlePackageType</key><string>APPL</string>
 <key>CFBundleShortVersionString</key><string>0.4.6</string>
-<key>CFBundleVersion</key><string>15</string>
+<key>CFBundleVersion</key><string>31</string>
 <key>CFBundleIconFile</key><string>AppIcon</string>
 <key>LSMinimumSystemVersion</key><string>13.0</string>
 <key>LSUIElement</key><true/>

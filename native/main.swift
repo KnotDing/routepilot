@@ -1,21 +1,67 @@
 import AppKit
 import WebKit
 import ServiceManagement
+import Darwin
+import Security
 
 struct AppFailure: LocalizedError {
     let message: String
+    let statusCode: Int?
+    init(message: String, statusCode: Int? = nil) {
+        self.message = message
+        self.statusCode = statusCode
+    }
     var errorDescription: String? { message }
+}
+
+struct LoginCredential: Codable {
+    let username: String
+    let password: String
+}
+
+enum CredentialVault {
+    private static let service = Bundle.main.bundleIdentifier ?? "com.routepilot.app"
+    private static let account = "controller-login"
+    private static var query: [String: Any] {
+        [kSecClass as String: kSecClassGenericPassword, kSecAttrService as String: service, kSecAttrAccount as String: account]
+    }
+    static func load() -> LoginCredential? {
+        var request = query
+        request[kSecReturnData as String] = true
+        request[kSecMatchLimit as String] = kSecMatchLimitOne
+        var item: CFTypeRef?
+        guard SecItemCopyMatching(request as CFDictionary, &item) == errSecSuccess,
+              let data = item as? Data else { return nil }
+        return try? JSONDecoder().decode(LoginCredential.self, from: data)
+    }
+    static func save(username: String, password: String) throws {
+        let data = try JSONEncoder().encode(LoginCredential(username: username, password: password))
+        let attributes: [String: Any] = [kSecValueData as String: data, kSecAttrAccessible as String: kSecAttrAccessibleWhenUnlockedThisDeviceOnly]
+        let result = SecItemUpdate(query as CFDictionary, attributes as CFDictionary)
+        if result == errSecItemNotFound {
+            var request = query
+            attributes.forEach { request[$0.key] = $0.value }
+            let addResult = SecItemAdd(request as CFDictionary, nil)
+            guard addResult == errSecSuccess else { throw AppFailure(message: "钥匙串无法保存登录凭证") }
+        } else if result != errSecSuccess {
+            throw AppFailure(message: "钥匙串无法保存登录凭证")
+        }
+    }
+    static func delete() {
+        SecItemDelete(query as CFDictionary)
+    }
 }
 
 final class ControllerClient {
     var base: URL
     var csrf = ""
     let session: URLSession
-    init(_ base: URL) {
+    init(_ base: URL, cookieStorage: HTTPCookieStorage? = nil) {
         self.base = base
         let configuration = URLSessionConfiguration.ephemeral
         configuration.timeoutIntervalForRequest = 4
         configuration.httpShouldSetCookies = true
+        if let cookieStorage { configuration.httpCookieStorage = cookieStorage }
         configuration.urlCache = nil
         session = URLSession(configuration: configuration)
     }
@@ -29,7 +75,7 @@ final class ControllerClient {
         guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
             let code = (response as? HTTPURLResponse)?.statusCode ?? 0
             let value = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any]
-            throw AppFailure(message: value?["error"] as? String ?? L("请求失败（HTTP {code}）", ["code": code]))
+            throw AppFailure(message: value?["error"] as? String ?? L("请求失败（HTTP {code}）", ["code": code]), statusCode: code)
         }
         return try JSONSerialization.jsonObject(with: data)
     }
@@ -50,6 +96,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
     var child: Process?
     var logHandle: FileHandle?
     var timer: Timer?
+    var releaseTimer: Timer?
     var refreshing = false
     var quitting = false
     var authenticated = false
@@ -62,16 +109,37 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
     var status: [String: Any] = [:]
     var health: [[String: Any]] = []
     var bgp: [String: Any] = [:]
+    var availableRelease: GiteaRelease?
+    var checkingRelease = false
     var lastError = "正在连接…"
     var smokeStarted = false
     var smokeDownloadURL: URL?
     var smoke: Bool { arguments.contains("--smoke-test") }
+    func installEditMenu() {
+        let mainMenu = NSMenu()
+        let editItem = NSMenuItem(title: L("编辑"), action: nil, keyEquivalent: "")
+        let editMenu = NSMenu(title: L("编辑"))
+        for (title, selector, key) in [
+            ("剪切", #selector(NSText.cut(_:)), "x"),
+            ("复制", #selector(NSText.copy(_:)), "c"),
+            ("粘贴", #selector(NSText.paste(_:)), "v"),
+            ("全选", #selector(NSText.selectAll(_:)), "a")
+        ] {
+            let item = NSMenuItem(title: L(title), action: selector, keyEquivalent: key)
+            item.keyEquivalentModifierMask = .command
+            editMenu.addItem(item)
+        }
+        editItem.submenu = editMenu
+        mainMenu.addItem(editItem)
+        NSApp.mainMenu = mainMenu
+    }
     func argument(_ key: String) -> String? {
         guard let i = arguments.firstIndex(of: key), i + 1 < arguments.count else { return nil }
         return arguments[i + 1]
     }
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.accessory)
+        installEditMenu()
         if let icon = Bundle.main.url(forResource: "AppIcon", withExtension: "icns") { NSApp.applicationIconImage = NSImage(contentsOf: icon) }
         let stored = argument("--backend-url") ?? UserDefaults.standard.string(forKey: "backendURL") ?? "http://127.0.0.1:1055"
         guard let url = validURL(stored) else { alert("管理地址无效", "仅支持本机 loopback HTTP/HTTPS 地址。"); NSApp.terminate(nil); return }
@@ -89,6 +157,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
             Task { @MainActor in await self?.refresh() }
         }
         Task { await refresh() }
+        Task { await checkReleaseUpdate(silent: true) }
+        releaseTimer = Timer.scheduledTimer(withTimeInterval: 12 * 60 * 60, repeats: true) { [weak self] _ in
+            Task { @MainActor in await self?.checkReleaseUpdate(silent: true) }
+        }
         if smoke {
             DispatchQueue.main.asyncAfter(deadline: .now() + 25) { [weak self] in
                 guard let self = self, !self.smokeStarted else { return }
@@ -98,31 +170,64 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
     }
     func validURL(_ text: String) -> URL? {
         guard let url = URL(string: text), ["http", "https"].contains(url.scheme ?? ""),
-              ["127.0.0.1", "localhost", "::1", "[::1]"].contains(url.host ?? ""),
+              isLocalAddress(url.host ?? ""),
               url.user == nil, url.password == nil, url.query == nil, url.fragment == nil,
               url.path.isEmpty || url.path == "/", url.port != nil, (1...65535).contains(url.port ?? 0) else { return nil }
         return url
+    }
+    func isLocalAddress(_ rawHost: String) -> Bool {
+        let host = rawHost.trimmingCharacters(in: CharacterSet(charactersIn: "[]"))
+        if host == "localhost" || host == "::1" { return true }
+        var ipv4 = in_addr()
+        if inet_pton(AF_INET, host, &ipv4) == 1 {
+            let bytes = withUnsafeBytes(of: ipv4) { Array($0) }
+            if bytes.first == 127 { return true }
+        }
+        var interfaces: UnsafeMutablePointer<ifaddrs>?
+        guard getifaddrs(&interfaces) == 0, let first = interfaces else { return false }
+        defer { freeifaddrs(first) }
+        var current: UnsafeMutablePointer<ifaddrs>? = first
+        while let item = current {
+            let entry = item.pointee
+            if let address = entry.ifa_addr {
+                if Int32(address.pointee.sa_family) == AF_INET {
+                    let candidate = UnsafeRawPointer(address).assumingMemoryBound(to: sockaddr_in.self).pointee.sin_addr
+                    if inet_pton(AF_INET, host, &ipv4) == 1, candidate.s_addr == ipv4.s_addr { return true }
+                } else if Int32(address.pointee.sa_family) == AF_INET6 {
+                    var candidate = UnsafeRawPointer(address).assumingMemoryBound(to: sockaddr_in6.self).pointee.sin6_addr
+                    var ipv6 = in6_addr()
+                    if inet_pton(AF_INET6, host, &ipv6) == 1,
+                       memcmp(&candidate, &ipv6, MemoryLayout<in6_addr>.size) == 0 { return true }
+                }
+            }
+            current = entry.ifa_next
+        }
+        return false
     }
     func refresh() async {
         guard !refreshing, !quitting, !stopping else { return }
         refreshing = true
         defer { refreshing = false }
         do {
-            authenticated = try await client.establish()
-            if authenticated {
-                status = try await client.call("status") as? [String: Any] ?? [:]
-                health = try await client.call("health") as? [[String: Any]] ?? []
-                bgp = try await client.call("bgp/status") as? [String: Any] ?? [:]
-                lastError = ""
-                if smoke && !smokeStarted {
-                    smokeStarted = true
-                    Task { await runSmoke() }
-                }
-            } else {
-                status = [:]; lastError = "需要登录管理服务"
-            }
+            try await refreshFromBackend()
         } catch {
-            authenticated = false; status = [:]; lastError = error.localizedDescription
+            let connectionError = error.localizedDescription
+            let recovery = URL(string: "http://127.0.0.1:1055")!
+            if !smoke, client.base.absoluteString != recovery.absoluteString {
+                let previous = client!
+                client = ControllerClient(recovery, cookieStorage: previous.session.configuration.httpCookieStorage)
+                do {
+                    try await refreshFromBackend()
+                    UserDefaults.standard.set(recovery.absoluteString, forKey: "backendURL")
+                    if let webView { webView.load(URLRequest(url: recovery)) }
+                    updateToolTip()
+                    rebuildMenu()
+                    return
+                } catch {
+                    client = previous
+                }
+            }
+            authenticated = false; status = [:]; lastError = connectionError
             if child == nil && !starting && bootFailures < 5 && Date() >= nextBoot && client.base.scheme == "http" && (smoke || !FileManager.default.fileExists(atPath: "/Library/LaunchDaemons/com.routepilot.surge-controller.plist")) {
                 startBackend()
             }
@@ -130,11 +235,48 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
         updateToolTip()
         rebuildMenu()
     }
+    func refreshFromBackend() async throws {
+        authenticated = try await client.establish()
+        if !authenticated, let credential = CredentialVault.load() {
+            do {
+                _ = try await client.call("login", method: "POST", body: ["username": credential.username, "password": credential.password])
+                authenticated = try await client.establish()
+            } catch let failure as AppFailure where failure.statusCode == 401 {
+                CredentialVault.delete()
+                throw failure
+            }
+        }
+        if authenticated {
+            status = try await client.call("status") as? [String: Any] ?? [:]
+            health = try await client.call("health") as? [[String: Any]] ?? []
+            bgp = try await client.call("bgp/status") as? [String: Any] ?? [:]
+            lastError = ""
+            if smoke && !smokeStarted {
+                smokeStarted = true
+                Task { await runSmoke() }
+            }
+        } else {
+            status = [:]; lastError = "需要登录管理服务"
+        }
+    }
     func updateToolTip() {
         statusItem.button?.toolTip = "RoutePilot · " + (lastError.isEmpty ? stateText(status["state"] ?? "—") + " · " + stateText(status["mode"] ?? "auto") : L(lastError))
     }
     func userContentController(_ userContentController: WKUserContentController, didReceive message: WKScriptMessage) {
         let origin = message.frameInfo.securityOrigin
+        if message.name == "routepilotCredentials" {
+            let host = client.base.host?.trimmingCharacters(in: CharacterSet(charactersIn: "[]"))
+            guard message.frameInfo.isMainFrame, origin.protocol == client.base.scheme,
+                  origin.host == host, origin.port == client.base.port,
+                  let values = message.body as? [String: String],
+                  let username = values["username"], !username.isEmpty,
+                  let password = values["password"], (12...72).contains(password.utf8.count) else { return }
+            do {
+                try CredentialVault.save(username: username, password: password)
+                Task { await refresh() }
+            } catch { alert("登录凭证未保存", error.localizedDescription) }
+            return
+        }
         guard message.name == "routepilotLocale", let locale = message.body as? String,
               NativeText.acceptsLocale(locale, mainFrame: message.frameInfo.isMainFrame, scheme: origin.protocol, host: origin.host, port: origin.port, backend: client.base) else { return }
         UserDefaults.standard.set(locale, forKey: "uiLanguage")
@@ -227,13 +369,67 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
         let login = item("登录时启动", action: #selector(toggleLogin))
         login.state = SMAppService.mainApp.status == .enabled ? .on : .off
         menu.addItem(login)
-        menu.addItem(item(FileManager.default.fileExists(atPath: "/Library/LaunchDaemons/com.routepilot.surge-controller.plist") ? "更新网络后台服务…" : "安装网络后台服务…", action: #selector(installService), enabled: authenticated && !stopping && !smoke))
+        let serviceInstalled = FileManager.default.fileExists(atPath: "/Library/LaunchDaemons/com.routepilot.surge-controller.plist")
+        menu.addItem(item(serviceInstalled ? "更新网络后台服务…" : "安装网络后台服务…", action: #selector(installService), enabled: (serviceInstalled || authenticated) && !stopping && !smoke))
         menu.addItem(item("管理服务地址…", action: #selector(changeAddress), enabled: !stopping))
         menu.addItem(item("打开服务日志", action: #selector(openLogs)))
         menu.addItem(item("重新连接", action: #selector(reconnect)))
+        let updateTitle = checkingRelease ? L("正在检查软件更新…") : (availableRelease.map { L("在线升级至 {tag}", ["tag": $0.tagName]) } ?? L("检查软件更新…"))
+        menu.addItem(item(updateTitle, action: #selector(performReleaseUpdate), enabled: !checkingRelease && !stopping))
         menu.addItem(.separator())
         menu.addItem(item(child == nil ? "退出状态栏 APP（服务继续运行）" : "退出 APP 并停止后台服务", action: #selector(quit)))
         statusItem.menu = menu
+    }
+    func checkReleaseUpdate(silent: Bool) async {
+        if checkingRelease { return }
+        let lastCheck = UserDefaults.standard.object(forKey: "releaseUpdateLastCheck") as? Date ?? .distantPast
+        if silent && Date().timeIntervalSince(lastCheck) < 12 * 60 * 60 { return }
+        checkingRelease = true
+        rebuildMenu()
+        defer { checkingRelease = false; rebuildMenu() }
+        do {
+            let latest = try await ReleaseUpdater.latest()
+            UserDefaults.standard.set(Date(), forKey: "releaseUpdateLastCheck")
+            availableRelease = ReleaseUpdater.newer(latest) ? latest : nil
+            if !silent && availableRelease == nil { alert("RoutePilot 已是最新版本", "当前版本：\(Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "未知")") }
+        } catch {
+            if !silent { alert("检查更新失败", error.localizedDescription) }
+        }
+    }
+    @objc func performReleaseUpdate() {
+        Task {
+            if availableRelease == nil { await checkReleaseUpdate(silent: false) }
+            guard let release = availableRelease else { return }
+            let dialog = NSAlert()
+            dialog.messageText = L("在线升级 RoutePilot")
+            dialog.informativeText = L("将下载并校验 Release {tag}，替换此 App；若已安装网络后台服务，也会在管理员授权后同步升级。数据库、密钥和配置保留。", ["tag": release.tagName])
+            dialog.addButton(withTitle: L("下载并升级")); dialog.addButton(withTitle: L("取消"))
+            NSApp.activate(ignoringOtherApps: true)
+            guard dialog.runModal() == .alertFirstButtonReturn else { return }
+            stopping = true
+            do {
+                let stagedApp = try await ReleaseUpdater.verifiedApp(from: release)
+                defer { try? FileManager.default.removeItem(at: stagedApp.deletingLastPathComponent()) }
+                if !(await stopChild()) { throw AppFailure(message: "后台进程尚未停止，升级已取消") }
+                let helper = stagedApp.appendingPathComponent("Contents/Resources/Service/scripts/upgrade_app_macos.sh")
+                guard FileManager.default.isReadableFile(atPath: helper.path) else { throw AppFailure(message: "升级包缺少 App 更新程序") }
+                let command = "/bin/sh " + shellQuote(helper.path) + " " + shellQuote(stagedApp.path) + " " + shellQuote(Bundle.main.bundleURL.path)
+                let escaped = command.replacingOccurrences(of: "\\", with: "\\\\").replacingOccurrences(of: "\"", with: "\\\"")
+                var failure: NSDictionary?
+                guard NSAppleScript(source: "do shell script \"\(escaped)\" with administrator privileges")?.executeAndReturnError(&failure) != nil else {
+                    throw AppFailure(message: failure?[NSAppleScript.errorMessage] as? String ?? "在线升级失败，现有安装已保留")
+                }
+                let launch = Process()
+                launch.executableURL = URL(fileURLWithPath: "/usr/bin/open")
+                launch.arguments = ["-n", Bundle.main.bundleURL.path]
+                try launch.run()
+                NSApp.terminate(nil)
+            } catch {
+                stopping = false
+                alert("RoutePilot 未升级", error.localizedDescription)
+                reconnect()
+            }
+        }
     }
     func menuWillOpen(_ menu: NSMenu) { Task { await refresh() } }
     @objc func changeMode(_ sender: NSMenuItem) {
@@ -262,16 +458,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
         Task {
             do {
                 _ = try await client.establish()
-                let dialog = NSAlert(); dialog.messageText = L("登录 Controller"); dialog.informativeText = L("密码仅用于本次本机登录，不保存到磁盘。")
+                let dialog = NSAlert(); dialog.messageText = L("登录 Controller"); dialog.informativeText = L("登录成功后，凭证将安全保存在 macOS 钥匙串中。")
                 dialog.addButton(withTitle: L("登录")); dialog.addButton(withTitle: L("取消"))
                 let fields = NSView(frame: NSRect(x: 0, y: 0, width: 300, height: 66))
-                let username = NSTextField(frame: NSRect(x: 0, y: 38, width: 300, height: 24)); username.stringValue = "admin"
-                let password = NSSecureTextField(frame: NSRect(x: 0, y: 4, width: 300, height: 24)); password.placeholderString = L("密码")
+                let saved = CredentialVault.load()
+                let username = NSTextField(frame: NSRect(x: 0, y: 38, width: 300, height: 24)); username.stringValue = saved?.username ?? "admin"
+                let password = NSSecureTextField(frame: NSRect(x: 0, y: 4, width: 300, height: 24)); password.placeholderString = L("密码"); password.stringValue = saved?.password ?? ""
                 fields.addSubview(username); fields.addSubview(password); dialog.accessoryView = fields
                 NSApp.activate(ignoringOtherApps: true)
                 guard dialog.runModal() == .alertFirstButtonReturn else { return }
                 defer { password.stringValue = "" }
                 _ = try await client.call("login", method: "POST", body: ["username": username.stringValue, "password": password.stringValue])
+                do { try CredentialVault.save(username: username.stringValue, password: password.stringValue) }
+                catch { alert("登录成功，但凭证未保存", error.localizedDescription) }
                 await refresh()
             } catch { alert("登录失败", error.localizedDescription) }
         }
@@ -281,6 +480,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
             let configuration = WKWebViewConfiguration()
             configuration.websiteDataStore = .nonPersistent()
             configuration.userContentController.add(self, name: "routepilotLocale")
+            configuration.userContentController.add(self, name: "routepilotCredentials")
             configureLanguageSeed(configuration.userContentController)
             let view = WKWebView(frame: .zero, configuration: configuration)
             view.navigationDelegate = self
@@ -441,6 +641,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
     @objc func quit() { NSApp.terminate(nil) }
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
         timer?.invalidate()
+        releaseTimer?.invalidate()
         guard let process = child, process.isRunning else { return .terminateNow }
         quitting = true; process.terminate()
         // Allow Go to drain DNS replies, withdraw BGP and release its PF lease.

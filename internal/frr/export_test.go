@@ -14,18 +14,18 @@ func fixture() (config.Document, Request) {
 	d.Interception = []config.Interception{{ID: "dns", Prefix: "8.8.8.8/32", Enabled: true}, {ID: "disabled", Prefix: "9.9.9.9/32", Enabled: false}}
 	return d, Request{PeerID: "ucg", GatewayASN: 65001, GatewayRouterID: "192.168.20.1", ControllerAddress: "192.168.20.2"}
 }
-func TestGatewayASNDirectionExactImportsAndNoRouteExports(t *testing.T) {
+func TestGatewayASNDirectionDynamicImportsAndNoRouteExports(t *testing.T) {
 	d, r := fixture()
 	e, err := Generate(d, r)
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, text := range []string{"router bgp 65001", "neighbor 192.168.20.2 remote-as 64512", "neighbor 192.168.20.2 timers 20 60", "permit 198.18.0.0/15", "permit 8.8.8.8/32", "route-map RP-OUT deny 10", "maximum-prefix 128"} {
+	for _, text := range []string{"router bgp 65001", "neighbor 192.168.20.2 remote-as 64512", "neighbor 192.168.20.2 timers 20 60", "address-family ipv4 unicast", "address-family ipv6 unicast", "route-map RP-IN-V4 permit 10", "route-map RP-IN-V6 permit 10", "route-map RP-OUT deny 10", "maximum-prefix 128"} {
 		if !strings.Contains(e.Content, text) {
 			t.Fatalf("missing %q", text)
 		}
 	}
-	for _, text := range []string{"permit 9.9.9.9/32", "redistribute", "default-originate", "set ip next-hop", "permit 0.0.0.0/0"} {
+	for _, text := range []string{"prefix-list RP-PREFIXES", "redistribute", "default-originate", "set ip next-hop", "permit 0.0.0.0/0"} {
 		if strings.Contains(e.Content, text) {
 			t.Fatalf("unsafe output %q", text)
 		}
