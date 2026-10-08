@@ -111,7 +111,7 @@ SHA256SUMS 的 macOS 发布压缩包、原生 APP、APP ZIP 和 DMG 安装镜像
 
 ### Gitea Release 与在线升级
 
-`.gitea/workflows/release.yaml` 在推送 `vMAJOR.MINOR.PATCH` 标签时构建并发布 macOS Apple Silicon 版本，包括 DMG、ZIP、后台服务归档和 SHA256SUMS。Gitea 仓库需启用 Actions，并注册一个 macOS Apple Silicon Runner，标签为 `macos-arm64`；工作流使用仓库内置 `GITEA_TOKEN` 创建 Release 和上传附件。示例：
+`.gitea/workflows/release.yaml` 在推送 `vMAJOR.MINOR.PATCH` 标签时构建并发布 macOS Apple Silicon 版本，包括 DMG、ZIP、后台服务归档和 SHA256SUMS。Gitea 仓库需启用 Actions，并注册一个 macOS Apple Silicon Runner，标签为 `macos-arm64`；Runner 需预装 Go 1.26+、Node.js 22.12+、npm、Python 3、jq 和 Apple Command Line Tools，工作流会先检查工具版本。工作流使用仓库内置 `GITEA_TOKEN` 创建 Release 和上传附件。示例：
 
 ```sh
 git tag v0.4.7

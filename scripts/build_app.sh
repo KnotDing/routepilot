@@ -3,6 +3,7 @@ set -eu
 project_dir=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 cd "$project_dir"
 [ "$(uname -s)" = Darwin ] || { echo 'Build the APP on macOS' >&2; exit 1; }
+mkdir -p "$project_dir/artifacts"
 build_dir=$(mktemp -d "$project_dir/artifacts/app-build.XXXXXX")
 trap 'rm -rf "$build_dir"' EXIT
 app_dir="$build_dir/RoutePilot.app"
