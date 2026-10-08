@@ -1,0 +1,1 @@
+"NSLocalNetworkUsageDescription" = "RoutePilot 需要访问本地网络，以连接 DNS 解析器、BGP 邻居和远程管理后台。";

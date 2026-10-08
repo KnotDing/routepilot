@@ -112,6 +112,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
     var availableRelease: GiteaRelease?
     var checkingRelease = false
     var lastError = "正在连接…"
+    var versionWarning: String?
+    var lastVersionWarningSignature: String?
     var smokeStarted = false
     var smokeDownloadURL: URL?
     var smoke: Bool { arguments.contains("--smoke-test") }
@@ -227,7 +229,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
                     client = previous
                 }
             }
-            authenticated = false; status = [:]; lastError = connectionError
+            authenticated = false; status = [:]; lastError = connectionError; versionWarning = nil
             if child == nil && !starting && bootFailures < 5 && Date() >= nextBoot && client.base.scheme == "http" && (smoke || !FileManager.default.fileExists(atPath: "/Library/LaunchDaemons/com.routepilot.surge-controller.plist")) {
                 startBackend()
             }
@@ -251,16 +253,48 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
             health = try await client.call("health") as? [[String: Any]] ?? []
             bgp = try await client.call("bgp/status") as? [String: Any] ?? [:]
             lastError = ""
+            checkBackendVersion()
             if smoke && !smokeStarted {
                 smokeStarted = true
                 Task { await runSmoke() }
             }
         } else {
-            status = [:]; lastError = "需要登录管理服务"
+            status = [:]; lastError = "需要登录管理服务"; versionWarning = nil
         }
+    }
+    func checkBackendVersion() {
+        let software = status["software"] as? [String: Any] ?? [:]
+        func identity(_ value: Any?) -> String {
+            let raw = value as? String ?? (value as? NSNumber)?.stringValue ?? ""
+            return raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        }
+        func version(_ value: String) -> String {
+            value.hasPrefix("v") ? String(value.dropFirst()) : value
+        }
+        let appVersion = identity(Bundle.main.infoDictionary?["CFBundleShortVersionString"])
+        let appBuild = identity(Bundle.main.infoDictionary?["CFBundleVersion"])
+        let backendVersion = identity(software["version"])
+        let backendBuild = identity(software["build"])
+        let complete = !backendVersion.isEmpty && !backendBuild.isEmpty
+        if complete && version(appVersion) == version(backendVersion) && appBuild == backendBuild {
+            versionWarning = nil
+            lastVersionWarningSignature = nil
+            return
+        }
+        let title = complete ? "App 与后台版本不一致" : "后台版本无法确认"
+        versionWarning = title
+        let signature = [client.base.absoluteString, appVersion, appBuild, backendVersion, backendBuild].joined(separator: "|")
+        guard !smoke, lastVersionWarningSignature != signature else { return }
+        lastVersionWarningSignature = signature
+        let appInfo = L("App：{version}（构建 {build}）", ["version": appVersion, "build": appBuild])
+        let backendInfo = complete
+            ? L("后台：{version}（构建 {build}）", ["version": backendVersion, "build": backendBuild])
+            : L("后台未提供完整的版本和构建编号，请更新后台服务。")
+        alert(title, appInfo + "\n" + backendInfo + "\n\n" + L("请将 App 和后台更新到同一发布版本。本机后台可在状态栏菜单选择“更新网络后台服务”；更新 App 不会自动替换旧后台。"))
     }
     func updateToolTip() {
         statusItem.button?.toolTip = "RoutePilot · " + (lastError.isEmpty ? stateText(status["state"] ?? "—") + " · " + stateText(status["mode"] ?? "auto") : L(lastError))
+        if let versionWarning { statusItem.button?.toolTip? += " · " + L(versionWarning) }
     }
     func userContentController(_ userContentController: WKUserContentController, didReceive message: WKScriptMessage) {
         let origin = message.frameInfo.securityOrigin
@@ -344,6 +378,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
         let menu = NSMenu(); menu.autoenablesItems = false; menu.delegate = self
         menu.addItem(item("RoutePilot", enabled: false))
         menu.addItem(item(L("Controller：{state}", ["state": lastError.isEmpty ? stateText(status["state"] ?? "—") : L(lastError)]), enabled: false))
+        if let versionWarning {
+            menu.addItem(item(versionWarning, enabled: false))
+        }
         let surge = health.first { $0["name"] as? String == "Surge CLI" }?["state"] ?? "—"
         menu.addItem(item(L("Surge：{state} · Fake-IP：{enabled}", ["state": stateText(surge), "enabled": L((status["fake_ip_enabled"] as? Bool ?? false) ? "启用" : "禁用")]), enabled: false))
         let peers = bgp["peers"] as? [[String: Any]] ?? []

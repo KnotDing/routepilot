@@ -1,0 +1,1 @@
+"NSLocalNetworkUsageDescription" = "RoutePilot uses the local network to connect to DNS resolvers, BGP peers and remote management backends.";

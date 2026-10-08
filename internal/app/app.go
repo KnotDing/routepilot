@@ -130,6 +130,9 @@ type Runtime struct {
 	latencySum                                       atomic.Uint64
 }
 type App struct {
+	dnsCounters    dnsserver.Counters
+	statsCancel    context.CancelFunc
+	statsDone      chan struct{}
 	ruleTests      chan struct{}
 	lockFile       *os.File
 	eventRetention atomic.Int64
@@ -182,7 +185,13 @@ func Open(ctx context.Context, path string) (*App, error) {
 		store.Close()
 		return nil, e
 	}
+	var counters dnsserver.CounterSnapshot
+	if e = store.LoadStatistics(ctx, "dns", &counters); e != nil {
+		store.Close()
+		return nil, fmt.Errorf("load DNS statistics: %w", e)
+	}
 	a := &App{ruleTests: make(chan struct{}, 2), lockFile: lock, config: d, store: store, bus: events.New(), security: security.New(d.Settings.Security), ctx: ctx, dir: filepath.Dir(path), webChanged: make(chan struct{}, 1)}
+	a.dnsCounters.Restore(counters)
 	a.remote = remote.New(func() []config.Backend { return a.Configuration().Settings.RemoteBackends })
 	a.eventRetention.Store(int64(d.Settings.Logging.EventRetention))
 	a.setLogging(d.Settings.Logging.Level)
@@ -194,6 +203,10 @@ func Open(ctx context.Context, path string) (*App, error) {
 		return nil, e
 	}
 	a.runtime = rt
+	statsCtx, statsCancel := context.WithCancel(context.Background())
+	a.statsCancel = statsCancel
+	a.statsDone = make(chan struct{})
+	go a.persistStatistics(statsCtx, counters)
 	opened = true
 	a.event("INFO", "startup", "Controller management service started")
 	return a, nil
@@ -270,7 +283,8 @@ func (a *App) build(d config.Document) (rt *Runtime, err error) {
 	rt.policy.update(s.General.Mode, d.Overrides)
 	rt.hosts = localdns.New(d.Hosts)
 	maxFakeTTL := uint32(s.Health.GraceSeconds)
-	rt.dispatcher = &dnsserver.Dispatcher{Local: rt.hosts, RealIPDomains: rt.adapter, FakeTTLMax: &maxFakeTTL, Classifier: rt.policy, Surge: &observedSurge{SurgeAdapter: rt.adapter, rt: rt}, Gate: rt.machine, FakeIssuer: rt.machine, History: dnsserver.NewHistory(s.Logging.HistoryCapacity, s.Logging.QueryHistory && s.Logging.LogDomains)}
+	rt.dispatcher = &dnsserver.Dispatcher{SharedCounters: &a.dnsCounters, Local: rt.hosts, RealIPDomains: rt.adapter, FakeTTLMax: &maxFakeTTL, Classifier: rt.policy, Surge: &observedSurge{SurgeAdapter: rt.adapter, rt: rt}, Gate: rt.machine, FakeIssuer: rt.machine, History: dnsserver.NewHistory(s.Logging.HistoryCapacity, s.Logging.QueryHistory && s.Logging.LogDomains)}
+	rt.previousQueries.Store(a.dnsCounters.Queries.Load())
 	for _, p := range s.Surge.FakePrefixes {
 		rt.dispatcher.FakePrefixes = append(rt.dispatcher.FakePrefixes, netip.MustParsePrefix(p))
 	}
@@ -611,7 +625,7 @@ func (a *App) monitor(ctx context.Context, rt *Runtime) {
 			previousState = plan.State
 		}
 		if time.Since(rateAt) >= time.Minute {
-			current := rt.dispatcher.Counters.Queries.Load()
+			current := rt.dispatcher.Statistics().Queries.Load()
 			previous := rt.previousQueries.Swap(current)
 			rt.queryRate.Store(current - previous)
 			rateAt = time.Now()
@@ -872,7 +886,7 @@ func (a *App) View(ctx context.Context, key string) (any, error) {
 	switch key {
 	case "status":
 		p := rt.machine.Plan()
-		return map[string]any{"software": buildinfo.Current(), "name": a.config.Settings.General.Name, "mode": a.config.Settings.General.Mode, "state": p.State, "fake_ip_enabled": p.AllowFakeIP, "queries_per_minute": rt.queryRate.Load(), "counters": rt.dispatcher.Counters.Snapshot(), "warning": rt.Fault(), "uptime_seconds": int(time.Since(rt.started).Seconds())}, nil
+		return map[string]any{"software": buildinfo.Current(), "name": a.config.Settings.General.Name, "mode": a.config.Settings.General.Mode, "state": p.State, "fake_ip_enabled": p.AllowFakeIP, "queries_per_minute": rt.queryRate.Load(), "counters": rt.dispatcher.Statistics().Snapshot(), "warning": rt.Fault(), "uptime_seconds": int(time.Since(rt.started).Seconds())}, nil
 	case "health":
 		values := rt.health.Values()
 		sort.Slice(values, func(i, j int) bool { return values[i].Name < values[j].Name })
@@ -970,7 +984,7 @@ func (a *App) Metrics() string {
 	if rt == nil {
 		return ""
 	}
-	c := rt.dispatcher.Counters.Snapshot()
+	c := rt.dispatcher.Statistics().Snapshot()
 	cache := rt.engine.Cache.Stats()
 	bs := rt.routes.Status()
 	values := map[string]uint64{"dns_queries_total": c.Queries, "dns_direct_total": c.Direct, "dns_surge_total": c.Surge, "dns_reject_total": c.Reject, "dns_intercepted_total": c.Intercepted, "dns_direct_addressed_total": c.Addressed, "decision_cache_hits_total": cache.Hits, "decision_cache_misses_total": cache.Misses, "fake_ip_queries_total": rt.fakeQueries.Load(), "fake_ip_errors_total": rt.fakeErrors.Load(), "real_dns_queries_total": rt.realQueries.Load(), "real_dns_errors_total": rt.realErrors.Load(), "bgp_routes_announced": uint64(bs.Advertised), "surge_rule_match_errors_total": rt.engine.RuleErrors.Load()}
@@ -1119,19 +1133,24 @@ func (a *App) Close() error {
 	a.mu.Lock()
 	rt := a.runtime
 	a.mu.Unlock()
+	var runtimeErr error
 	if rt != nil {
-		if e := rt.close(context.Background(), false); e != nil {
-			a.event("CRITICAL", "shutdown_cleanup", "Controller stopped; managed route/PF cleanup requires inspection")
-			storeErr := a.store.Close()
-			if a.lockFile != nil {
-				_ = syscall.Flock(int(a.lockFile.Fd()), syscall.LOCK_UN)
-				_ = a.lockFile.Close()
-			}
-			return errors.Join(e, storeErr)
-		}
+		runtimeErr = rt.close(context.Background(), false)
 	}
-	a.event("INFO", "shutdown", "Controller stopped; managed routing resources released; external static routes unchanged")
-	e := a.store.Close()
+	// DNS workers have drained before the final snapshot is written. Join the
+	// periodic writer so an older snapshot cannot overwrite this final value.
+	var statsErr error
+	if a.statsCancel != nil {
+		a.statsCancel()
+		<-a.statsDone
+		statsErr = a.saveDNSStatistics(a.dnsCounters.Snapshot())
+	}
+	if runtimeErr != nil {
+		a.event("CRITICAL", "shutdown_cleanup", "Controller stopped; managed route/PF cleanup requires inspection")
+	} else {
+		a.event("INFO", "shutdown", "Controller stopped; managed routing resources released; external static routes unchanged")
+	}
+	e := errors.Join(runtimeErr, statsErr, a.store.Close())
 	if a.lockFile != nil {
 		_ = syscall.Flock(int(a.lockFile.Fd()), syscall.LOCK_UN)
 		_ = a.lockFile.Close()

@@ -107,7 +107,7 @@ func (s *Store) migrate() error {
 	if e = tx.QueryRow("SELECT max(version) FROM schema_migrations").Scan(&max); e != nil {
 		return e
 	}
-	if max.Valid && max.Int64 > 2 {
+	if max.Valid && max.Int64 > 3 {
 		return errors.New("database schema is newer than this application")
 	}
 	for _, table := range []string{"settings", "bgp_peers", "bgp_routes", "bgp_route_feeds", "dns_interception_routes", "overrides", "local_dns_hosts"} {
@@ -118,13 +118,40 @@ func (s *Store) migrate() error {
 	if _, e = tx.Exec("CREATE TABLE IF NOT EXISTS events(id INTEGER PRIMARY KEY AUTOINCREMENT, at TEXT NOT NULL, severity TEXT NOT NULL, kind TEXT NOT NULL, message TEXT NOT NULL)"); e != nil {
 		return e
 	}
+	if _, e = tx.Exec("CREATE TABLE IF NOT EXISTS statistics(id TEXT PRIMARY KEY, document BLOB NOT NULL)"); e != nil {
+		return e
+	}
 	if _, e = tx.Exec("INSERT OR IGNORE INTO schema_migrations VALUES(1,?)", time.Now().UTC().Format(time.RFC3339Nano)); e != nil {
 		return e
 	}
 	if _, e = tx.Exec("INSERT OR IGNORE INTO schema_migrations VALUES(2,?)", time.Now().UTC().Format(time.RFC3339Nano)); e != nil {
 		return e
 	}
+	if _, e = tx.Exec("INSERT OR IGNORE INTO schema_migrations VALUES(3,?)", time.Now().UTC().Format(time.RFC3339Nano)); e != nil {
+		return e
+	}
 	return tx.Commit()
+}
+
+func (s *Store) LoadStatistics(ctx context.Context, id string, value any) error {
+	var raw []byte
+	err := s.DB.QueryRowContext(ctx, "SELECT document FROM statistics WHERE id=?", id).Scan(&raw)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	return json.Unmarshal(raw, value)
+}
+
+func (s *Store) SaveStatistics(ctx context.Context, id string, value any) error {
+	raw, err := json.Marshal(value)
+	if err != nil {
+		return err
+	}
+	_, err = s.DB.ExecContext(ctx, "INSERT INTO statistics(id,document) VALUES(?,?) ON CONFLICT(id) DO UPDATE SET document=excluded.document", id, raw)
+	return err
 }
 func (s *Store) crypt(value string, encrypt bool) (string, error) {
 	block, e := aes.NewCipher(s.key)

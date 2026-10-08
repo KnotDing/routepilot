@@ -12,7 +12,7 @@ async function fetchJSON(url,method,body,selected){
  try{
   const r=await fetch(url,{method,signal:controller.signal,credentials:'same-origin',headers:{'Content-Type':'application/json',...(method==='GET'?{}:{'X-CSRF-Token':csrf})},...(body===undefined?{}:{body:JSON.stringify(body)})});
   if(selected&&revision!==generation)throw new DOMException('管理后端已切换','AbortError');
-  if(!r.ok){if(selected&&backend&&r.status===401&&r.headers?.get('X-RoutePilot-Backend')!=='remote')window.dispatchEvent(new Event('routepilot-local-session-expired'));const text=await r.text();let msg=text;try{msg=JSON.parse(text).error}catch{};const e=new Error(msg||`HTTP ${r.status}`);e.status=r.status;throw e}
+  if(!r.ok){if(selected&&backend&&r.status===401&&r.headers?.get('X-RoutePilot-Backend')!=='remote')window.dispatchEvent(new Event('routepilot-local-session-expired'));const text=(await r.text()).trim();let msg=text;try{msg=JSON.parse(text).error}catch{};const e=new Error(msg||`HTTP ${r.status}`);e.status=r.status;throw e}
   const value=await r.json();
   if(selected&&revision!==generation)throw new DOMException('管理后端已切换','AbortError');
   return value;

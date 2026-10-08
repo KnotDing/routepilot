@@ -33,6 +33,18 @@ func (c *Counters) Snapshot() CounterSnapshot {
 	return CounterSnapshot{c.Queries.Load(), c.Direct.Load(), c.Surge.Load(), c.Reject.Load(), c.Unknown.Load(), c.Intercepted.Load(), c.Addressed.Load(), c.Errors.Load()}
 }
 
+// Restore is only called before the counters are exposed to query workers.
+func (c *Counters) Restore(s CounterSnapshot) {
+	c.Queries.Store(s.Queries)
+	c.Direct.Store(s.Direct)
+	c.Surge.Store(s.Surge)
+	c.Reject.Store(s.Reject)
+	c.Unknown.Store(s.Unknown)
+	c.Intercepted.Store(s.Intercepted)
+	c.Addressed.Store(s.Addressed)
+	c.Errors.Store(s.Errors)
+}
+
 type QueryRecord struct {
 	Context          model.DNSQueryContext `json:"context"`
 	Result           model.DecisionResult  `json:"result"`
@@ -125,10 +137,20 @@ type Dispatcher struct {
 	FakePrefixes     []netip.Prefix
 	ForbiddenClients []netip.Addr
 	Counters         Counters
+	SharedCounters   *Counters
 	History          *History
 	FakeTTLMax       *uint32
 	RealIPDomains    interface{ MatchAlwaysRealIP(string) (string, bool) }
 	PolicyDNS        []PolicyDNSBinding
+}
+
+// Statistics allows successive runtimes to use the same cumulative counters.
+// Standalone dispatchers keep their own counters without extra initialization.
+func (d *Dispatcher) Statistics() *Counters {
+	if d.SharedCounters != nil {
+		return d.SharedCounters
+	}
+	return &d.Counters
 }
 
 func failure(q *dns.Msg, code int) *dns.Msg {
@@ -138,15 +160,16 @@ func failure(q *dns.Msg, code int) *dns.Msg {
 	return r
 }
 func (d *Dispatcher) Dispatch(ctx context.Context, q model.DNSQueryContext, m *dns.Msg) (reply *dns.Msg) {
+	counters := d.Statistics()
 	started := time.Now()
 	trace := new(resolution)
 	ctx = context.WithValue(ctx, resolutionKey{}, trace)
 	classificationDuration := time.Duration(0)
-	d.Counters.Queries.Add(1)
+	counters.Queries.Add(1)
 	if q.Intercepted {
-		d.Counters.Intercepted.Add(1)
+		counters.Intercepted.Add(1)
 	} else {
-		d.Counters.Addressed.Add(1)
+		counters.Addressed.Add(1)
 	}
 	result := model.DecisionResult{Decision: model.Unknown, Confidence: model.Uncertain, Source: "safety", CreatedAt: started, ClientIP: q.ClientIP}
 	defer func() {
@@ -154,7 +177,7 @@ func (d *Dispatcher) Dispatch(ctx context.Context, q model.DNSQueryContext, m *d
 			reply = failure(m, dns.RcodeServerFailure)
 		}
 		if reply.Rcode == dns.RcodeServerFailure {
-			d.Counters.Errors.Add(1)
+			counters.Errors.Add(1)
 		}
 		if d.History != nil {
 			answers := make([]string, 0, len(reply.Answer))
@@ -191,7 +214,7 @@ func (d *Dispatcher) Dispatch(ctx context.Context, q model.DNSQueryContext, m *d
 	if q.Question.Qtype == dns.TypeANY {
 		result.Decision = model.Reject
 		result.Reason = "ANY is refused to avoid address-policy bypass"
-		d.Counters.Reject.Add(1)
+		counters.Reject.Add(1)
 		return failure(m, dns.RcodeRefused)
 	}
 	if d.Local != nil {
@@ -201,7 +224,7 @@ func (d *Dispatcher) Dispatch(ctx context.Context, q model.DNSQueryContext, m *d
 			result.Source = "local-dns"
 			result.Reason = "explicit local DNS mapping"
 			trace.Endpoint = "Local DNS"
-			d.Counters.Direct.Add(1)
+			counters.Direct.Add(1)
 			return r
 		}
 	}
@@ -212,7 +235,7 @@ func (d *Dispatcher) Dispatch(ctx context.Context, q model.DNSQueryContext, m *d
 			result.Source = "surge-always-real-ip"
 			result.MatchedRule = "always-real-ip = " + pattern
 			result.Reason = "Matched Surge always-real-ip; querying configured real DNS upstreams without Surge evaluation"
-			d.Counters.Direct.Add(1)
+			counters.Direct.Add(1)
 			return d.realUpstream(ctx, q, m, true)
 		}
 	}
@@ -225,7 +248,7 @@ func (d *Dispatcher) Dispatch(ctx context.Context, q model.DNSQueryContext, m *d
 		result.Decision = model.Direct
 		result.Source = "state-fallback"
 		result.Reason = "系统处于 DIRECT_FALLBACK，未执行 Surge 规则判断；使用真实 DNS 回退"
-		d.Counters.Direct.Add(1)
+		counters.Direct.Add(1)
 		return d.real(ctx, q, m)
 	}
 	classificationStarted := time.Now()
@@ -236,24 +259,24 @@ func (d *Dispatcher) Dispatch(ctx context.Context, q model.DNSQueryContext, m *d
 		result.Confidence = model.Uncertain
 	}
 	if result.Decision == model.Direct && (result.Confidence == model.Certain || result.Confidence == model.Configured) {
-		d.Counters.Direct.Add(1)
+		counters.Direct.Add(1)
 		return d.real(ctx, q, m)
 	}
 	if result.Decision == model.Reject && result.Confidence == model.Certain {
-		d.Counters.Reject.Add(1)
+		counters.Reject.Add(1)
 		return failure(m, dns.RcodeRefused)
 	}
 	if err == nil && result.Decision == model.Surge {
 		if binding, matched := d.policyDNS(result); matched != nil {
 			result.PolicyDNS = matched
-			d.Counters.Surge.Add(1)
+			counters.Surge.Add(1)
 			return d.resolvePolicyDNS(ctx, q, m, binding, matched, gate)
 		}
 	}
 	if result.Decision == model.Unknown {
-		d.Counters.Unknown.Add(1)
+		counters.Unknown.Add(1)
 	}
-	d.Counters.Surge.Add(1)
+	counters.Surge.Add(1)
 	return d.resolveSurge(ctx, q, m, gate)
 }
 

@@ -25,6 +25,7 @@ cp scripts/install_macos.sh scripts/uninstall_macos.sh scripts/update_macos.sh s
 cp launchd/com.routepilot.surge-controller.plist "$app_dir/Contents/Resources/Service/launchd/"
 cp README.md "$app_dir/Contents/Resources/README.md"
 cp localization/*.json "$app_dir/Contents/Resources/"
+cp -R native/en.lproj native/zh-Hans.lproj "$app_dir/Contents/Resources/"
 codesign --force --sign - "$app_dir/Contents/Resources/Service/bin/surge-controller"
 codesign --force --sign - "$app_dir"
 codesign --verify --deep --strict "$app_dir"

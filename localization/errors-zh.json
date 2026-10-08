@@ -96,7 +96,7 @@
   "authentication required": "需要登录认证",
   "invalid credentials": "用户名或密码错误",
   "invalid CSRF token": "登录会话验证失败，请重新登录",
-  "management client network is not allowed": "当前客户端不在允许的管理网段内；请从本机连接，或先将客户端网段加入允许列表",
+  "management client network is not allowed": "后台拒绝了管理连接：客户端不在允许的管理网段内。请在目标后台的“设置 → 安全 → 允许的管理网段”加入发起连接的 Controller 出口 IP 或网段。",
   "forbidden": "访问被拒绝",
   "not found": "条目不存在",
   "Authorization failed.": "管理员授权失败",
