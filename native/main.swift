@@ -135,13 +135,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
     }
     func userContentController(_ userContentController: WKUserContentController, didReceive message: WKScriptMessage) {
         let origin = message.frameInfo.securityOrigin
-        guard message.frameInfo.isMainFrame, origin.protocol == client.base.scheme,
-              origin.host == client.base.host, origin.port == client.base.port,
-              let locale = message.body as? String, ["en", "zh-CN"].contains(locale) else { return }
+        guard message.name == "routepilotLocale", let locale = message.body as? String,
+              NativeText.acceptsLocale(locale, mainFrame: message.frameInfo.isMainFrame, scheme: origin.protocol, host: origin.host, port: origin.port, backend: client.base) else { return }
         UserDefaults.standard.set(locale, forKey: "uiLanguage")
+        configureLanguageSeed(userContentController)
         window?.title = L("RoutePilot · DNS 和路由控制器")
         updateToolTip()
         rebuildMenu()
+    }
+    func configureLanguageSeed(_ controller: WKUserContentController) {
+        let marker = "/* RoutePilot language */"
+        let scripts = controller.userScripts.filter { !$0.source.hasPrefix(marker) }
+        controller.removeAllUserScripts()
+        scripts.forEach { controller.addUserScript($0) }
+        let source = marker + "if(!localStorage.getItem('routepilot.locale'))localStorage.setItem('routepilot.locale','\(NativeText.locale)');"
+        controller.addUserScript(WKUserScript(source: source, injectionTime: .atDocumentStart, forMainFrameOnly: true))
     }
     func startBackend() {
         guard child == nil, !starting, !quitting else { return }
@@ -273,8 +281,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
             let configuration = WKWebViewConfiguration()
             configuration.websiteDataStore = .nonPersistent()
             configuration.userContentController.add(self, name: "routepilotLocale")
-            let seed = "if(!localStorage.getItem('routepilot.locale'))localStorage.setItem('routepilot.locale','\(NativeText.locale)');"
-            configuration.userContentController.addUserScript(WKUserScript(source: seed, injectionTime: .atDocumentStart, forMainFrameOnly: true))
+            configureLanguageSeed(configuration.userContentController)
             let view = WKWebView(frame: .zero, configuration: configuration)
             view.navigationDelegate = self
             let panel = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 1150, height: 780), styleMask: [.titled, .closable, .miniaturizable, .resizable], backing: .buffered, defer: false)

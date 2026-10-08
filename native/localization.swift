@@ -1,6 +1,10 @@
 import Foundation
 
 enum NativeText {
+    static func acceptsLocale(_ locale: String, mainFrame: Bool, scheme: String, host: String, port: Int, backend: URL) -> Bool {
+        let expectedHost = backend.host?.replacingOccurrences(of: "[", with: "").replacingOccurrences(of: "]", with: "")
+        return ["en", "zh-CN"].contains(locale) && mainFrame && scheme == backend.scheme && host == expectedHost && port == backend.port
+    }
     static var locale: String {
         let stored = UserDefaults.standard.string(forKey: "uiLanguage")
         if stored == "en" || stored == "zh-CN" { return stored! }
