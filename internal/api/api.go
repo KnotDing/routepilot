@@ -13,6 +13,7 @@ import (
 	"surge-controller/internal/database"
 	"surge-controller/internal/events"
 	"surge-controller/internal/frr"
+	"surge-controller/internal/routeimport"
 	"surge-controller/internal/security"
 	"sync"
 	"time"
@@ -30,10 +31,11 @@ type Service interface {
 	VerifyRoute(context.Context, json.RawMessage) (any, error)
 }
 type API struct {
-	Service  Service
-	Store    *database.Store
-	Bus      *events.Bus
-	mutation sync.Mutex
+	Service           Service
+	Store             *database.Store
+	Bus               *events.Bus
+	mutation          sync.Mutex
+	RouteImportClient *http.Client
 }
 
 func write(w http.ResponseWriter, status int, value any) {
@@ -70,6 +72,50 @@ func (a *API) Handler() http.Handler {
 }
 func (a *API) serve(w http.ResponseWriter, r *http.Request) {
 	path := strings.TrimPrefix(r.URL.Path, "/api/v1/")
+	if path == "bgp/routes/import-url" && r.Method == "POST" {
+		var body struct {
+			URL string `json:"url"`
+		}
+		if e := decode(w, r, &body); e != nil {
+			fail(w, 400, e)
+			return
+		}
+		client := a.RouteImportClient
+		if client == nil {
+			client = routeimport.NewClient()
+		}
+		ctx, cancel := context.WithTimeout(r.Context(), 20*time.Second)
+		defer cancel()
+		v, e := routeimport.Fetch(ctx, client, body.URL, a.Service.Configuration())
+		if e != nil {
+			fail(w, 422, e)
+			return
+		}
+		write(w, 200, v)
+		return
+	}
+	if path == "bgp/routes/import" && r.Method == "POST" {
+		var body routeimport.Request
+		if e := decode(w, r, &body); e != nil {
+			fail(w, 400, e)
+			return
+		}
+		a.mutation.Lock()
+		defer a.mutation.Unlock()
+		d, result, e := routeimport.Append(a.Service.Configuration(), body)
+		if e != nil {
+			fail(w, 422, e)
+			return
+		}
+		if result.Imported > 0 {
+			if e = a.Service.Apply(r.Context(), d); e != nil {
+				fail(w, 409, e)
+				return
+			}
+		}
+		write(w, 200, result)
+		return
+	}
 	if path == "bgp/export-frr" && r.Method == "POST" {
 		var input frr.Request
 		if e := decode(w, r, &input); e != nil {

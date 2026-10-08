@@ -197,6 +197,13 @@ p.error { padding: 12px 14px; border-radius: 9px; }
 .modal header h2 { margin: 0; font-size: 19px; line-height: 28px; }
 .modal footer { display: flex; justify-content: flex-end; flex-wrap: wrap; gap: 10px; padding-top: 20px; border-top: 1px solid var(--border); }
 .modal .panel { padding: 20px; background: var(--hover); box-shadow: none; }
+.route-import > label { display: grid; gap: 8px; color: var(--muted); font-size: 13px; line-height: 22px; }
+.route-import > .muted { margin-top: 8px; }
+.route-import .form-grid { margin-top: 24px; }
+.route-import-families { display: flex; flex-wrap: wrap; gap: 12px; margin: 16px 0; }
+.route-import-list { display: grid; gap: 8px; max-height: 260px; overflow: auto; padding: 4px; }
+.route-import-families .check, .route-import-list .check { display: flex; align-items: center; gap: 10px; margin: 0; font-size: 13px; line-height: 22px; cursor: pointer; }
+.route-import details { margin-top: 16px; }
 .toast { position: fixed; bottom: 24px; right: 24px; z-index: 20; max-width: min(520px, calc(100vw - 32px)); padding: 14px 20px; border: 1px solid var(--border); border-radius: 12px; background: var(--panel); color: var(--text); box-shadow: 0 12px 40px #10233622; font-size: 14px; line-height: 22px; }
 .toast.error { background: var(--danger-bg); color: var(--danger-text); }
 dl { display: grid; grid-template-columns: minmax(140px, 180px) minmax(0, 1fr); gap: 12px 20px; margin: 0 0 20px; font-size: 13px; line-height: 22px; }

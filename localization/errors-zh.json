@@ -247,5 +247,19 @@
   "selected Fake-IP routing backend is not ready": "所选 Fake-IP 路由后端未就绪",
   "selected DNS interception routing backend is not ready": "所选 DNS 拦截路由后端未就绪",
   "BGP session unavailable": "BGP 会话不可用",
-  "DNS listener failed": "DNS 监听发生故障"
+  "DNS listener failed": "DNS 监听发生故障",
+  "invalid route destination": "无效的路由目的地址",
+  "duplicate route destination": "目的网段重复或已存在",
+  "route list exceeds 1 MiB": "路由列表不能超过 1 MiB",
+  "route list must be UTF-8 text": "路由列表必须是 UTF-8 文本",
+  "route list exceeds 1024 destinations": "路由列表不能超过 1024 个目的地址",
+  "route list exceeds 8192 lines": "路由列表不能超过 8192 行",
+  "route list line is too long": "路由列表中有行过长",
+  "select 1-1024 route destinations": "请选择 1 至 1024 个路由目的地址",
+  "route URL must be a public HTTP or HTTPS URL without credentials or a fragment": "请填写公网 HTTP 或 HTTPS URL，不能包含账号密码或片段标记",
+  "route URL cannot access local or private addresses": "路由列表 URL 不能访问本机或私有网络地址",
+  "invalid route URL": "路由列表 URL 无效",
+  "route URL fetch failed; check connectivity and the URL": "无法获取路由列表，请检查网络连接和 URL",
+  "route URL returned HTTP {status}": "路由列表 URL 返回 HTTP {status}",
+  "route URL response could not be read": "无法读取路由列表响应"
 }

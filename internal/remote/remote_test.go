@@ -174,3 +174,14 @@ func TestRelayDoesNotBypassTLSVerificationOrLocalSession(t *testing.T) {
 		t.Fatal("untrusted TLS accepted", status)
 	}
 }
+
+func TestRouteImportRelayEndpoints(t *testing.T) {
+	for _, path := range []string{"bgp/routes/import-url", "bgp/routes/import"} {
+		if !allowed(path, "POST") || allowed(path, "GET") {
+			t.Fatal("route import relay method", path)
+		}
+	}
+	if allowed("bgp/routes/import-url/anything", "POST") {
+		t.Fatal("nested import route allowed")
+	}
+}

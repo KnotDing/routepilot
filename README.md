@@ -177,6 +177,8 @@ SQLite、密钥与私有日志保留；需升级时可移除后安装新版本�
 本地 DNS、独立健康探测、事件和全部设置。手动路由默认 Health Binding=None，可显式绑定
 Controller、Surge 或 DNS（手动路由属于 BGP 资源）；没有从查询/回答生成 per-IP BGP 路由的路径。
 
+“手动路由 → 从 URL 导入”支持公开 HTTP/HTTPS 文本列表（每行 IPv4/IPv6 地址或规范 CIDR，支持 `#` 注释）。例如 Telegram 的 `https://core.telegram.org/resources/cidr.txt`。先预览，再选择网段或地址族，分别设置 IPv4/IPv6 下一跳，以及统一的健康绑定、MED、本地优先级、Communities、说明和启用状态；默认下一跳取自 Surge 配置。普通地址转为 `/32` 或 `/128`，重复、已有和无效行在预览中列出。保存为可独立编辑的手动路由快照，不自动刷新 URL；保存时再次去重，并一次性校验和应用整批配置，BGP 路由上限或下一跳校验失败不会留下部分导入。列表上限为 1 MiB、8192 行和 1024 个新目的地址。列表由当前选中的管理后端获取，远程模式也支持导入。
+
 REST `/api/v1`、SSE `/api/v1/events/stream` 和 Prometheus `/metrics` 使用同一管理
 网络边界。认证开启后需要管理会话；写操作始终要求 CSRF。远程管理必须配置认证、TLS
 和允许网段，默认拒绝任意域名 Host/跨来源请求以防 DNS rebinding。密码使用 bcrypt；

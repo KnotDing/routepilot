@@ -426,5 +426,19 @@
   "本地优先级": "Local preference",
   "原始求值结果": "Raw evaluation result",
   "长期缓存": "Persistent cache",
-  "查询类型": "Query type"
+  "查询类型": "Query type",
+  "从 URL 导入": "Import from URL",
+  "从 URL 导入路由": "Import routes from URL",
+  "路由列表 URL": "Route list URL",
+  "每行一个 IPv4/IPv6 地址或 CIDR 网段，支持 # 注释。导入为一次性快照。": "One IPv4/IPv6 address or CIDR per line; # comments are supported. Imports are snapshots.",
+  "正在处理…": "Processing…",
+  "获取并预览": "Fetch and preview",
+  "导入预览": "Import preview",
+  "可导入 {count} 项 · 已选择 {selected} 项 · 跳过 {skipped} 行": "{count} available · {selected} selected · {skipped} lines skipped",
+  "导入 IPv{family}（{count} 项）": "Import IPv{family} ({count} entries)",
+  "暂无可导入条目": "No entries to import",
+  "查看跳过的条目": "View skipped entries",
+  "IPv{family} 下一跳": "IPv{family} next hop",
+  "整批导入会检查下一跳和 BGP 路由上限；已有路由保留。": "The entire import is checked against next hops and the BGP route limit. Existing routes are retained.",
+  "导入所选 {count} 项": "Import {count} selected entries"
 }
