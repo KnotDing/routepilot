@@ -288,11 +288,20 @@ func (a *App) build(d config.Document) (rt *Runtime, err error) {
 			return nil, err
 		}
 		rt.dispatcher.Real = &observedReal{real: rt.real, rt: rt}
+		policyPools := 0
+		for _, rule := range s.DNS.PolicyUpstreams {
+			if rule.Enabled {
+				policyPools++
+				if rule.Fallback == "upstreams" {
+					policyPools++
+				}
+			}
+		}
 		for _, rule := range s.DNS.PolicyUpstreams {
 			if !rule.Enabled {
 				continue
 			}
-			capacity := max(1, s.Cache.ResponseCapacity/max(1, len(s.DNS.PolicyUpstreams)))
+			capacity := max(1, s.Cache.ResponseCapacity/max(1, policyPools))
 			upstream, e := resolver.NewReal(rt.wire, rule.Upstreams, false, capacity)
 			if e != nil {
 				return nil, e

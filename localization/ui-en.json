@@ -424,5 +424,7 @@
   "远程后端重定向已拒绝，请填写最终管理地址": "Remote backend redirect refused. Enter the final management address",
   "Surge 策略组选择已变化；按配置仅失效 {decisions}": "Surge policy selection changed; invalidating only {decisions} as configured",
   "本地优先级": "Local preference",
-  "原始求值结果": "Raw evaluation result"
+  "原始求值结果": "Raw evaluation result",
+  "长期缓存": "Persistent cache",
+  "查询类型": "Query type"
 }
