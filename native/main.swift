@@ -117,8 +117,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
     var smokeStarted = false
     var smokeDownloadURL: URL?
     var smoke: Bool { arguments.contains("--smoke-test") }
-    func installEditMenu() {
+    func installApplicationMenu() {
         let mainMenu = NSMenu()
+        let appItem = NSMenuItem(title: "RoutePilot", action: nil, keyEquivalent: "")
+        let appMenu = NSMenu(title: "RoutePilot")
+        appMenu.addItem(withTitle: L("隐藏 RoutePilot"), action: #selector(NSApplication.hide(_:)), keyEquivalent: "h")
+        let hideOthers = appMenu.addItem(withTitle: L("隐藏其他应用"), action: #selector(NSApplication.hideOtherApplications(_:)), keyEquivalent: "h")
+        hideOthers.keyEquivalentModifierMask = [.command, .option]
+        appMenu.addItem(withTitle: L("显示全部"), action: #selector(NSApplication.unhideAllApplications(_:)), keyEquivalent: "")
+        appMenu.addItem(.separator())
+        let quitItem = appMenu.addItem(withTitle: L("退出 RoutePilot"), action: #selector(quit), keyEquivalent: "q")
+        quitItem.target = self
+        appItem.submenu = appMenu
+        mainMenu.addItem(appItem)
         let editItem = NSMenuItem(title: L("编辑"), action: nil, keyEquivalent: "")
         let editMenu = NSMenu(title: L("编辑"))
         for (title, selector, key) in [
@@ -133,7 +144,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
         }
         editItem.submenu = editMenu
         mainMenu.addItem(editItem)
+        let windowItem = NSMenuItem(title: L("窗口"), action: nil, keyEquivalent: "")
+        let windowMenu = NSMenu(title: L("窗口"))
+        windowMenu.addItem(withTitle: L("最小化"), action: #selector(NSWindow.performMiniaturize(_:)), keyEquivalent: "m")
+        windowMenu.addItem(withTitle: L("缩放"), action: #selector(NSWindow.performZoom(_:)), keyEquivalent: "")
+        windowMenu.addItem(withTitle: L("关闭窗口"), action: #selector(NSWindow.performClose(_:)), keyEquivalent: "w")
+        let fullScreen = windowMenu.addItem(withTitle: L("切换全屏"), action: #selector(NSWindow.toggleFullScreen(_:)), keyEquivalent: "f")
+        fullScreen.keyEquivalentModifierMask = [.command, .control]
+        windowItem.submenu = windowMenu
+        mainMenu.addItem(windowItem)
         NSApp.mainMenu = mainMenu
+        NSApp.windowsMenu = windowMenu
     }
     func argument(_ key: String) -> String? {
         guard let i = arguments.firstIndex(of: key), i + 1 < arguments.count else { return nil }
@@ -141,7 +162,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
     }
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.accessory)
-        installEditMenu()
+        installApplicationMenu()
         if let icon = Bundle.main.url(forResource: "AppIcon", withExtension: "icns") { NSApp.applicationIconImage = NSImage(contentsOf: icon) }
         let stored = argument("--backend-url") ?? UserDefaults.standard.string(forKey: "backendURL") ?? "http://127.0.0.1:1055"
         guard let url = validURL(stored) else { alert("管理地址无效", "仅支持本机 loopback HTTP/HTTPS 地址。"); NSApp.terminate(nil); return }
@@ -316,6 +337,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
         UserDefaults.standard.set(locale, forKey: "uiLanguage")
         configureLanguageSeed(userContentController)
         window?.title = L("RoutePilot · DNS 和路由控制器")
+        installApplicationMenu()
         updateToolTip()
         rebuildMenu()
     }
@@ -513,6 +535,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
         }
     }
     @objc func openManagement() {
+        // A visible management window needs a regular application's menu bar.
+        // Return to accessory mode when it closes so background operation keeps
+        // the original menu-bar-only behavior.
+        NSApp.setActivationPolicy(.regular)
         if window == nil {
             let configuration = WKWebViewConfiguration()
             configuration.websiteDataStore = .nonPersistent()
@@ -524,6 +550,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
             let panel = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 1150, height: 780), styleMask: [.titled, .closable, .miniaturizable, .resizable], backing: .buffered, defer: false)
             panel.title = L("RoutePilot · DNS 和路由控制器")
             panel.minSize = NSSize(width: 420, height: 480)
+            panel.level = .normal
+            panel.collectionBehavior = [.fullScreenPrimary]
             panel.contentView = view; panel.delegate = self; panel.isReleasedWhenClosed = false
             panel.center(); window = panel; webView = view
             let cookies = client.session.configuration.httpCookieStorage?.cookies(for: client.base) ?? []
@@ -533,6 +561,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
         }
         NSApp.activate(ignoringOtherApps: true)
         window?.makeKeyAndOrderFront(nil)
+    }
+    func windowWillClose(_ notification: Notification) {
+        guard let closed = notification.object as? NSWindow, closed === window else { return }
+        NSApp.setActivationPolicy(.accessory)
     }
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { false }
     func webView(_ webView: WKWebView, decidePolicyFor navigationAction: WKNavigationAction, decisionHandler: @escaping (WKNavigationActionPolicy) -> Void) {

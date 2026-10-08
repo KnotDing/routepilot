@@ -495,5 +495,14 @@
   "后台版本无法确认": "Cannot verify backend version",
   "App：{version}（构建 {build}）": "App: {version} (build {build})",
   "后台未提供完整的版本和构建编号，请更新后台服务。": "The backend did not provide its version and build. Please update the backend service.",
-  "请将 App 和后台更新到同一发布版本。本机后台可在状态栏菜单选择“更新网络后台服务”；更新 App 不会自动替换旧后台。": "Update the App and backend to the same release. For a local backend, choose “Update network service” from the menu bar. Updating the App does not automatically replace the old backend."
+  "请将 App 和后台更新到同一发布版本。本机后台可在状态栏菜单选择“更新网络后台服务”；更新 App 不会自动替换旧后台。": "Update the App and backend to the same release. For a local backend, choose “Update network service” from the menu bar. Updating the App does not automatically replace the old backend.",
+  "隐藏 RoutePilot": "Hide RoutePilot",
+  "隐藏其他应用": "Hide Others",
+  "显示全部": "Show All",
+  "退出 RoutePilot": "Quit RoutePilot",
+  "窗口": "Window",
+  "最小化": "Minimize",
+  "缩放": "Zoom",
+  "关闭窗口": "Close Window",
+  "切换全屏": "Toggle Full Screen"
 }
