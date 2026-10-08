@@ -1,0 +1,154 @@
+# Acceptance evidence — 2026-10-08
+
+This document separates verified implementation from site commissioning.
+The IPv4 Phase 2 prerequisite passed before SQLite/UI/BGP/state implementation
+continued. There are no simulated BGP or UI paths in the normal executable.
+Production DNS, CLI, PF, SQLite and GoBGP use real implementations; mocks are
+restricted to automated tests and the independently described acceptance scope.
+
+## Executed checks
+
+| Check | Result and scope |
+|---|---|
+| `make verify` | Frontend tests, all Go race tests, `go vet`, embedded-UI macOS build pass |
+| Docker offline suite | 14 Linux test executables, `--network=none`, unprivileged container user; all pass |
+| Native GoBGP exchange | Two actual in-process speakers on local high TCP ports: session establishment, IPv4 route/next-hop advertisement, explicit withdrawal, imported transit rejection pass |
+| BGP session loss | Actual IPv4 Fake-IP/interception and IPv6 Fake-IP NLRI received; shutting down the originating speaker removes all three peer paths |
+| Application runtime | Actual Darwin pinned loopback UDP DNS, native GoBGP, local test CLI/Fake-IP DNS: 100 unique DNS answers leave the fixed manual route set unchanged; removed CLI causes independent real-DNS fallback without withdrawing manual None |
+| Actual transparent network | Docker macvlan + real macOS PF NATLOOK, UDP/TCP destination 8.8.8.8:53, preserved client/destination, physical gateway egress and reverse-translated replies pass |
+| Actual re-entry defense | Raw UDP/TCP self-source injection at Docker ingress increases PF drop counters; no extra Controller query/upstream exchange |
+| Browser acceptance | Embedded production UI: 15 pages; BGP/Static/Hybrid switching, disabled interception and local DNS entry create/edit/delete through actual API; masked editable credentials survive polling; zero page errors |
+| Release assets | Native status-bar APP, macOS arm64 executables, embedded assets, SHA256 manifest, APP ZIP and CLI archive; shell syntax and launchd plist lint pass |
+| Evidence parser | 3 Python parser regression tests pass |
+
+Network evidence: [phase-2-docker-evidence.md](phase-2-docker-evidence.md).
+The raw packet/journal files are private temporary artifacts; the dated document
+retains the correlated transaction IDs, addresses and observation boundaries.
+UI screenshots are generated under `artifacts/ui/` by `scripts/ui_acceptance.cjs`.
+Final build/test logs are stored under `artifacts/` in this workspace.
+
+## Fifteen architectural invariants
+
+| # | Invariant | Automated coverage / actual evidence |
+|---|---|---|
+| 1 | Confident DIRECT only | `classifier.TestConservativeDecisions`, `integration.TestClassificationPaths`; unsafe metadata DIRECT is UNKNOWN |
+| 2 | Uncertainty stays with Surge | Same cases plus errors/deadlines; unknown A/AAAA never become real-DNS bypass unless explicit health fallback/manual mode |
+| 3 | Surge owns Fake-IP | Dispatcher consumes adapter answers only; `TestClassificationPaths`, `TestIPv6SurgeFakeAnswerTTLAndDNSSEC`; fake range validation, no allocator |
+| 4 | Route before Fake-IP | `TestServiceBindingAndRouteGates`, `state.TestRouteBeforeFakeGraceAndRecovery`, selected routing abstraction readiness: GoBGP peer/Adj-RIB-Out or explicit external static declaration; never automatic static installation |
+| 5 | Stop issuance before withdrawal | In-flight gate invalidation, observed TTL/grace, `TestWithdrawalWaitsForResponseWrite`; actual socket writes hold the barrier |
+| 6 | Manual routes independent by default | API CRUD default None; manager lifecycle and actual runtime Surge-failure test |
+| 7 | Global hard route limit | Pre-persistence rejection/CRITICAL event, rejected-update atomicity, `bgp.TestBindingsHardLimitAndNoDNSCoupling`; runtime add limit |
+| 8 | Surge remains policy authority | Raw CLI argument/explanation tests, active inventory context audit; overrides are explicit UI settings |
+| 9 | Transparent UDP/TCP non-local DNS | `TestDirectAndTransparentSockets` plus actual Docker/PF two-transport proof |
+| 10 | Preserve query context and resolver | Original destination/client/transport tests, resolver cache isolation and correlated journal/wire packets |
+| 11 | No upstream forwarding loop | `TestSelfOriginatedLoopRejected`, pinned source/ports and PF rule tests; actual self-source PF drops; real answers/hints in Fake-IP ranges rejected |
+| 12 | Distinct route health lifecycles | `bgp.TestBindingsHardLimitAndNoDNSCoupling`: fake=Surge, interception=Controller, manual=None by default |
+| 13 | Surge failure retains interception | State real-DNS fallback + manager leaves interception/None; actual app runtime fallback validated separately |
+| 14 | BGP loss restores original path; static limitations explicit | Actual local BGP session-loss test removes interception/Fake-IP peer paths; full gateway FIB/client fallback remains site commissioning; static routes require external removal/failover |
+| 15 | No DNS-to-BGP route explosion | Actual application processes unique DNS answers while native GoBGP route count/prefix stay fixed; static desired routes depend only on configured prefixes, never DNS history/cache |
+
+Other regression coverage includes LRU/generation invalidation/singleflight,
+per-client isolation, UDP truncation→TCP, DoT/DoH certificate validation, negative
+TTL/cache flags, Fake-IP TTL and AD stripping, HTTPS/SVCB NODATA/hint guards,
+SQLite encryption/transactions/retention, sessions/CSRF/rebinding and independent
+health hysteresis/mode/shutdown/recovery behavior, including configured probe domains without a trailing DNS dot.
+
+## Cached-DNS performance
+
+The load test sends 20,000 queries through real UDP sockets, using 16 concurrent
+clients, cached classification and cached real-DNS answers. The test asserts
+exactly one upstream exchange and one external rule evaluation. Its local
+fixtures do not measure the latency of Surge CLI misses or external resolvers.
+
+| Run | QPS | P50 | P99 |
+|---|---:|---:|---:|
+| Native macOS, non-race run at 10:23 | 105,399 | 0.142 ms | 0.379 ms |
+| Docker offline run at 10:42 | 97,769 | 0.061 ms | 3.271 ms |
+| Prior Docker regression | 104,181 | 0.053 ms | 3.163 ms |
+| APP/Hosts Docker regression | 116,359 | 0.049 ms | 3.040 ms |
+| Routing abstraction final Docker regression | 105,586 | 0.051 ms | 2.993 ms |
+
+These samples meet the specification's cached-path targets of ≥10,000 QPS,
+P50 <1 ms and P99 <5 ms. Race instrumentation is for correctness, not capacity.
+Run the same load test on the deployed machine to establish its own sustained
+capacity; results above are measured samples rather than a universal guarantee.
+
+## Deployment boundaries
+
+- BGP remains disabled in the local preview. No live router BGP configuration or
+  announcement was made; local GoBGP tests use high loopback ports only.
+- IPv6 NLRI, DNS answers, listener/rule construction and Darwin NATLOOK layout
+  have automated coverage. Actual IPv6 PF ingress and independent IPv6 gateway
+  WAN bypass are unverified, so no IPv6 interception is enabled by default.
+- Readiness uses ESTABLISHED plus Adj-RIB-Out and stabilization, not a fictitious
+  router installation acknowledgement. Confirm next hops and gateway RIB/FIB,
+  then test real Surge loss and Controller/Mac loss with Docker packet sources.
+- The production PF lease loader/ownership guard and launchd installer have not
+  been installed as a system daemon in this development environment. The actual
+  PF network proof uses the independently documented diagnostic harness.
+- Gateway bypass failure was simulated by injecting self-sourced ingress
+  packets; the user-owned gateway policy was not removed during testing.
+- The user configured a temporary gateway route for 8.8.8.8/32. It was not changed
+  by Controller; the operator should remove it when the isolated test is done.
+- On the inspected Surge inventory, unexpanded rule sets and dynamic groups
+  conservatively prevent certain DIRECT. CLI polling has bounded consistency,
+  not an atomic revision handshake with external Surge profile changes.
+- macOS BGP active-connection TTL tuning reports an unsupported-platform warning;
+  normal eBGP/iBGP exchanges pass. No unverified MD5/GTSM feature is claimed.
+
+The implementation and release are reviewable and runnable. Full site production
+acceptance is intentionally not claimed before these network/service checks.
+
+## macOS APP and local DNS additions (2026-10-08)
+
+`artifacts/RoutePilot.app` is a native Swift/AppKit accessory application with a
+real NSStatusItem, an embedded WKWebView and a bundled Go Controller. The isolated
+APP smoke run (`artifacts/app-smoke.json`) confirms menu creation, real API mode
+change/restoration, cache flush, local DNS CRUD, effective Surge Host import,
+rendered management UI, continued background operation after the window closes,
+and graceful owned-child shutdown. Administrator installation and login-item
+registration are exposed through native controls but were not enabled on this
+Mac during acceptance. The APP uses ad-hoc signing, without Developer ID notarization.
+
+Static `[Host]` import was tested against the active Surge instance: 4 static
+mappings imported, 3 unsupported entries skipped with generic reasons and line
+numbers. Other profile sections, raw lines, script content and remote URLs are
+excluded from the API and database. Manual entries override imported mappings;
+Surge entries preserve first-match order. Unsupported earlier mappings
+conservatively suppress potentially shadowed later static entries. Reimport
+replaces only the Surge snapshot. Fake-IP mappings are rejected.
+
+Native and Docker regressions cover manual/imported precedence, glob/apex
+semantics, A/AAAA families, HTTPS/SVCB and missing-family NODATA, immutable
+configuration copies, live local-DNS updates without BGP changes, idempotent
+import and SQLite schema v1→v2 migration. An APP startup check also covers a
+configuration applied before the first management listener and explicit port
+release during shutdown. Browser acceptance now exercises 15 pages and local
+DNS create/edit/delete, including multiline IPv4/IPv6 and wildcard selection.
+
+The active Surge configuration still hijacks all DNS via `hijack-dns = *:53`.
+No Surge or gateway configuration was changed by this implementation. Production
+cutover must remove full DNS hijacking and route client resolver traffic through
+the normal gateway; retain Surge's original upstream DNS and internal Fake-IP DNS.
+
+
+## Routing abstraction additions (2026-10-08)
+
+All five frontend tests, full Go race suite, vet and embedded build pass. The
+final Docker offline suite runs 14 package executables (74 tests), including
+common routing/state, both Hybrid directions, static installation truthfulness,
+scoped TCP-probe evidence and explicit static-interception opt-in. The actual
+Darwin application test returns Real-IP and Fake-IP with no BGP speaker,
+preserves its DNS listener during routing-only edits, and enters DIRECT_FALLBACK
+on CLI loss while retaining an externally managed, installation-unknown static
+route declaration. Tests use local fixtures/operator declarations and do not
+prove an external gateway installed a static route.
+
+The native APP smoke additionally switches Static/Hybrid/BGP through the real
+API, checks `installed=null`/`verified=false` on static rows and restores its
+original mode. Its live Surge import at 14:20 saw 44 Host items: 4 supported
+static mappings imported; 40 skipped, including mappings potentially shadowed
+by unsupported earlier remote rule sets. This supersedes the earlier 7-item
+inventory observation; no remote URLs were downloaded or script mappings run.
+The optional TCP probe is unit-tested with controlled transports; no external
+static-route or real WAN connectivity verification is claimed.

@@ -1,0 +1,8 @@
+/bin/
+/data/
+/.cache/
+*.db
+*.db-*
+/artifacts/
+node_modules/
+__pycache__/

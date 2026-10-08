@@ -1,0 +1,6 @@
+# Generated; load only into com.apple/surge-controller. Never replace /etc/pf.conf.
+rdr on { en0, bridge100 } inet proto { udp, tcp } from ! 192.168.20.2 to { 8.8.8.8/32 } port 53 -> 192.168.20.2 port 1054
+block drop in quick on { en0, bridge100 } inet proto { udp, tcp } from 192.168.20.2 to any port { 53, 1054 }
+pass in quick on { en0, bridge100 } inet proto { udp, tcp } from any to 192.168.20.2 port 1054 keep state
+pass in quick on { en0, bridge100 } inet proto { udp, tcp } from any port { 53, 853, 443 } to 192.168.20.2 port 20000:20999 no state
+pass out quick route-to ( en0 192.168.20.1 ) inet proto { udp, tcp } from 192.168.20.2 port 20000:20999 to any port { 53, 853, 443 } no state

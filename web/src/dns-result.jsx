@@ -1,0 +1,6 @@
+import {useT,message,valueLabel} from './i18n';
+import React from 'react';
+export function DNSResult({record}) {const t=useT();
+ const result=record.response||{id:'—',status:({0:'NOERROR',1:'FORMERR',2:'SERVFAIL',3:'NXDOMAIN',5:'REFUSED'})[record.rcode]||String(record.rcode),answers:record.answers||[],authority:[],additional:[]};
+ return <section className="panel"><h3>{t("DNS 查询结果")}</h3><p>{t("响应状态：")}<strong>{result.status}</strong>{t(' · 查询 ID：')}{result.id} · {record.response_cache_hit?t('响应缓存命中'):t('响应缓存未命中')}</p>{record.resolution_error&&<p role="alert" className="error">{message(record.resolution_error)}</p>}{result.status==='NOERROR'&&!(result.answers||[]).length&&<p>{t("正常空响应（NODATA），不表示解析失败。HTTPS/SVCB 在交给 Surge 处理时使用空响应，让客户端继续查询 A/AAAA。")}</p>}{result.status==='SERVFAIL'&&<p>{t("DNS 处理失败，没有返回地址。")}</p>}{result.status==='NXDOMAIN'&&<p>{t("域名不存在。")}</p>}{result.status==='REFUSED'&&<p>{t("查询被拒绝。")}</p>}{[['answers',t('回答段')],['authority',t('权威段')],['additional',t('附加段')]].map(([key,label])=><div key={key}><h4>{label}{t('（域名 · TTL 秒 · 类别 · 类型 · 内容）')}</h4>{result[key]?.length?<pre style={{overflowX:'auto'}}>{result[key].join('\n')}</pre>:<p>{t("无记录")}</p>}</div>)}</section>
+}
