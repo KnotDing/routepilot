@@ -45,10 +45,10 @@ const values={
  exact:['精确匹配','Exact'],suffix:['后缀匹配','Suffix'],wildcard:['通配符','Wildcard'],
  debug:['调试','Debug'],info:['信息','Info'],warn:['警告','Warning'],error:['错误','Error'],
  STARTING:['启动中','Starting'],RECOVERING:['恢复中','Recovering'],HEALTHY:['健康','Healthy'],SURGE_DEGRADED:['Surge 降级','Surge degraded'],DIRECT_FALLBACK:['真实 DNS 回退','Real DNS fallback'],STOPPING:['停止中','Stopping'],
- UP:['正常','Up'],DOWN:['故障','Down'],ERROR:['错误','Error'],DEGRADED:['降级','Degraded'],DISCONNECTED:['未连接','Disconnected'],ESTABLISHED:['已建立','Established'],IDLE:['空闲','Idle'],ACTIVE:['连接中','Active'],CONNECT:['正在连接','Connecting'],OPENSENT:['已发送 OPEN','Open sent'],OPENCONFIRM:['确认 OPEN','Open confirm'],
+ UP:['正常','Up'],DOWN:['故障','Down'],ERROR:['错误','Error'],DEGRADED:['降级','Degraded'],DISABLED:['已禁用','Disabled'],DISCONNECTED:['未连接','Disconnected'],ESTABLISHED:['已建立','Established'],IDLE:['空闲','Idle'],ACTIVE:['连接中','Active'],CONNECT:['正在连接','Connecting'],OPENSENT:['已发送 OPEN','Open sent'],OPENCONFIRM:['确认 OPEN','Open confirm'],
  Announced:['已发布','Announced'],Inactive:['未发布','Inactive'],
- 'local-dns':['本地 DNS','Local DNS'],'surge-always-real-ip':['Surge always-real-ip','Surge always-real-ip'],cache:['缓存','Cache'],manual:['手动','Manual'],'surge-import':['Surge 导入','Surge import'],override:['域名覆盖','Domain override'],mode:['全局模式','Global mode'],'state-fallback':['状态回退','State fallback'],'dns-type':['DNS 类型','DNS type'],
- Controller:['控制器','Controller'],'Real DNS':['真实 DNS','Real DNS'],'Surge CLI':['Surge CLI','Surge CLI'],'Surge Fake-IP DNS':['Surge Fake-IP DNS','Surge Fake-IP DNS'],'Managed routes':['受管理路由','Managed routes'],'Transparent DNS':['透明 DNS','Transparent DNS'],
+ 'local-dns':['本地 DNS','Local DNS'],'surge-always-real-ip':['Surge always-real-ip','Surge always-real-ip'],cache:['缓存','Cache'],manual:['手动','Manual'],'surge-import':['Surge 导入','Surge import'],override:['域名覆盖','Domain override'],mode:['全局模式','Global mode'],safety:['安全检查','Safety check'],'state-fallback':['状态回退','State fallback'],'dns-type':['DNS 类型','DNS type'],
+ Controller:['控制器','Controller'],'Real DNS':['真实 DNS','Real DNS'],'Surge CLI':['Surge CLI','Surge CLI'],'Surge Fake-IP DNS':['Surge Fake-IP DNS','Surge Fake-IP DNS'],'Managed routes':['受管理路由','Managed routes'],'Transparent DNS':['透明 DNS','Transparent DNS'],'Local DNS':['本地 DNS','Local DNS'],'DNS listener':['DNS 监听','DNS listener'],'BGP engine':['BGP 引擎','BGP engine'],'Fake-IP routing':['Fake-IP 路由','Fake-IP routing'],'DNS interception routing':['DNS 拦截路由','DNS interception routing'],
  Queries:['总查询','Queries'],Direct:['DIRECT','DIRECT'],Surge:['SURGE','SURGE'],Reject:['REJECT','REJECT'],Unknown:['UNKNOWN','UNKNOWN'],Intercepted:['透明拦截','Intercepted'],Addressed:['直接请求','Addressed'],Errors:['错误','Errors'],
  hit:['命中','Hit'],miss:['未命中','Miss'],intercepted:['透明拦截','Intercepted'],direct:['直接请求','Addressed']
  ,certain:['确定','Certain'],configured:['按配置采用','Configured'],uncertain:['未确定','Uncertain'],bgp:['BGP','BGP'],static:['静态','Static'],hybrid:['混合','Hybrid'],
@@ -56,5 +56,6 @@ const values={
 };
 export function valueLabel(value,locale=currentLocale()){
  if(typeof value==='boolean')return translate(value?'启用':'禁用',{},locale);
+ if(typeof value==='string'&&value.startsWith('BGP peer '))return locale==='en'?value:'BGP 邻居 '+value.slice(9);
  return values[value]?.[locale==='en'?1:0]??value;
 }

@@ -238,5 +238,14 @@
   "policy DNS resolver unavailable": "策略 DNS 解析器不可用",
   "empty DNS response": "DNS 响应为空",
   "truncated DNS response": "DNS 响应不完整",
-  "upstream DNS returned {status}": "上游 DNS 返回 {status}"
+  "upstream DNS returned {status}": "上游 DNS 返回 {status}",
+  "component probe failed": "组件探测失败",
+  "controller ingress/egress unavailable": "Controller 接收或出口不可用",
+  "DNS listeners unavailable": "DNS 监听不可用",
+  "transparent listener/PF unavailable": "透明监听或 PF 不可用",
+  "BGP disabled or not ready": "BGP 未启用或未就绪",
+  "selected Fake-IP routing backend is not ready": "所选 Fake-IP 路由后端未就绪",
+  "selected DNS interception routing backend is not ready": "所选 DNS 拦截路由后端未就绪",
+  "BGP session unavailable": "BGP 会话不可用",
+  "DNS listener failed": "DNS 监听发生故障"
 }
