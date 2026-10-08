@@ -504,5 +504,10 @@
   "最小化": "Minimize",
   "缩放": "Zoom",
   "关闭窗口": "Close Window",
-  "切换全屏": "Toggle Full Screen"
+  "切换全屏": "Toggle Full Screen",
+  "打开导航": "Open navigation",
+  "导航": "Navigation",
+  "管理操作": "Management controls",
+  "选择表项": "Select row",
+  "查看详情": "View details"
 }
