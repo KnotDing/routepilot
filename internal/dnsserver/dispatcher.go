@@ -128,6 +128,8 @@ type LocalResolver interface {
 }
 
 type Dispatcher struct {
+	AAAAFallback     string
+	IPv6Status       interface{ IPv6Disabled() bool }
 	Local            LocalResolver
 	Classifier       model.Classifier
 	Real             model.Resolver
@@ -216,6 +218,25 @@ func (d *Dispatcher) Dispatch(ctx context.Context, q model.DNSQueryContext, m *d
 		result.Reason = "ANY is refused to avoid address-policy bypass"
 		counters.Reject.Add(1)
 		return failure(m, dns.RcodeRefused)
+	}
+	if q.Question.Qtype == dns.TypeAAAA && (d.AAAAFallback == "block" || d.AAAAFallback == "upstream") && d.IPv6Status != nil && d.IPv6Status.IPv6Disabled() {
+		result.Confidence = model.Certain
+		result.Source = "surge-ipv6-fallback"
+		if d.AAAAFallback == "block" {
+			result.Decision = model.Reject
+			result.Reason = "Surge IPv6 is disabled; AAAA query blocked with an empty successful response"
+			trace.Endpoint = "AAAA fallback: blocked"
+			counters.Reject.Add(1)
+			r := failure(m, dns.RcodeSuccess)
+			if opt := m.IsEdns0(); opt != nil {
+				r.SetEdns0(min(opt.UDPSize(), 1232), false)
+			}
+			return r
+		}
+		result.Decision = model.Direct
+		result.Reason = "Surge IPv6 is disabled; AAAA query sent to configured real DNS upstreams"
+		counters.Direct.Add(1)
+		return d.realUpstream(ctx, q, m, true)
 	}
 	if d.Local != nil {
 		if r, ok := d.Local.ResolveLocal(ctx, q, m); ok {

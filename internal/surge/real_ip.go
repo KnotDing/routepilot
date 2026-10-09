@@ -82,12 +82,27 @@ func (a *Adapter) refreshAlwaysRealIP(ctx context.Context) {
 	}
 	a.realIPCheckedAt = time.Now()
 	profile, err := readEffectiveProfile(ctx, a.Runner)
+	ipv6, ipv6Err := false, err
+	if ipv6Err == nil {
+		ipv6, ipv6Err = ParseIPv6(profile)
+	}
 	var entries []string
 	if err == nil {
 		entries, err = ParseAlwaysRealIP(profile)
 	}
 	a.mu.Lock()
 	defer a.mu.Unlock()
+	if ipv6Err != nil {
+		a.ipv6State = "unknown"
+		a.ipv6ReadError = "Surge IPv6 setting could not be read"
+	} else {
+		a.ipv6State = "disabled"
+		if ipv6 {
+			a.ipv6State = "enabled"
+		}
+		a.ipv6ObservedAt = time.Now()
+		a.ipv6ReadError = ""
+	}
 	if err != nil {
 		a.realIPReadError = "Surge always-real-ip configuration could not be read; retaining the last confirmed list"
 		return

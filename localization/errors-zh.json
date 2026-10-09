@@ -344,5 +344,12 @@
   "App replacement failed; previous App retained in {path}": "App 替换失败，旧 App 备份保留在 {path}",
   "Updated network service did not become ready; restoring the previous executable": "更新后的网络服务未就绪，正在恢复旧程序",
   "Unsafe Applications directory ownership or permissions": "Applications 目录所属用户或权限不安全",
-  "Update assistant is still running": "更新助手仍在运行，暂无法移除"
+  "Update assistant is still running": "更新助手仍在运行，暂无法移除",
+  "remote backend address changed; reconnect before signing in": "远程后端地址已变更，请重新连接后登录",
+  "AAAA fallback must be surge, block or upstream": "AAAA 回落必须为沿用规则、拦截或上游查询",
+  "Surge IPv6 setting could not be read": "无法读取 Surge IPv6 配置",
+  "Surge IPv6 setting is unavailable": "Surge IPv6 配置不可用",
+  "Surge IPv6 is disabled; AAAA query blocked with an empty successful response": "Surge 已关闭 IPv6，AAAA 查询已拦截并返回成功空响应",
+  "Surge IPv6 is disabled; AAAA query sent to configured real DNS upstreams": "Surge 已关闭 IPv6，AAAA 查询直接交给配置的真实 DNS 上游",
+  "AAAA fallback: blocked": "AAAA 回落：已拦截"
 }

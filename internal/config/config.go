@@ -21,6 +21,7 @@ type General struct {
 	Theme     string `json:"theme"`
 }
 type DNS struct {
+	AAAAFallback        string                      `json:"aaaa_fallback"`
 	Listeners           []string                    `json:"listeners"`
 	Transparent         []string                    `json:"transparent_listeners"`
 	InterceptionEnabled bool                        `json:"interception_enabled"`
@@ -298,7 +299,7 @@ func Default() Document {
 	return Document{Version: 1, Settings: Settings{
 		Routing: Routing{Mode: "bgp", FakeIPBackend: "bgp", DNSBackend: "bgp"},
 		General: General{"Surge Controller", "127.0.0.1:1055", "auto", "system"},
-		DNS:     DNS{Listeners: []string{"127.0.0.1:1053"}, PreserveOriginal: true, TimeoutMS: 2000, SourcePortFirst: 20000, SourcePortLast: 20999, Upstreams: []resolver.ResolverEndpoint{{Name: "Cloudflare", Protocol: "udp", Address: "1.1.1.1:53", Enabled: true}}},
+		DNS:     DNS{AAAAFallback: "surge", Listeners: []string{"127.0.0.1:1053"}, PreserveOriginal: true, TimeoutMS: 2000, SourcePortFirst: 20000, SourcePortLast: 20999, Upstreams: []resolver.ResolverEndpoint{{Name: "Cloudflare", Protocol: "udp", Address: "1.1.1.1:53", Enabled: true}}},
 		Surge:   Surge{CLIPath: "/Applications/Surge.app/Contents/Applications/surge-cli", DNS: "198.18.0.2:53", FakePrefixes: []string{"198.18.0.0/15"}},
 		BGP:     BGP{LocalASN: 64512, ListenPort: 179, RouteLimit: 128, HoldSeconds: 30, KeepaliveSeconds: 10},
 		Cache:   Cache{Capacity: 10000, ResponseCapacity: 10000, Workers: 8, Queue: 256, TimeoutMS: 500, DirectTTLSeconds: 300, SurgeTTLSeconds: 300, UnknownTTLSeconds: 10, ErrorTTLSeconds: 1, InvalidateDirectOnSelectionChange: true, InvalidateRejectOnSelectionChange: true},
@@ -339,6 +340,9 @@ func Community(s string) (uint32, error) {
 }
 func (d Document) Validate() error {
 	s := d.Settings
+	if s.DNS.AAAAFallback != "" && s.DNS.AAAAFallback != "surge" && s.DNS.AAAAFallback != "block" && s.DNS.AAAAFallback != "upstream" {
+		return errors.New("AAAA fallback must be surge, block or upstream")
+	}
 	if !validNotificationErrors(s.Notifications.Errors) {
 		return errors.New("notification errors must be unique supported event IDs")
 	}

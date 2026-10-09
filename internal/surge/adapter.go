@@ -17,6 +17,9 @@ import (
 )
 
 type Snapshot struct {
+	IPv6State              string    `json:"ipv6_state"`
+	IPv6ObservedAt         time.Time `json:"ipv6_observed_at"`
+	IPv6ReadError          string    `json:"ipv6_read_error,omitempty"`
 	Digest                 string    `json:"digest"`
 	SelectionDigest        string    `json:"selection_digest"`
 	Safe                   bool      `json:"context_safe"`
@@ -42,6 +45,10 @@ type Adapter struct {
 	realIPEntries     []string
 	realIPCheckedAt   time.Time
 	realIPObservedAt  time.Time
+	ipv6State         string
+	ipv6ObservedAt    time.Time
+	ipv6ReadError     string
+	profileIdentity   string
 	realIPReadError   string
 }
 type status struct {
@@ -173,9 +180,15 @@ func (a *Adapter) Refresh(ctx context.Context) (Snapshot, error) {
 			}
 		}
 	}
+	identity := st.Profile + "\x00" + st.ProfilePath
+	if a.profileIdentity != identity {
+		a.realIPCheckedAt = time.Time{}
+		a.profileIdentity = identity
+	}
 	a.refreshAlwaysRealIP(ctx)
 	a.mu.RLock()
 	realIPEntries := append([]string{}, a.realIPEntries...)
+	ipv6State, ipv6Observed, ipv6Error := a.ipv6State, a.ipv6ObservedAt, a.ipv6ReadError
 	realIPObserved, realIPError := a.realIPObservedAt, a.realIPReadError
 	a.mu.RUnlock()
 	canonical, err := json.Marshal(struct {
@@ -184,12 +197,14 @@ func (a *Adapter) Refresh(ctx context.Context) (Snapshot, error) {
 		Groups           []map[string]json.RawMessage
 		Resources        string
 		AlwaysRealIP     []string
-	}{st, rules, temp, groupObject.Groups, a.resourceDigest, realIPEntries})
+		IPv6             string
+	}{st, rules, temp, groupObject.Groups, a.resourceDigest, realIPEntries, ipv6State})
 	if err != nil {
 		return Snapshot{}, err
 	}
 	sum := sha256.Sum256(canonical)
 	snap := Snapshot{Digest: hex.EncodeToString(sum[:]), SelectionDigest: hex.EncodeToString(selectionSum[:]), Profile: st.Profile, Mode: st.Mode}
+	snap.IPv6State, snap.IPv6ObservedAt, snap.IPv6ReadError = ipv6State, ipv6Observed, ipv6Error
 	snap.AlwaysRealIPCount = len(realIPEntries)
 	snap.AlwaysRealIP = realIPEntries
 	snap.AlwaysRealIPObservedAt = realIPObserved
@@ -214,7 +229,10 @@ func (a *Adapter) Refresh(ctx context.Context) (Snapshot, error) {
 }
 func (a *Adapter) invalidate() {
 	a.mu.Lock()
-	a.snapshot = Snapshot{}
+	a.snapshot = Snapshot{IPv6State: "unknown", IPv6ReadError: "Surge IPv6 setting is unavailable"}
+	a.ipv6State = "unknown"
+	a.ipv6ReadError = "Surge IPv6 setting is unavailable"
+	a.realIPCheckedAt = time.Time{}
 	a.observedAt = time.Time{}
 	a.realIPReadError = "Surge is unavailable; retaining the last confirmed always-real-ip list"
 	a.mu.Unlock()

@@ -363,6 +363,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
             return
         }
         if message.name == "routepilotCredentials" {
+            if trusted, let values = message.body as? [String: String], values["action"] != nil {
+                Task { await handleRemoteCredentials(values) }
+                return
+            }
             let host = client.base.host?.trimmingCharacters(in: CharacterSet(charactersIn: "[]"))
             guard message.frameInfo.isMainFrame, origin.protocol == client.base.scheme,
                   origin.host == host, origin.port == client.base.port,
@@ -401,6 +405,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
               var preferences = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { return }
         preferences["assistantReady"] = UpdateAssistant.configured
         preferences["assistantSupported"] = true
+        preferences["remoteCredentialsSupported"] = true
         guard let seed = try? JSONSerialization.data(withJSONObject: preferences), let json = String(data: seed, encoding: .utf8) else { return }
         let source = marker + "window.routepilotNativePreferences=" + json + ";window.dispatchEvent(new Event('routepilot-preferences-changed'));"
         controller.addUserScript(WKUserScript(source: source, injectionTime: .atDocumentStart, forMainFrameOnly: true))

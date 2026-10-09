@@ -1,4 +1,5 @@
 import Foundation
+import CryptoKit
 import Security
 import Darwin
 
@@ -31,11 +32,29 @@ enum CredentialVault {
         }
     }
 
-    static func save(username: String, password: String, to selected: CredentialStorage? = nil) throws {
+    static func save(username: String, password: String, to selected: CredentialStorage? = nil, scope: String? = nil) throws {
         let credential = LoginCredential(username: username, password: password)
         switch selected ?? storage {
-        case .keychain: try KeychainCredentials.save(credential)
-        case .localFile: try LocalCredentials.save(credential)
+        case .keychain: try KeychainCredentials.save(credential, account: account(scope))
+        case .localFile: try LocalCredentials.save(credential, filename: filename(scope))
+        }
+    }
+
+    private static func digest(_ scope: String) -> String {
+        SHA256.hash(data: Data(scope.utf8)).map { String(format: "%02x", $0) }.joined()
+    }
+    private static func account(_ scope: String?) -> String { scope.map { "remote-login-" + digest($0) } ?? "controller-login" }
+    private static func filename(_ scope: String?) -> String { scope.map { "remote-" + digest($0) + ".json" } ?? "login.json" }
+    static func saved(scope: String, from selected: CredentialStorage? = nil) throws -> LoginCredential? {
+        switch selected ?? storage {
+        case .keychain: return KeychainCredentials.load(account: account(scope))
+        case .localFile: return try LocalCredentials.load(filename: filename(scope))
+        }
+    }
+    static func forget(scope: String, from selected: CredentialStorage? = nil) throws {
+        switch selected ?? storage {
+        case .keychain: KeychainCredentials.delete(account: account(scope))
+        case .localFile: try LocalCredentials.delete(filename: filename(scope))
         }
     }
 
@@ -49,12 +68,11 @@ enum CredentialVault {
 
 private enum KeychainCredentials {
     private static let service = Bundle.main.bundleIdentifier ?? "com.routepilot.app"
-    private static let account = "controller-login"
-    private static var query: [String: Any] {
+    private static func query(_ account: String) -> [String: Any] {
         [kSecClass as String: kSecClassGenericPassword, kSecAttrService as String: service, kSecAttrAccount as String: account]
     }
-    static func load() -> LoginCredential? {
-        var request = query
+    static func load(account: String = "controller-login") -> LoginCredential? {
+        var request = query(account)
         request[kSecReturnData as String] = true
         request[kSecMatchLimit as String] = kSecMatchLimitOne
         var item: CFTypeRef?
@@ -62,12 +80,12 @@ private enum KeychainCredentials {
               let data = item as? Data else { return nil }
         return try? JSONDecoder().decode(LoginCredential.self, from: data)
     }
-    static func save(_ credential: LoginCredential) throws {
+    static func save(_ credential: LoginCredential, account: String) throws {
         let data = try JSONEncoder().encode(credential)
         let attributes: [String: Any] = [kSecValueData as String: data, kSecAttrAccessible as String: kSecAttrAccessibleWhenUnlockedThisDeviceOnly]
-        let result = SecItemUpdate(query as CFDictionary, attributes as CFDictionary)
+        let result = SecItemUpdate(query(account) as CFDictionary, attributes as CFDictionary)
         if result == errSecItemNotFound {
-            var request = query
+            var request = query(account)
             attributes.forEach { request[$0.key] = $0.value }
             let addResult = SecItemAdd(request as CFDictionary, nil)
             guard addResult == errSecSuccess else { throw AppFailure(message: L("钥匙串无法保存登录凭证")) }
@@ -75,14 +93,13 @@ private enum KeychainCredentials {
             throw AppFailure(message: L("钥匙串无法保存登录凭证"))
         }
     }
-    static func delete() { SecItemDelete(query as CFDictionary) }
+    static func delete(account: String = "controller-login") { SecItemDelete(query(account) as CFDictionary) }
 }
 
 private enum LocalCredentials {
     // Keep credentials separate from the backend's data directory and exports.
     private static let directory = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
         .appendingPathComponent("RoutePilot/Credentials", isDirectory: true)
-    private static let filename = "login.json"
     private static func failure() -> AppFailure { AppFailure(message: L("本地登录凭证文件无法访问，请检查用户目录权限。")) }
 
     private static func openDirectory(create: Bool) throws -> Int32? {
@@ -102,7 +119,7 @@ private enum LocalCredentials {
         return fd
     }
 
-    static func load() throws -> LoginCredential? {
+    static func load(filename: String = "login.json") throws -> LoginCredential? {
         guard let directoryFD = try openDirectory(create: false) else { return nil }
         defer { Darwin.close(directoryFD) }
         let fd = openat(directoryFD, filename, O_RDONLY | O_NOFOLLOW | O_NONBLOCK | O_CLOEXEC)
@@ -120,7 +137,7 @@ private enum LocalCredentials {
         return try JSONDecoder().decode(LoginCredential.self, from: data)
     }
 
-    static func save(_ credential: LoginCredential) throws {
+    static func save(_ credential: LoginCredential, filename: String) throws {
         guard let directoryFD = try openDirectory(create: true) else { throw failure() }
         defer { Darwin.close(directoryFD) }
         let data = try JSONEncoder().encode(credential)
@@ -137,7 +154,7 @@ private enum LocalCredentials {
         guard renameat(directoryFD, temporary, directoryFD, filename) == 0 else { throw failure() }
     }
 
-    static func delete() throws {
+    static func delete(filename: String = "login.json") throws {
         guard let directoryFD = try openDirectory(create: false) else { return }
         defer { Darwin.close(directoryFD) }
         guard unlinkat(directoryFD, filename, 0) == 0 || errno == ENOENT else { throw failure() }

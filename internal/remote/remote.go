@@ -137,6 +137,29 @@ func (m *Manager) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		failure(w, 422, "invalid remote backend origin")
 		return
 	}
+	// Bind credential submissions to the address the client actually selected.
+	// A concurrent profile edit must not forward saved passwords to a new host.
+	if r.Method == "POST" && parts[1] == "login" {
+		if expected := r.Header.Get("X-RoutePilot-Expected-Backend"); expected != "" {
+			selected, e := config.BackendURL(expected)
+			origin := func(u *url.URL) string {
+				port := u.Port()
+				if port == "" {
+					if u.Scheme == "https" {
+						port = "443"
+					} else {
+						port = "80"
+					}
+				}
+				return u.Scheme + "://" + strings.ToLower(u.Hostname()) + ":" + port
+			}
+			if e != nil || origin(selected) != origin(target) {
+				failure(w, 409, "remote backend address changed; reconnect before signing in")
+				return
+			}
+		}
+	}
+
 	c := m.get(cookie.Value + "|" + backend.ID + "|" + target.String())
 	if c == nil {
 		failure(w, 503, "remote connection capacity exhausted")
