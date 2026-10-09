@@ -1,5 +1,6 @@
 import React,{useEffect,useState} from 'react';
 import {useT,translate,valueLabel} from './i18n';
+import {notificationSelected} from './notification-errors';
 
 const defaults={automaticCheck:true,automaticDownload:false,updatePrompts:true,checkIntervalHours:12,desktopNotifications:false,notificationSound:true};
 export function nativeApp(){return Boolean(window.webkit?.messageHandlers?.routepilotPreferences)}
@@ -31,7 +32,6 @@ export function AppPreferencesPanel({kind,notify}){
 
 // Per-backend alarm state survives Workspace switches during this page session.
 const alarms=new Map();
-function selected(name,settings){return settings[name.startsWith('Surge')?'surge':name.startsWith('BGP')||name.includes('routing')?'bgp':name.includes('DNS')?'dns':'controller']}
 export function observeServices({scope,name,health,settings,remote,backendID}){
  if(nativeApp()){
   if(remote)window.webkit.messageHandlers.routepilotServiceHealth?.postMessage({scope,name,health,settings,backendID});
@@ -42,7 +42,7 @@ export function observeServices({scope,name,health,settings,remote,backendID}){
  const previous=alarms.get(scope)||new Map(),seen=new Set(),now=Date.now(),cooldown=Math.max(0,settings.cooldown_seconds??300)*1000,down=[],up=[];
  for(const component of health){
   const key=component.name,state=component.state;
-  if(!selected(key,settings)||state==='DISABLED')continue;
+  if(!notificationSelected(key,settings)||state==='DISABLED')continue;
   seen.add(key);const alarm=previous.get(key)||{down:false,last:0};
   if(state==='DOWN'&&(!alarm.down||cooldown>0)&&now-alarm.last>=cooldown){down.push(key);alarm.down=true;alarm.last=now}
   else if(state==='UP'){if(alarm.down&&settings.recovery)up.push(key);alarm.down=false}

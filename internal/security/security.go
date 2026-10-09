@@ -25,11 +25,12 @@ type attempt struct {
 	Count int
 }
 type Manager struct {
-	mu         sync.Mutex
-	settings   config.Security
-	sessions   map[string]session
-	attempts   map[string]attempt
-	loginSlots chan struct{}
+	mu            sync.Mutex
+	settings      config.Security
+	sessions      map[string]session
+	attempts      map[string]attempt
+	loginSlots    chan struct{}
+	updateHandoff bool
 }
 
 func New(c config.Security) *Manager {
@@ -40,6 +41,7 @@ func (m *Manager) Update(c config.Security) {
 	defer m.mu.Unlock()
 	m.settings = c
 	m.sessions = map[string]session{}
+	m.discardUpdateSessions()
 }
 func Hash(password string) (string, error) {
 	b, e := bcrypt.GenerateFromPassword([]byte(password), 12)
@@ -178,6 +180,7 @@ func (m *Manager) Wrap(next http.Handler) http.Handler {
 			if cookie, e := r.Cookie("controller_session"); e == nil {
 				m.mu.Lock()
 				delete(m.sessions, cookie.Value)
+				m.discardUpdateSessions()
 				m.mu.Unlock()
 			}
 			http.SetCookie(w, &http.Cookie{Name: "controller_session", Value: "", Path: "/", MaxAge: -1, HttpOnly: true, Secure: r.TLS != nil, SameSite: http.SameSiteStrictMode})

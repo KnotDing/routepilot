@@ -31,6 +31,7 @@ import (
 	"surge-controller/internal/resolver"
 	"surge-controller/internal/routing"
 	"surge-controller/internal/security"
+	"surge-controller/internal/softwareupdate"
 	"surge-controller/internal/state"
 	"surge-controller/internal/surge"
 	"surge-controller/web"
@@ -201,6 +202,11 @@ func Open(ctx context.Context, path string) (*App, error) {
 		return nil, fmt.Errorf("load DNS statistics: %w", e)
 	}
 	a := &App{ruleTests: make(chan struct{}, 2), lockFile: lock, config: d, store: store, bus: events.New(), security: security.New(d.Settings.Security), ctx: ctx, dir: filepath.Dir(path), webChanged: make(chan struct{}, 1)}
+	if os.Geteuid() == 0 && filepath.Clean(path) == "/var/db/surge-controller/controller.sqlite" {
+		if err := a.security.RestoreUpdateSessions(); err != nil {
+			slog.Warn("Update session handoff could not be restored", "error", err)
+		}
+	}
 	a.dnsCounters.Restore(counters)
 	a.remote = remote.New(func() []config.Backend { return a.Configuration().Settings.RemoteBackends })
 	a.eventRetention.Store(int64(d.Settings.Logging.EventRetention))
@@ -210,7 +216,7 @@ func Open(ctx context.Context, path string) (*App, error) {
 	a.notificationDone = make(chan struct{})
 	a.notifications = notifications.New(a.event)
 	go func() { defer close(a.notificationDone); a.notifications.Run(notificationCtx) }()
-	a.control = &api.API{Service: a, Store: a.store, Bus: a.bus}
+	a.control = &api.API{Service: a, Store: a.store, Bus: a.bus, SoftwareUpdates: softwareupdate.New(ctx, path, a.security.SaveUpdateSessions)}
 	go a.control.RunRouteFeedScheduler(ctx)
 	var savedDecisions decisionCacheSnapshot
 	if err := store.LoadDecisionCache(ctx, &savedDecisions); err != nil {
@@ -943,7 +949,7 @@ func (a *App) View(ctx context.Context, key string) (any, error) {
 	switch key {
 	case "status":
 		p := rt.machine.Plan()
-		return map[string]any{"software": buildinfo.Current(), "name": a.config.Settings.General.Name, "mode": a.config.Settings.General.Mode, "state": p.State, "fake_ip_enabled": p.AllowFakeIP, "queries_per_minute": rt.queryRate.Load(), "counters": rt.dispatcher.Statistics().Snapshot(), "warning": rt.Fault(), "uptime_seconds": int(time.Since(rt.started).Seconds())}, nil
+		return map[string]any{"software": buildinfo.Current(), "online_update": true, "name": a.config.Settings.General.Name, "mode": a.config.Settings.General.Mode, "state": p.State, "fake_ip_enabled": p.AllowFakeIP, "queries_per_minute": rt.queryRate.Load(), "counters": rt.dispatcher.Statistics().Snapshot(), "warning": rt.Fault(), "uptime_seconds": int(time.Since(rt.started).Seconds())}, nil
 	case "health":
 		values := rt.health.Values()
 		sort.Slice(values, func(i, j int) bool { return values[i].Name < values[j].Name })
@@ -1169,6 +1175,7 @@ func (a *App) Serve(ctx context.Context) error {
 			}
 		}()
 		slog.Info("management ready", "address", c.General.WebListen)
+		a.control.SoftwareUpdates.MarkReady()
 		var recoveryListener net.Listener
 		var recoveryServer *http.Server
 		if c.General.WebListen != managementRecoveryAddress {

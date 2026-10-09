@@ -1,0 +1,15 @@
+[
+  {"id":"surge_cli","name":"Surge CLI","prefix":false,"group":"surge","title":"Surge CLI 读取或执行失败"},
+  {"id":"surge_api","name":"Surge API","prefix":false,"group":"surge","title":"Surge HTTP API 不可用"},
+  {"id":"surge_dns","name":"Surge Fake-IP DNS","prefix":false,"group":"surge","title":"Surge Fake-IP DNS 解析异常"},
+  {"id":"bgp_engine","name":"BGP engine","prefix":false,"group":"bgp","title":"BGP 引擎或路由发布异常"},
+  {"id":"bgp_peer","name":"BGP peer ","prefix":true,"group":"bgp","title":"BGP 邻居会话未建立或断开"},
+  {"id":"fake_ip_routing","name":"Fake-IP routing","prefix":false,"group":"bgp","title":"Fake-IP 路由后端未就绪"},
+  {"id":"real_dns","name":"Real DNS","prefix":false,"group":"dns","title":"真实 DNS 上游不可用"},
+  {"id":"dns_listener","name":"DNS listener","prefix":false,"group":"dns","title":"DNS 监听器异常"},
+  {"id":"transparent_dns","name":"Transparent DNS","prefix":false,"group":"dns","title":"透明 DNS 监听或 PF 拦截异常"},
+  {"id":"dns_routing","name":"DNS interception routing","prefix":false,"group":"dns","title":"DNS 拦截路由后端未就绪"},
+  {"id":"controller","name":"Controller","prefix":false,"group":"controller","title":"控制器入口或出口网络异常"},
+  {"id":"database","name":"Database","prefix":false,"group":"controller","title":"数据库不可用"},
+  {"id":"management_connection","name":"Management connection","prefix":false,"group":"controller","title":"管理服务连接中断"}
+]

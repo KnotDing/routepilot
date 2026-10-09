@@ -15,6 +15,7 @@ import (
 	"surge-controller/internal/frr"
 	"surge-controller/internal/routeimport"
 	"surge-controller/internal/security"
+	"surge-controller/internal/softwareupdate"
 	"sync"
 	"time"
 )
@@ -36,6 +37,7 @@ type API struct {
 	Bus               *events.Bus
 	mutation          sync.Mutex
 	RouteImportClient *http.Client
+	SoftwareUpdates   *softwareupdate.Manager
 }
 
 // RunRouteFeedScheduler keeps URL-managed route snapshots current while the
@@ -180,6 +182,44 @@ func (a *API) Handler() http.Handler {
 }
 func (a *API) serve(w http.ResponseWriter, r *http.Request) {
 	path := strings.TrimPrefix(r.URL.Path, "/api/v1/")
+	if strings.HasPrefix(path, "updates/") {
+		if a.SoftwareUpdates == nil {
+			fail(w, 501, errors.New("Backend online updates are not supported"))
+			return
+		}
+		switch {
+		case path == "updates/status" && r.Method == "GET":
+			write(w, 200, a.SoftwareUpdates.Status())
+		case path == "updates/check" && r.Method == "GET":
+			status, err := a.SoftwareUpdates.Check(r.Context())
+			if err != nil {
+				fail(w, 502, err)
+			} else {
+				write(w, 200, status)
+			}
+		case path == "updates/install" && r.Method == "POST":
+			if !a.Service.Configuration().Settings.Security.Authentication {
+				fail(w, 403, errors.New("Enable management authentication before online backend updates"))
+				return
+			}
+			var body struct {
+				Version string `json:"version"`
+			}
+			if err := decode(w, r, &body); err != nil {
+				fail(w, 400, err)
+				return
+			}
+			status, err := a.SoftwareUpdates.Start(body.Version)
+			if err != nil {
+				fail(w, 409, err)
+			} else {
+				write(w, 202, status)
+			}
+		default:
+			fail(w, 404, errors.New("unknown update endpoint"))
+		}
+		return
+	}
 	if path == "resources/bulk-delete" && r.Method == "POST" {
 		var body struct {
 			Resource string   `json:"resource"`

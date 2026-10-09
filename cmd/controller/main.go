@@ -21,10 +21,12 @@ import (
 
 	"github.com/miekg/dns"
 	"surge-controller/internal/app"
+	"surge-controller/internal/buildinfo"
 	"surge-controller/internal/classifier"
 	"surge-controller/internal/dnsserver"
 	"surge-controller/internal/model"
 	"surge-controller/internal/resolver"
+	"surge-controller/internal/softwareupdate"
 	"surge-controller/internal/surge"
 )
 
@@ -56,6 +58,17 @@ func (j *journal) record(kind string, payload any) {
 	_ = json.NewEncoder(j.file).Encode(map[string]any{"run_id": j.runID, "kind": kind, "at": time.Now().UTC(), "payload": payload})
 }
 func main() {
+	if len(os.Args) == 2 && os.Args[1] == "version" {
+		_ = json.NewEncoder(os.Stdout).Encode(buildinfo.Current())
+		return
+	}
+	if len(os.Args) == 2 && os.Args[1] == "update-worker" {
+		if err := softwareupdate.RunWorker(); err != nil {
+			slog.Error("backend update failed", "error", err)
+			os.Exit(1)
+		}
+		return
+	}
 	if len(os.Args) > 1 && os.Args[1] == "cleanup-pf" {
 		fs := flag.NewFlagSet("cleanup-pf", flag.ExitOnError)
 		dir := fs.String("state-directory", "/var/db/surge-controller", "private service state directory")

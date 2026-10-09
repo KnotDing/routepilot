@@ -98,16 +98,17 @@ type Logging struct {
 	EventRetention  int    `json:"event_retention"`
 }
 type Notifications struct {
-	Enabled           bool   `json:"enabled"`
-	Surge             bool   `json:"surge"`
-	BGP               bool   `json:"bgp"`
-	DNS               bool   `json:"dns"`
-	Controller        bool   `json:"controller"`
-	Recovery          bool   `json:"recovery"`
-	CooldownSeconds   int    `json:"cooldown_seconds"`
-	WebhookURL        string `json:"webhook_url,omitempty"`
-	WebhookConfigured bool   `json:"webhook_configured"`
-	ClearWebhook      bool   `json:"clear_webhook,omitempty"`
+	Enabled           bool     `json:"enabled"`
+	Errors            []string `json:"errors"`
+	Surge             bool     `json:"surge"`
+	BGP               bool     `json:"bgp"`
+	DNS               bool     `json:"dns"`
+	Controller        bool     `json:"controller"`
+	Recovery          bool     `json:"recovery"`
+	CooldownSeconds   int      `json:"cooldown_seconds"`
+	WebhookURL        string   `json:"webhook_url,omitempty"`
+	WebhookConfigured bool     `json:"webhook_configured"`
+	ClearWebhook      bool     `json:"clear_webhook,omitempty"`
 }
 type Security struct {
 	Authentication     bool     `json:"authentication"`
@@ -260,6 +261,9 @@ func HostPattern(domain, match string) (string, error) {
 // Clone prevents an unvalidated management edit from mutating live slices.
 func (d Document) Clone() Document {
 	c := d
+	if d.Settings.Notifications.Errors != nil {
+		c.Settings.Notifications.Errors = append([]string{}, d.Settings.Notifications.Errors...)
+	}
 	c.Settings.RemoteBackends = append([]Backend{}, d.Settings.RemoteBackends...)
 	c.Settings.DNS.Listeners = append([]string{}, d.Settings.DNS.Listeners...)
 	c.Settings.DNS.Transparent = append([]string{}, d.Settings.DNS.Transparent...)
@@ -335,6 +339,9 @@ func Community(s string) (uint32, error) {
 }
 func (d Document) Validate() error {
 	s := d.Settings
+	if !validNotificationErrors(s.Notifications.Errors) {
+		return errors.New("notification errors must be unique supported event IDs")
+	}
 	if s.Notifications.CooldownSeconds < 0 || s.Notifications.CooldownSeconds > 86400 {
 		return errors.New("notification cooldown must be between 0 and 86400 seconds")
 	}

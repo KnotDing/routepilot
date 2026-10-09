@@ -33,28 +33,16 @@ type componentState struct {
 	lastAlert time.Time
 }
 type Manager struct {
-	mu        sync.Mutex
-	states    map[string]componentState
-	queue     chan job
-	event     func(string, string, string)
-	activeURL string
+	mu             sync.Mutex
+	states         map[string]componentState
+	queue          chan job
+	event          func(string, string, string)
+	activeURL      string
+	activeSettings config.Notifications
 }
 
 func New(event func(string, string, string)) *Manager {
 	return &Manager{states: map[string]componentState{}, queue: make(chan job, 32), event: event}
-}
-
-func selected(name string, s config.Notifications) bool {
-	switch {
-	case strings.HasPrefix(name, "Surge"):
-		return s.Surge
-	case strings.HasPrefix(name, "BGP") || strings.Contains(name, "routing"):
-		return s.BGP
-	case strings.Contains(name, "DNS"):
-		return s.DNS
-	default:
-		return s.Controller
-	}
 }
 
 // Observe consumes already-debounced health states. Delivery never blocks probes.
@@ -65,6 +53,10 @@ func (m *Manager) Observe(name string, s config.Notifications, values []state.Co
 		m.states = map[string]componentState{}
 	}
 	m.activeURL = s.WebhookURL
+	m.activeSettings = s
+	if s.Errors != nil {
+		m.activeSettings.Errors = append([]string{}, s.Errors...)
+	}
 	if !s.Enabled || s.WebhookURL == "" {
 		m.activeURL = ""
 		m.states = map[string]componentState{}
@@ -74,7 +66,7 @@ func (m *Manager) Observe(name string, s config.Notifications, values []state.Co
 	seen := map[string]bool{}
 	var down, recovered []string
 	for _, c := range values {
-		if !selected(c.Name, s) || c.State == "DISABLED" {
+		if !s.Selected(c.Name) || c.State == "DISABLED" {
 			continue
 		}
 		seen[c.Name] = true
@@ -133,15 +125,27 @@ func (m *Manager) Run(ctx context.Context) {
 		case <-ctx.Done():
 			return
 		case item := <-m.queue:
-			data, err := json.Marshal(item.payload)
-			if err != nil {
-				continue
-			}
 			for attempt := 0; attempt < 3; attempt++ {
 				m.mu.Lock()
-				active := m.activeURL == item.url
+				settings := m.activeSettings
+				active := m.activeURL == item.url && settings.Enabled && (item.payload.State != "UP" || settings.Recovery)
 				m.mu.Unlock()
 				if !active {
+					break
+				}
+				payload := item.payload
+				payload.Components = nil
+				for _, name := range item.payload.Components {
+					if settings.Selected(name) {
+						payload.Components = append(payload.Components, name)
+					}
+				}
+				if len(payload.Components) == 0 {
+					break
+				}
+				payload.Body = strings.Join(payload.Components, "、")
+				data, err := json.Marshal(payload)
+				if err != nil {
 					break
 				}
 				request, err := http.NewRequestWithContext(ctx, http.MethodPost, item.url, bytes.NewReader(data))

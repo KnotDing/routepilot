@@ -1,6 +1,24 @@
 import Foundation
 import UserNotifications
 
+private enum NotificationSelection {
+    private struct Event: Decodable { let id: String; let name: String; let prefix: Bool }
+    private static let events: [Event] = {
+        guard let url = Bundle.main.url(forResource: "notification-events", withExtension: "json"),
+              let data = try? Data(contentsOf: url),
+              let events = try? JSONDecoder().decode([Event].self, from: data) else { return [] }
+        return events
+    }()
+    static func selected(_ name: String, settings: [String: Any]) -> Bool {
+        if let errors = settings["errors"] as? [String] {
+            guard let event = events.first(where: { $0.prefix ? name.hasPrefix($0.name) : name == $0.name }) else { return false }
+            return errors.contains(event.id)
+        }
+        let category = name.hasPrefix("Surge") ? "surge" : name.hasPrefix("BGP") || name.contains("routing") ? "bgp" : name.contains("DNS") ? "dns" : "controller"
+        return settings[category] as? Bool == true
+    }
+}
+
 struct AppPreferences: Codable {
     var automaticCheck = true
     var automaticDownload = false
@@ -58,8 +76,7 @@ final class ServiceNotifications {
         var seen = Set<String>(), failures: [String] = [], recovered: [String] = []
         for component in health.prefix(256) {
             guard let key = component["name"] as? String, let state = component["state"] as? String else { continue }
-            let category = key.hasPrefix("Surge") ? "surge" : key.hasPrefix("BGP") || key.contains("routing") ? "bgp" : key.contains("DNS") ? "dns" : "controller"
-            guard settings[category] as? Bool == true, state != "DISABLED" else { continue }
+            guard NotificationSelection.selected(key, settings: settings), state != "DISABLED" else { continue }
             seen.insert(key)
             var alarm = previous[key] ?? Alarm()
             if state == "DOWN", (!alarm.down || cooldown > 0), now.timeIntervalSince(alarm.lastAlert) >= Double(cooldown) {

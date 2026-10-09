@@ -6,6 +6,7 @@ cd "$project_dir"
 mkdir -p artifacts
 package_dir=$(mktemp -d "$project_dir/artifacts/surge-controller-macos.XXXXXX")
 mkdir -p "$package_dir/bin" "$package_dir/scripts" "$package_dir/launchd" "$package_dir/docs"
+codesign --force --sign - bin/surge-controller bin/dns-probe
 cp bin/surge-controller bin/dns-probe "$package_dir/bin/"
 cp scripts/install_macos.sh scripts/uninstall_macos.sh scripts/update_macos.sh "$package_dir/scripts/"
 cp launchd/com.routepilot.surge-controller.plist "$package_dir/launchd/"

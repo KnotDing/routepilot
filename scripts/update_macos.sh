@@ -7,6 +7,8 @@ umask 077
 project_dir=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 service_dir=/usr/local/libexec/surge-controller
 service_bin=$service_dir/surge-controller
+update_pid=$(/bin/launchctl print system/com.routepilot.update-worker 2>/dev/null | /usr/bin/awk '/^[[:space:]]*pid =/ { print $3; exit }' || true)
+[ -z "$update_pid" ] || { echo 'An online backend update is in progress; wait for it to finish' >&2; exit 1; }
 service_plist=/Library/LaunchDaemons/com.routepilot.surge-controller.plist
 for regular in "$project_dir/bin/surge-controller" "$service_bin" "$service_plist"; do
   [ -f "$regular" ] && [ ! -L "$regular" ] || { echo 'A regular existing service and executable are required' >&2; exit 1; }
