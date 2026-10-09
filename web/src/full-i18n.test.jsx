@@ -64,12 +64,12 @@ it('shows never for unset health times and rounds monitoring latency to integer 
 });
 
 
-it('keeps language in settings and global controls in the sidebar',async()=>{
+it('keeps mode selection in routing settings and connection actions in the sidebar',async()=>{
  let mode='auto';
  const fetch=vi.fn(async(url,options)=>{
   const path=String(url).replace('/api/v1/','');
-  if(path==='mode'&&options.method==='PUT')mode=JSON.parse(options.body).mode;
-  const value=path==='status'?{...fixture(path),mode}:fixture(path);
+  if(path==='settings'&&options.method==='PUT'){const submitted=JSON.parse(options.body);mode=submitted.general.mode;return {ok:true,status:200,json:async()=>({settings:submitted})};}
+  const value=path==='status'?{...fixture(path),mode}:path==='settings'?{...settings,general:{...settings.general,mode}}:fixture(path);
   return {ok:true,status:200,json:async()=>value};
  });
  vi.stubGlobal('fetch',fetch);vi.stubGlobal('EventSource',class{addEventListener(){}close(){}});
@@ -80,13 +80,18 @@ it('keeps language in settings and global controls in the sidebar',async()=>{
  expect(document.querySelector('.connection-banner')).toBeNull();
  expect(within(sidebar.querySelector('.aside-foot')).getByRole('button',{name:'退出',exact:true})).toBeInTheDocument();
  expect(within(sidebar.querySelector('.aside-foot')).getByRole('button',{name:'本地服务 · 切换',exact:true})).toBeInTheDocument();
- const selection=within(sidebar).getByRole('combobox',{name:'全局模式'});
- expect(selection.closest('.nav-heading')).toHaveTextContent('总览');
- fireEvent.change(selection,{target:{value:'force-direct'}});
- await waitFor(()=>expect(selection).toHaveValue('force-direct'));
- expect(fetch.mock.calls.some(([url,options])=>String(url).endsWith('/mode')&&options.method==='PUT'&&JSON.parse(options.body).mode==='force-direct')).toBe(true);
+ expect(within(sidebar).queryByRole('combobox')).not.toBeInTheDocument();
+ expect(within(sidebar).getByLabelText('当前分流模式')).toHaveTextContent('自动分流');
  fireEvent.click(within(sidebar).getByRole('button',{name:'设置',exact:true}));
  expect(screen.getAllByLabelText(/页面语言|Page language/)).toHaveLength(1);
+ expect(screen.queryByRole('combobox',{name:'全局模式'})).not.toBeInTheDocument();
+ fireEvent.click(within(document.querySelector('.tabs')).getByRole('button',{name:'路由',exact:true}));
+ const selection=screen.getByRole('combobox',{name:'分流模式'});
+ fireEvent.change(selection,{target:{value:'force-direct'}});
+ expect(selection).toHaveValue('force-direct');
+ fireEvent.click(screen.getByRole('button',{name:'保存设置'}));
+ await waitFor(()=>expect(fetch.mock.calls.some(([url,options])=>String(url).endsWith('/settings')&&options.method==='PUT'&&JSON.parse(options.body).general.mode==='force-direct')).toBe(true));
+ await waitFor(()=>expect(within(sidebar).getByLabelText('当前分流模式')).toHaveTextContent('强制直连'));
  fireEvent.click(screen.getByRole('button',{name:'DNS',exact:true}));
  expect(screen.queryAllByLabelText(/页面语言|Page language/)).toHaveLength(0);
 });

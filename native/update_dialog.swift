@@ -2,6 +2,7 @@ import AppKit
 import WebKit
 
 // No privileged bridge is exposed to the offline Markdown viewer.
+@MainActor
 private final class ReleaseNotesView: WKWebView {
     override func viewDidChangeEffectiveAppearance() {
         super.viewDidChangeEffectiveAppearance()
@@ -29,6 +30,7 @@ private final class ReleaseNotesView: WKWebView {
 }
 
 // A single compact decision window, with a plain disclosure and horizontal actions.
+@MainActor
 final class ReleaseUpdateDialog: NSObject, NSWindowDelegate, WKNavigationDelegate {
     enum Choice { case install, later, skip }
     private let panel = NSPanel(contentRect: NSRect(x: 0, y: 0, width: 520, height: 260),
@@ -38,9 +40,11 @@ final class ReleaseUpdateDialog: NSObject, NSWindowDelegate, WKNavigationDelegat
     private let titleLabel = NSTextField(labelWithString: "")
     private let icon = NSImageView()
     private var notes: ReleaseNotesView!
+    private let notesError = NSTextField(wrappingLabelWithString: "")
+    private var notesFailed = false
     private var buttons: [NSButton] = []
     private var expanded = false
-    private var choice: Choice = .later
+    private var continuation: CheckedContinuation<Choice, Never>?
 
     init(release: GiteaRelease, assistantReady: Bool) {
         super.init()
@@ -77,14 +81,21 @@ final class ReleaseUpdateDialog: NSObject, NSWindowDelegate, WKNavigationDelegat
         notes.navigationDelegate = self
         notes.underPageBackgroundColor = .windowBackgroundColor
         notes.setAccessibilityLabel(L("更新说明"))
+        notesError.stringValue = L("更新说明加载失败，请关闭窗口后重新检查更新。")
+        notesError.textColor = .secondaryLabelColor
+        notesError.isSelectable = true
+        notesError.isHidden = true
         let body = release.body?.trimmingCharacters(in: .whitespacesAndNewlines)
         let payload: [String: Any] = ["body": body?.isEmpty == false ? body! : L("此版本未提供更新说明。"),
                                      "locale": Locale.preferredLanguages.first ?? "zh-CN", "appearance": notes.appearanceValues()]
         if let data = try? JSONSerialization.data(withJSONObject: payload), let json = String(data: data, encoding: .utf8) {
             contentController.addUserScript(WKUserScript(source: "window.routepilotReleaseNotes = \(json);", injectionTime: .atDocumentStart, forMainFrameOnly: true))
         }
-        if let directory = Bundle.main.resourceURL?.appendingPathComponent("ReleaseNotes", isDirectory: true) {
+        if let directory = Bundle.main.resourceURL?.appendingPathComponent("ReleaseNotes", isDirectory: true),
+           FileManager.default.fileExists(atPath: directory.appendingPathComponent("notes.html").path) {
             notes.loadFileURL(directory.appendingPathComponent("notes.html"), allowingReadAccessTo: directory)
+        } else {
+            notesFailed = true
         }
         notes.isHidden = true
         for (index, title) in [L("跳过该版本"), L("稍后升级"), L("立即升级")].enumerated() {
@@ -96,7 +107,7 @@ final class ReleaseUpdateDialog: NSObject, NSWindowDelegate, WKNavigationDelegat
             buttons.append(button)
         }
         panel.defaultButtonCell = buttons.last?.cell as? NSButtonCell
-        for view in [icon, titleLabel, descriptionLabel, disclosure, notes!] + buttons {
+        for view in [icon, titleLabel, descriptionLabel, disclosure, notes!, notesError] + buttons {
             panel.contentView?.addSubview(view)
         }
         layout()
@@ -115,6 +126,7 @@ final class ReleaseUpdateDialog: NSObject, NSWindowDelegate, WKNavigationDelegat
         descriptionLabel.frame = NSRect(x: padding, y: height - padding - 44 - 14 - textHeight, width: inner, height: textHeight)
         disclosure.frame = NSRect(x: padding, y: padding + 32 + 18 + (expanded ? 272 : 0), width: inner, height: 28)
         notes.frame = NSRect(x: padding, y: padding + 32 + 18, width: inner, height: 260)
+        notesError.frame = NSRect(x: padding + 4, y: padding + 32 + 18 + 200, width: inner - 8, height: 48)
         let buttonWidth = (inner - 20) / 3
         for (index, button) in buttons.enumerated() {
             button.frame = NSRect(x: padding + CGFloat(index) * (buttonWidth + 10), y: padding, width: buttonWidth, height: 32)
@@ -124,20 +136,38 @@ final class ReleaseUpdateDialog: NSObject, NSWindowDelegate, WKNavigationDelegat
         expanded.toggle()
         disclosure.title = (expanded ? "▾ " : "▸ ") + L("更新说明")
         disclosure.setAccessibilityValue(expanded ? 1 : 0)
-        notes.isHidden = !expanded
+        notes.isHidden = !expanded || notesFailed
+        notesError.isHidden = !expanded || !notesFailed
         layout()
     }
     @objc private func selectChoice(_ sender: NSButton) {
-        choice = sender.tag == 2 ? .install : sender.tag == 0 ? .skip : .later
-        NSApp.stopModal()
-        panel.orderOut(nil)
+        finish(sender.tag == 2 ? .install : sender.tag == 0 ? .skip : .later)
     }
     func windowShouldClose(_ sender: NSWindow) -> Bool {
-        choice = .later
-        NSApp.stopModal()
+        finish(.later)
         return true
     }
-    func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) { notes.updateAppearance() }
+    private func finish(_ choice: Choice) {
+        guard let pending = continuation else { return }
+        continuation = nil
+        panel.orderOut(nil)
+        pending.resume(returning: choice)
+    }
+    private func showNotesFailure() {
+        notesFailed = true
+        notes.isHidden = true
+        notesError.isHidden = !expanded
+    }
+    func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
+        notes.updateAppearance()
+        webView.evaluateJavaScript("Boolean(document.querySelector('.markdown-notes'))") { [weak self] value, error in
+            guard let self else { return }
+            if error != nil || value as? Bool != true { self.showNotesFailure() }
+        }
+    }
+    func webView(_ webView: WKWebView, didFail navigation: WKNavigation!, withError error: Error) { showNotesFailure() }
+    func webView(_ webView: WKWebView, didFailProvisionalNavigation navigation: WKNavigation!, withError error: Error) { showNotesFailure() }
+    func webViewWebContentProcessDidTerminate(_ webView: WKWebView) { showNotesFailure() }
     func webView(_ webView: WKWebView, decidePolicyFor navigationAction: WKNavigationAction,
                  decisionHandler: @escaping (WKNavigationActionPolicy) -> Void) {
         if navigationAction.navigationType == .linkActivated {
@@ -150,12 +180,14 @@ final class ReleaseUpdateDialog: NSObject, NSWindowDelegate, WKNavigationDelegat
             decisionHandler(navigationAction.request.url?.isFileURL == true ? .allow : .cancel)
         }
     }
-    func run() -> Choice {
-        NSApp.activate(ignoringOtherApps: true)
-        panel.center()
-        panel.makeKeyAndOrderFront(nil)
-        NSApp.runModal(for: panel)
-        panel.orderOut(nil)
-        return choice
+    func run() async -> Choice {
+        // Leave the normal application run loop available for WebKit loading and
+        // JavaScript rendering while waiting for one of the window's actions.
+        await withCheckedContinuation { pending in
+            continuation = pending
+            NSApp.activate(ignoringOtherApps: true)
+            panel.center()
+            panel.makeKeyAndOrderFront(nil)
+        }
     }
 }

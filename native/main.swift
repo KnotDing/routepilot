@@ -643,7 +643,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
         }
     }
     func presentRelease(_ release: GiteaRelease) async {
-        switch ReleaseUpdateDialog(release: release, assistantReady: UpdateAssistant.configured).run() {
+        let dialog = ReleaseUpdateDialog(release: release, assistantReady: UpdateAssistant.configured)
+        switch await dialog.run() {
         case .install:
             UserDefaults.standard.removeObject(forKey: "releaseUpdateSkippedTag")
             await installRelease(release)
@@ -811,7 +812,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
             panel.level = .normal
             panel.collectionBehavior = [.fullScreenPrimary]
             panel.contentView = view; panel.delegate = self; panel.isReleasedWhenClosed = false
-            panel.center(); window = panel; webView = view
+            // AppKit persists the normal window frame across app restarts and
+            // adjusts restored frames for the screens currently available.
+            let frameName = "RoutePilotManagementWindow"
+            if !panel.setFrameUsingName(frameName) { panel.center() }
+            panel.setFrameAutosaveName(frameName)
+            window = panel; webView = view
             let cookies = client.session.configuration.httpCookieStorage?.cookies(for: client.base) ?? []
             let group = DispatchGroup()
             for cookie in cookies { group.enter(); view.configuration.websiteDataStore.httpCookieStore.setCookie(cookie) { group.leave() } }

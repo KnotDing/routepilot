@@ -22,14 +22,14 @@ enum StatusBarVisualState: CaseIterable, Hashable {
         case .login: return "lock.fill"
         }
     }
-    func image(brand: NSImage?, scale pulseScale: CGFloat = 1, rotation: CGFloat = 0) -> NSImage? {
+    func image(brand: NSImage?, rotation: CGFloat = 0) -> NSImage? {
         let source = symbol.flatMap { NSImage(systemSymbolName: $0, accessibilityDescription: nil) } ?? brand
         guard let source else { return nil }
         let configured = source.withSymbolConfiguration(NSImage.SymbolConfiguration(pointSize: 16, weight: .medium)) ?? source
         let image = NSImage(size: NSSize(width: 18, height: 18), flipped: false) { rect in
             let size = configured.size
             guard size.width > 0, size.height > 0 else { return false }
-            let scale = min(rect.width / size.width, rect.height / size.height) * pulseScale
+            let scale = min(rect.width / size.width, rect.height / size.height)
             let target = NSRect(x: (rect.width - size.width * scale) / 2, y: (rect.height - size.height * scale) / 2, width: size.width * scale, height: size.height * scale)
             NSGraphicsContext.saveGraphicsState()
             let transform = NSAffineTransform()
@@ -39,6 +39,65 @@ enum StatusBarVisualState: CaseIterable, Hashable {
             transform.concat()
             configured.draw(in: target)
             NSGraphicsContext.restoreGraphicsState()
+            return true
+        }
+        image.isTemplate = true
+        return image
+    }
+
+    // A packet enters from the left and splits onto the two original branches.
+    // Only the packet and its trail move; the mark's geometry stays fixed.
+    static func flowImage(progress: Double) -> NSImage {
+        let image = NSImage(size: NSSize(width: 18, height: 18), flipped: false) { rect in
+            let unit = min(rect.width, rect.height) / 18
+            func point(_ x: CGFloat, _ y: CGFloat) -> NSPoint {
+                NSPoint(x: rect.minX + (1 + (x - 12) * 0.4) * unit,
+                        y: rect.minY + (1 + (y - 12) * 0.4) * unit)
+            }
+            let path = NSBezierPath()
+            path.lineWidth = 1.7 * unit
+            path.lineCapStyle = .round
+            path.lineJoinStyle = .round
+            path.move(to: point(17, 32)); path.line(to: point(27, 32))
+            for y in [CGFloat(45), CGFloat(19)] {
+                path.move(to: point(27, 32))
+                path.curve(to: point(42, y), controlPoint1: point(35, 32), controlPoint2: point(34, y))
+                path.line(to: point(47, y))
+            }
+            NSColor.black.withAlphaComponent(0.30).setStroke()
+            path.stroke()
+            NSColor.black.withAlphaComponent(0.55).setFill()
+            for (x, y) in [(CGFloat(17), CGFloat(32)), (47, 45), (47, 19)] {
+                let center = point(x, y), radius = 2 * unit
+                NSBezierPath(ovalIn: NSRect(x: center.x - radius, y: center.y - radius,
+                                           width: radius * 2, height: radius * 2)).fill()
+            }
+            func packetPoint(_ time: Double, branchY: CGFloat) -> NSPoint {
+                if time < 0.25 { return point(17 + 10 * CGFloat(time / 0.25), 32) }
+                let branch = CGFloat((time - 0.25) / 0.75)
+                if branch >= 0.88 { return point(42 + 5 * ((branch - 0.88) / 0.12), branchY) }
+                let t = branch / 0.88, inverse = 1 - t
+                let x = inverse * inverse * inverse * 27 + 3 * inverse * inverse * t * 35
+                    + 3 * inverse * t * t * 34 + t * t * t * 42
+                let y = inverse * inverse * inverse * 32 + 3 * inverse * inverse * t * 32
+                    + 3 * inverse * t * t * branchY + t * t * t * branchY
+                return point(x, y)
+            }
+            // Draw the faint tail first, then the brighter moving head.
+            for segment in (0..<7).reversed() {
+                let time = progress - Double(segment) * 0.025
+                guard time >= 0 else { continue }
+                NSColor.black.withAlphaComponent(1 - CGFloat(segment) * 0.10).setStroke()
+                for (index, y) in [CGFloat(45), CGFloat(19)].enumerated() {
+                    if index == 1 && time <= 0.25 { continue }
+                    let trail = NSBezierPath()
+                    trail.lineWidth = 2.0 * unit
+                    trail.lineCapStyle = .round
+                    trail.move(to: packetPoint(max(0, time - 0.025), branchY: y))
+                    trail.line(to: packetPoint(time, branchY: y))
+                    trail.stroke()
+                }
+            }
             return true
         }
         image.isTemplate = true
@@ -90,21 +149,15 @@ final class StatusBarIconAnimator {
         switch state {
         case .connecting:
             return (0..<20).map { state.image(brand: brand, rotation: -CGFloat($0) * 18) ?? still }
-        case .healthy, .warning:
-            let resting = state.image(brand: brand, scale: 0.88) ?? still
-            // Two soft beats, then a quiet interval. The mark never disappears.
-            func beat(_ time: Double, center: Double) -> Double {
-                let distance = abs(time - center) / 0.18
-                return distance < 1 ? (1 + cos(distance * .pi)) / 2 : 0
-            }
-            return (0..<28).map { index in
-                let time = Double(index) * 0.1
-                let strength = max(beat(time, center: 0.2), 0.8 * beat(time, center: 0.6))
-                return strength == 0 ? resting : state.image(brand: brand, scale: CGFloat(0.88 + 0.12 * strength)) ?? still
-            }
-        case .offline, .login:
+        case .healthy:
+            return (0..<24).map { Self.flowFrame($0) }
+        case .warning, .offline, .login:
             return [still]
         }
+    }
+
+    private static func flowFrame(_ index: Int) -> NSImage {
+        StatusBarVisualState.flowImage(progress: Double(index) / 23)
     }
 
     private func updateMotionPreference() {
@@ -121,7 +174,7 @@ final class StatusBarIconAnimator {
             Task { @MainActor in self?.tick() }
         }
         animation.tolerance = 0.03
-        // Keep the heartbeat alive while a menu or modal window is open.
+        // Keep the flow animation running while a menu or modal window is open.
         RunLoop.main.add(animation, forMode: .common)
         RunLoop.main.add(animation, forMode: .modalPanel)
         timer = animation
