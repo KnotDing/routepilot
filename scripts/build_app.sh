@@ -3,12 +3,13 @@ set -eu
 project_dir=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 cd "$project_dir"
 [ "$(uname -s)" = Darwin ] || { echo 'Build the APP on macOS' >&2; exit 1; }
-mkdir -p "$project_dir/artifacts"
-build_dir=$(mktemp -d "$project_dir/artifacts/app-build.XXXXXX")
+sh "$project_dir/scripts/clean_artifacts.sh"
+mkdir -p "$project_dir/artifacts" "$project_dir/.cache"
+build_dir=$(mktemp -d "$project_dir/.cache/app-build.XXXXXX")
 trap 'rm -rf "$build_dir"' EXIT
 app_dir="$build_dir/RoutePilot.app"
 mkdir -p "$app_dir/Contents/MacOS" "$app_dir/Contents/Resources/Service/bin" "$app_dir/Contents/Resources/Service/scripts" "$app_dir/Contents/Resources/Service/launchd" .cache/swift-module .cache/AppIcon.iconset
-xcrun swiftc -parse-as-library -swift-version 5 -target "$(uname -m)-apple-macos13.0" -module-cache-path "$project_dir/.cache/swift-module" -framework AppKit -framework WebKit -framework ServiceManagement -framework UserNotifications native/main.swift native/credentials.swift native/notifications.swift native/installer.swift native/localization.swift native/release_updater.swift -o "$app_dir/Contents/MacOS/RoutePilot"
+xcrun swiftc -parse-as-library -swift-version 5 -target "$(uname -m)-apple-macos13.0" -module-cache-path "$project_dir/.cache/swift-module" -framework AppKit -framework WebKit -framework ServiceManagement -framework UserNotifications native/main.swift native/credentials.swift native/notifications.swift native/installer.swift native/localization.swift native/release_updater.swift native/update_assistant.swift native/update_dialog.swift -o "$app_dir/Contents/MacOS/RoutePilot"
 cp native/Info.plist "$app_dir/Contents/Info.plist"
 # Keep the native bundle aligned with the release identity embedded in Go and Vite.
 release_version=$(plutil -extract version raw -o - internal/buildinfo/release.json)
@@ -31,7 +32,7 @@ codesign --force --sign - "$app_dir/Contents/Resources/Service/bin/surge-control
 codesign --force --sign - "$app_dir"
 codesign --verify --deep --strict "$app_dir"
 if [ -d "$project_dir/artifacts/RoutePilot.app" ]; then
-  old_dir=$(mktemp -d "$project_dir/artifacts/app-previous.XXXXXX")
+  old_dir=$(mktemp -d "$project_dir/.cache/app-previous.XXXXXX")
   mv "$project_dir/artifacts/RoutePilot.app" "$old_dir/"
 fi
 mv "$app_dir" "$project_dir/artifacts/RoutePilot.app"

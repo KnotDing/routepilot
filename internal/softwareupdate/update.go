@@ -41,19 +41,21 @@ const (
 )
 
 type Status struct {
-	Supported bool      `json:"supported"`
-	Reason    string    `json:"reason,omitempty"`
-	Current   string    `json:"current"`
-	Latest    string    `json:"latest,omitempty"`
-	Available bool      `json:"available"`
-	Phase     string    `json:"phase"`
-	Target    string    `json:"target,omitempty"`
-	Error     string    `json:"error,omitempty"`
-	CheckedAt time.Time `json:"checked_at,omitempty"`
-	UpdatedAt time.Time `json:"updated_at,omitempty"`
+	Supported    bool      `json:"supported"`
+	Reason       string    `json:"reason,omitempty"`
+	Current      string    `json:"current"`
+	Latest       string    `json:"latest,omitempty"`
+	ReleaseNotes string    `json:"release_notes,omitempty"`
+	Available    bool      `json:"available"`
+	Phase        string    `json:"phase"`
+	Target       string    `json:"target,omitempty"`
+	Error        string    `json:"error,omitempty"`
+	CheckedAt    time.Time `json:"checked_at,omitempty"`
+	UpdatedAt    time.Time `json:"updated_at,omitempty"`
 }
 type release struct {
 	Tag        string `json:"tag_name"`
+	Body       string `json:"body"`
 	Draft      bool   `json:"draft"`
 	Prerelease bool   `json:"prerelease"`
 	Assets     []struct {
@@ -62,18 +64,20 @@ type release struct {
 	} `json:"assets"`
 }
 type Manager struct {
-	mu            sync.Mutex
-	ctx           context.Context
-	supported     bool
-	reason        string
-	running       bool
-	latest        release
-	checkedAt     time.Time
-	beforeRestart func() error
+	mu              sync.Mutex
+	ctx             context.Context
+	standardService bool
+	supported       bool
+	reason          string
+	running         bool
+	latest          release
+	checkedAt       time.Time
+	beforeRestart   func() error
 }
 
 func New(ctx context.Context, database string, beforeRestart func() error) *Manager {
 	m := &Manager{ctx: ctx, beforeRestart: beforeRestart}
+	m.standardService = runtime.GOOS == "darwin" && os.Geteuid() == 0 && filepath.Clean(database) == "/var/db/surge-controller/controller.sqlite"
 	m.reason = supportReason(database)
 	m.supported = m.reason == ""
 	return m
@@ -194,6 +198,7 @@ func (m *Manager) snapshot() Status {
 	}
 	s.Supported, s.Reason, s.Current = m.supported, m.reason, buildinfo.Current().Version
 	s.Latest, s.CheckedAt = m.latest.Tag, m.checkedAt
+	s.ReleaseNotes = m.latest.Body
 	s.Available = newer(s.Latest, s.Current)
 	return s
 }

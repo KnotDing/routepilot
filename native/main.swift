@@ -48,7 +48,7 @@ final class ControllerClient {
 }
 
 @MainActor
-final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNavigationDelegate, WKDownloadDelegate, NSMenuDelegate, WKScriptMessageHandler {
+final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNavigationDelegate, WKUIDelegate, WKDownloadDelegate, NSMenuDelegate, WKScriptMessageHandler {
     let arguments = CommandLine.arguments
     var client: ControllerClient!
     var statusItem: NSStatusItem!
@@ -311,10 +311,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
         let trusted = message.frameInfo.isMainFrame && origin.protocol == client.base.scheme && origin.host == client.base.host?.trimmingCharacters(in: CharacterSet(charactersIn: "[]")) && origin.port == client.base.port
         if message.name == "routepilotPreferences" {
             guard trusted, let values = message.body as? [String: Any], let data = try? JSONSerialization.data(withJSONObject: values),
-                  let preferences = try? JSONDecoder().decode(AppPreferences.self, from: data), (1...168).contains(preferences.checkIntervalHours) else { return }
+                  var preferences = try? JSONDecoder().decode(AppPreferences.self, from: data), (1...168).contains(preferences.checkIntervalHours) else { return }
+            preferences.automaticInstall = preferences.automaticInstall && preferences.automaticCheck && UpdateAssistant.configured
             let previous = AppPreferences.current
             AppPreferences.current = preferences
-            if preferences.automaticCheck && (!previous.automaticCheck || preferences.automaticDownload != previous.automaticDownload || preferences.updatePrompts != previous.updatePrompts) {
+            if preferences.automaticCheck && (!previous.automaticCheck || preferences.automaticDownload != previous.automaticDownload || preferences.updatePrompts != previous.updatePrompts || preferences.automaticInstall != previous.automaticInstall) {
                 UserDefaults.standard.removeObject(forKey: "releaseUpdateLastCheck")
             }
             configurePreferenceSeed(userContentController)
@@ -331,6 +332,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
             guard trusted, let action = message.body as? String else { return }
             if action == "check" { Task { await checkReleaseUpdate(silent: false) } }
             else if action == "install" { performReleaseUpdate() }
+            else if action == "enableAssistant" { enableUpdateAssistant() }
+            else if action == "disableAssistant" { disableUpdateAssistant() }
             return
         }
         if message.name == "routepilotServiceHealth" {
@@ -394,8 +397,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
         let scripts = controller.userScripts.filter { !$0.source.hasPrefix(marker) }
         controller.removeAllUserScripts()
         scripts.forEach { controller.addUserScript($0) }
-        guard let data = try? JSONEncoder().encode(AppPreferences.current), let json = String(data: data, encoding: .utf8) else { return }
-        controller.addUserScript(WKUserScript(source: marker + "window.routepilotNativePreferences=" + json + ";", injectionTime: .atDocumentStart, forMainFrameOnly: true))
+        guard let data = try? JSONEncoder().encode(AppPreferences.current),
+              var preferences = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { return }
+        preferences["assistantReady"] = UpdateAssistant.configured
+        preferences["assistantSupported"] = true
+        guard let seed = try? JSONSerialization.data(withJSONObject: preferences), let json = String(data: seed, encoding: .utf8) else { return }
+        let source = marker + "window.routepilotNativePreferences=" + json + ";window.dispatchEvent(new Event('routepilot-preferences-changed'));"
+        controller.addUserScript(WKUserScript(source: source, injectionTime: .atDocumentStart, forMainFrameOnly: true))
+        webView?.evaluateJavaScript(source, completionHandler: nil)
     }
     func refreshRemoteNotifications() async {
         guard !refreshingRemoteNotifications, !quitting, !stopping, AppPreferences.current.desktopNotifications,
@@ -529,7 +538,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
         statusItem.menu = menu
     }
     func checkReleaseUpdate(silent: Bool) async {
-        if checkingRelease { return }
+        guard !checkingRelease, !stopping else { return }
         let preferences = AppPreferences.current
         if silent && !preferences.automaticCheck { return }
         let lastCheck = UserDefaults.standard.object(forKey: "releaseUpdateLastCheck") as? Date ?? .distantPast
@@ -541,55 +550,115 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
             let latest = try await ReleaseUpdater.latest()
             UserDefaults.standard.set(Date(), forKey: "releaseUpdateLastCheck")
             availableRelease = ReleaseUpdater.newer(latest) ? latest : nil
-            if let release = availableRelease {
-                if silent && preferences.automaticDownload {
-                    do { _ = try await ReleaseUpdater.downloadPackage(from: release) }
-                    catch { if preferences.updatePrompts { alert("自动下载更新失败", error.localizedDescription) } }
-                }
-                if !silent || preferences.updatePrompts && UserDefaults.standard.string(forKey: "releaseUpdateLastNotifiedTag") != release.tagName {
-                    UserDefaults.standard.set(release.tagName, forKey: "releaseUpdateLastNotifiedTag")
-                    alert("发现 RoutePilot 新版本", L("可更新至 {tag}。请在菜单栏选择在线升级；安装前会再次确认。", ["tag": release.tagName]))
-                }
+            guard let release = availableRelease else {
+                if !silent { alert("RoutePilot 已是最新版本", "当前版本：\(Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "未知")") }
+                return
             }
-            if !silent && availableRelease == nil { alert("RoutePilot 已是最新版本", "当前版本：\(Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "未知")") }
+            if silent && UserDefaults.standard.string(forKey: "releaseUpdateSkippedTag") == release.tagName { return }
+            if silent && preferences.automaticInstall && UpdateAssistant.configured {
+                await installRelease(release)
+                return
+            }
+            if silent && preferences.automaticDownload {
+                do { _ = try await ReleaseUpdater.downloadPackage(from: release) }
+                catch { if preferences.updatePrompts { alert("自动下载更新失败", error.localizedDescription) } }
+            }
+            if !silent || preferences.updatePrompts && UserDefaults.standard.string(forKey: "releaseUpdateLastNotifiedTag") != release.tagName {
+                UserDefaults.standard.set(release.tagName, forKey: "releaseUpdateLastNotifiedTag")
+                await presentRelease(release)
+            }
         } catch {
             if !silent { alert("检查更新失败", error.localizedDescription) }
         }
     }
+    func presentRelease(_ release: GiteaRelease) async {
+        switch ReleaseUpdateDialog(release: release, assistantReady: UpdateAssistant.configured).run() {
+        case .install:
+            UserDefaults.standard.removeObject(forKey: "releaseUpdateSkippedTag")
+            await installRelease(release)
+        case .skip:
+            UserDefaults.standard.set(release.tagName, forKey: "releaseUpdateSkippedTag")
+        case .later: break
+        }
+    }
     @objc func performReleaseUpdate() {
+        // Both entry points perform a fresh check and open exactly one decision window.
+        Task { await checkReleaseUpdate(silent: false) }
+    }
+    @objc func enableUpdateAssistant() {
         guard !stopping, !checkingRelease else { return }
+        let dialog = NSAlert()
+        dialog.messageText = L("启用更新助手")
+        dialog.informativeText = L("一次管理员授权后，当前用户可免密码更新 /Applications 中的 RoutePilot 和本机网络服务。助手只安装项目官方 Release，不接受任意命令；自动安装默认关闭。")
+        dialog.addButton(withTitle: L("启用")); dialog.addButton(withTitle: L("取消"))
+        NSApp.activate(ignoringOtherApps: true)
+        guard dialog.runModal() == .alertFirstButtonReturn else { return }
+        stopping = true
         Task {
-            if availableRelease == nil { await checkReleaseUpdate(silent: false) }
-            guard let release = availableRelease else { return }
-            let dialog = NSAlert()
-            dialog.messageText = L("在线升级 RoutePilot")
-            dialog.informativeText = L("将下载并校验 Release {tag}，替换此 App；若已安装网络后台服务，也会在管理员授权后同步升级。数据库、密钥和配置保留。", ["tag": release.tagName])
-            dialog.addButton(withTitle: L("下载并升级")); dialog.addButton(withTitle: L("取消"))
-            NSApp.activate(ignoringOtherApps: true)
-            guard dialog.runModal() == .alertFirstButtonReturn else { return }
-            stopping = true
+            defer { stopping = false; rebuildMenu() }
+            do { try await UpdateAssistant.enable(); if let controller = webView?.configuration.userContentController { configurePreferenceSeed(controller) } }
+            catch { alert("更新助手未启用", error.localizedDescription) }
+        }
+    }
+    @objc func disableUpdateAssistant() {
+        guard !stopping, !checkingRelease else { return }
+        let dialog = NSAlert()
+        dialog.messageText = L("停用更新助手")
+        dialog.informativeText = L("将移除常驻更新助手并关闭自动安装，保留 App 和网络服务。移除助手需要管理员授权。")
+        dialog.addButton(withTitle: L("停用")); dialog.addButton(withTitle: L("取消"))
+        NSApp.activate(ignoringOtherApps: true)
+        guard dialog.runModal() == .alertFirstButtonReturn else { return }
+        stopping = true
+        Task {
+            defer { stopping = false; rebuildMenu() }
             do {
-                let stagedApp = try await ReleaseUpdater.verifiedApp(from: release)
-                defer { try? FileManager.default.removeItem(at: stagedApp.deletingLastPathComponent()) }
-                if !(await stopChild()) { throw AppFailure(message: "后台进程尚未停止，升级已取消") }
-                let helper = stagedApp.appendingPathComponent("Contents/Resources/Service/scripts/upgrade_app_macos.sh")
-                guard FileManager.default.isReadableFile(atPath: helper.path) else { throw AppFailure(message: "升级包缺少 App 更新程序") }
-                let command = "/bin/sh " + shellQuote(helper.path) + " " + shellQuote(stagedApp.path) + " " + shellQuote(Bundle.main.bundleURL.path)
-                let escaped = command.replacingOccurrences(of: "\\", with: "\\\\").replacingOccurrences(of: "\"", with: "\\\"")
-                var failure: NSDictionary?
-                guard NSAppleScript(source: "do shell script \"\(escaped)\" with administrator privileges")?.executeAndReturnError(&failure) != nil else {
-                    throw AppFailure(message: failure?[NSAppleScript.errorMessage] as? String ?? "在线升级失败，现有安装已保留")
-                }
-                let launch = Process()
-                launch.executableURL = URL(fileURLWithPath: "/usr/bin/open")
-                launch.arguments = ["-n", Bundle.main.bundleURL.path]
-                try launch.run()
-                NSApp.terminate(nil)
-            } catch {
-                stopping = false
-                alert("RoutePilot 未升级", error.localizedDescription)
-                reconnect()
+                try await UpdateAssistant.disable()
+                var preferences = AppPreferences.current
+                preferences.automaticInstall = false
+                AppPreferences.current = preferences
+                if let controller = webView?.configuration.userContentController { configurePreferenceSeed(controller) }
+            } catch { alert("更新助手未停用", error.localizedDescription) }
+        }
+    }
+    func installRelease(_ release: GiteaRelease) async {
+        guard !stopping else { return }
+        stopping = true
+        rebuildMenu()
+        let progress = NSPanel(contentRect: NSRect(x: 0, y: 0, width: 430, height: 100), styleMask: [.titled], backing: .buffered, defer: false)
+        progress.title = L("正在升级 RoutePilot")
+        let label = NSTextField(wrappingLabelWithString: L("正在准备更新…"))
+        label.frame = NSRect(x: 24, y: 40, width: 382, height: 40)
+        progress.contentView?.addSubview(label)
+        progress.center(); progress.makeKeyAndOrderFront(nil)
+        defer { progress.close() }
+        do {
+            if !UpdateAssistant.configured { try await UpdateAssistant.enable() }
+            if let controller = webView?.configuration.userContentController { configurePreferenceSeed(controller) }
+            _ = try await UpdateAssistant.request("check")
+            if !(await stopChild()) { throw AppFailure(message: "后台进程尚未停止，升级已取消") }
+            var status = try await UpdateAssistant.request("install", version: release.tagName)
+            let deadline = Date().addingTimeInterval(10 * 60)
+            var failures = 0
+            while status.phase != "succeeded" && status.phase != "failed" {
+                guard Date() < deadline else { throw AppFailure(message: "等待更新超时，请重新打开 App 查看安装状态") }
+                let phases = ["downloading": "正在下载并校验安装包…", "validating": "正在验证更新…", "restarting": "正在重启本机网络服务…"]
+                label.stringValue = L(phases[status.phase ?? ""] ?? "正在替换 App…")
+                try await Task.sleep(nanoseconds: 1_000_000_000)
+                do { status = try await UpdateAssistant.request("status"); failures = 0 }
+                catch { failures += 1; if failures >= 3 { throw error } }
             }
+            guard status.phase == "succeeded", status.target == release.tagName else { throw AppFailure(message: L(status.error ?? "在线升级失败，现有安装已保留")) }
+            _ = try? await UpdateAssistant.request("refresh-agent")
+            let launch = Process()
+            launch.executableURL = URL(fileURLWithPath: "/usr/bin/open")
+            launch.arguments = ["-n", UpdateAssistant.appPath]
+            try launch.run()
+            NSApp.terminate(nil)
+        } catch {
+            stopping = false
+            alert("RoutePilot 未升级", error.localizedDescription)
+            reconnect()
+            rebuildMenu()
         }
     }
     func menuWillOpen(_ menu: NSMenu) { Task { await refresh() } }
@@ -663,6 +732,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
             configurePreferenceSeed(configuration.userContentController)
             let view = WKWebView(frame: .zero, configuration: configuration)
             view.navigationDelegate = self
+            view.uiDelegate = self
             let panel = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 1150, height: 780), styleMask: [.titled, .closable, .miniaturizable, .resizable], backing: .buffered, defer: false)
             panel.title = L("RoutePilot · DNS 和路由控制器")
             panel.minSize = NSSize(width: 420, height: 480)
@@ -683,6 +753,27 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
         NSApp.setActivationPolicy(.accessory)
     }
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { false }
+    func trustedDialog(_ frame: WKFrameInfo) -> Bool {
+        let origin = frame.securityOrigin
+        return frame.isMainFrame && origin.protocol == client.base.scheme && origin.host == client.base.host?.trimmingCharacters(in: CharacterSet(charactersIn: "[]")) && origin.port == client.base.port
+    }
+    func webView(_ webView: WKWebView, runJavaScriptConfirmPanelWithMessage message: String, initiatedByFrame frame: WKFrameInfo, completionHandler: @escaping (Bool) -> Void) {
+        guard trustedDialog(frame) else { completionHandler(false); return }
+        let dialog = NSAlert(); dialog.messageText = L("确认管理操作")
+        dialog.informativeText = (frame.request.url?.host ?? "RoutePilot") + "\n\n" + message
+        dialog.addButton(withTitle: L("确认")); dialog.addButton(withTitle: L("取消"))
+        NSApp.activate(ignoringOtherApps: true)
+        if let window = webView.window { dialog.beginSheetModal(for: window) { completionHandler($0 == .alertFirstButtonReturn) } }
+        else { completionHandler(dialog.runModal() == .alertFirstButtonReturn) }
+    }
+    func webView(_ webView: WKWebView, runJavaScriptAlertPanelWithMessage message: String, initiatedByFrame frame: WKFrameInfo, completionHandler: @escaping () -> Void) {
+        guard trustedDialog(frame) else { completionHandler(); return }
+        let dialog = NSAlert(); dialog.messageText = "RoutePilot"
+        dialog.informativeText = (frame.request.url?.host ?? "RoutePilot") + "\n\n" + message
+        dialog.addButton(withTitle: L("确定"))
+        if let window = webView.window { dialog.beginSheetModal(for: window) { _ in completionHandler() } }
+        else { _ = dialog.runModal(); completionHandler() }
+    }
     func webView(_ webView: WKWebView, decidePolicyFor navigationAction: WKNavigationAction, decisionHandler: @escaping (WKNavigationActionPolicy) -> Void) {
         guard let url = navigationAction.request.url else { decisionHandler(.cancel); return }
         if navigationAction.shouldPerformDownload {

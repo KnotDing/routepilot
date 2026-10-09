@@ -28,7 +28,7 @@ type ready struct {
 // MarkReady is written only by the installed service after its management
 // listener is created. The helper uses it to identify the new process.
 func (m *Manager) MarkReady() {
-	if m.supported {
+	if m.standardService && servicePID() == os.Getpid() && privateOwned("/private/var/db/surge-controller", true) == nil {
 		_ = writeJSON(readyFile, ready{buildinfo.Current().Version, os.Getpid(), time.Now().UTC()})
 	}
 }
@@ -61,6 +61,12 @@ func RunWorker() (result error) {
 		_ = os.Remove(workerPlist)
 		_ = os.Remove("/var/db/surge-controller/software-update-sessions.json")
 	}()
+	unlock, err := lockInstall()
+	if err != nil {
+		return err
+	}
+	defer unlock()
+
 	for _, file := range []string{filepath.Join(stagingDir, "job.json"), filepath.Join(stagingDir, "next"), serviceBin, servicePlist} {
 		if err := privateOwned(file, false); err != nil {
 			return err

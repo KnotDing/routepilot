@@ -407,3 +407,7 @@ legend { padding: 0 8px; color: var(--text); font-size: 14px; font-weight: 600; 
 }
 
 .notification-errors{margin-block:24px}.notification-errors .form-grid{align-items:start}.notification-errors fieldset{grid-column:auto;min-width:0;border:1px solid var(--border,#dce2ea);border-radius:12px;padding:16px}.notification-errors fieldset>.check{display:flex;margin-block:12px}.notification-errors legend{padding-inline:8px}.notification-errors legend .check{font-weight:600}
+
+.update-dialog details { margin-block: 18px; border: 1px solid var(--border); border-radius: 10px; padding: 12px; }
+.update-dialog summary { cursor: pointer; font-weight: 600; }
+.release-notes { white-space: pre-wrap; overflow-wrap: anywhere; max-height: 320px; overflow: auto; margin-top: 12px; line-height: 1.65; }

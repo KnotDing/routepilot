@@ -22,10 +22,24 @@ private enum NotificationSelection {
 struct AppPreferences: Codable {
     var automaticCheck = true
     var automaticDownload = false
+    var automaticInstall = false
     var updatePrompts = true
     var checkIntervalHours = 12
     var desktopNotifications = false
     var notificationSound = true
+
+    enum CodingKeys: String, CodingKey { case automaticCheck, automaticDownload, automaticInstall, updatePrompts, checkIntervalHours, desktopNotifications, notificationSound }
+    init() {}
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        automaticCheck = try c.decodeIfPresent(Bool.self, forKey: .automaticCheck) ?? true
+        automaticDownload = try c.decodeIfPresent(Bool.self, forKey: .automaticDownload) ?? false
+        automaticInstall = try c.decodeIfPresent(Bool.self, forKey: .automaticInstall) ?? false
+        updatePrompts = try c.decodeIfPresent(Bool.self, forKey: .updatePrompts) ?? true
+        checkIntervalHours = try c.decodeIfPresent(Int.self, forKey: .checkIntervalHours) ?? 12
+        desktopNotifications = try c.decodeIfPresent(Bool.self, forKey: .desktopNotifications) ?? false
+        notificationSound = try c.decodeIfPresent(Bool.self, forKey: .notificationSound) ?? true
+    }
 
     static var current: AppPreferences {
         get {

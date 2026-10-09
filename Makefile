@@ -1,8 +1,10 @@
 GO ?= go
 
-.PHONY: build test bench verify fmt frontend frontend-test app package
-frontend:
+.PHONY: build test bench verify fmt frontend frontend-test app package clean-artifacts
+frontend: clean-artifacts
 	cd web && npm run build
+clean-artifacts:
+	sh scripts/clean_artifacts.sh
 frontend-test:
 	cd web && npm test
 build: frontend

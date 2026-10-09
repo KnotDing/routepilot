@@ -58,6 +58,34 @@ func (j *journal) record(kind string, payload any) {
 	_ = json.NewEncoder(j.file).Encode(map[string]any{"run_id": j.runID, "kind": kind, "at": time.Now().UTC(), "payload": payload})
 }
 func main() {
+	if len(os.Args) == 2 && os.Args[1] == "uninstall-update-agent" {
+		if err := softwareupdate.UninstallAgent(); err != nil {
+			slog.Error("remove update assistant", "error", err)
+			os.Exit(1)
+		}
+		return
+	}
+
+	if len(os.Args) == 3 && os.Args[1] == "install-update-agent" {
+		uid, err := softwareupdate.ParseAgentUID(os.Args[2])
+		if err == nil {
+			err = softwareupdate.InstallAgent(uid)
+		}
+		if err != nil {
+			slog.Error("update assistant installation failed", "error", err)
+			os.Exit(1)
+		}
+		return
+	}
+	if len(os.Args) == 2 && os.Args[1] == "update-agent" {
+		ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+		defer stop()
+		if err := softwareupdate.ServeAgent(ctx); err != nil {
+			slog.Error("update assistant stopped", "error", err)
+			os.Exit(1)
+		}
+		return
+	}
 	if len(os.Args) == 2 && os.Args[1] == "version" {
 		_ = json.NewEncoder(os.Stdout).Encode(buildinfo.Current())
 		return

@@ -12,9 +12,10 @@ struct GiteaRelease: Decodable {
     }
     let tagName: String
     let assets: [Asset]
+    let body: String?
     enum CodingKeys: String, CodingKey {
         case tagName = "tag_name"
-        case assets
+        case assets, body
     }
 }
 
