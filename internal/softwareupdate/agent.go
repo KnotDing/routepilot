@@ -301,35 +301,17 @@ func (a *agent) install(ctx context.Context, r release) (result error) {
 	defer unlock()
 
 	name := "RoutePilot-macos-arm64.zip"
-	urls := map[string]string{}
-	for _, asset := range r.Assets {
-		if asset.Name == name || asset.Name == "SHA256SUMS" {
-			if urls[asset.Name] != "" {
-				return errors.New("Duplicate release assets")
-			}
-			urls[asset.Name] = asset.URL
-		}
-	}
-	if urls[name] == "" || urls["SHA256SUMS"] == "" {
-		return errors.New("Release has no App package for this platform")
+	urls, err := releaseAssets(r, name)
+	if err != nil {
+		return err
 	}
 	b, err := download(ctx, urls["SHA256SUMS"], 1<<20)
 	if err != nil {
 		return err
 	}
-	expected := ""
-	for _, line := range strings.Split(string(b), "\n") {
-		f := strings.Fields(line)
-		if len(f) == 2 && strings.TrimPrefix(f[1], "*") == name {
-			if expected != "" {
-				return errors.New("Duplicate package checksums")
-			}
-			expected = strings.ToLower(f[0])
-		}
-	}
-	digest, err := hex.DecodeString(expected)
-	if err != nil || len(digest) != sha256.Size {
-		return errors.New("Release checksum is missing or invalid")
+	expected, err := packageChecksum(b, name)
+	if err != nil {
+		return err
 	}
 	b = cachedAppArchive(a.uid, expected)
 	if b == nil {
@@ -500,20 +482,37 @@ func (a *agent) install(ctx context.Context, r release) (result error) {
 	return nil
 }
 func waitReady(ctx context.Context, tag string, after time.Time) error {
-	deadline := time.Now().Add(60 * time.Second)
-	for time.Now().Before(deadline) {
-		if ctx.Err() != nil {
-			return ctx.Err()
+	return waitForReady(ctx, tag, after, readinessProbe{
+		read: func() ([]byte, error) { return os.ReadFile(readyFile) }, pid: servicePID, now: time.Now, pause: pause,
+	})
+}
+
+type readinessProbe struct {
+	read  func() ([]byte, error)
+	pid   func() int
+	now   func() time.Time
+	pause func(context.Context, time.Duration) error
+}
+
+func waitForReady(ctx context.Context, tag string, after time.Time, p readinessProbe) error {
+	deadline := p.now().Add(60 * time.Second)
+	for p.now().Before(deadline) {
+		if err := ctx.Err(); err != nil {
+			return err
 		}
-		b, _ := os.ReadFile(readyFile)
+		b, _ := p.read()
 		var r ready
-		if json.Unmarshal(b, &r) == nil && r.Version == strings.TrimPrefix(tag, "v") && r.PID > 1 && r.PID == servicePID() && r.At.After(after) {
-			time.Sleep(3 * time.Second)
-			if servicePID() == r.PID {
+		if json.Unmarshal(b, &r) == nil && r.Version == strings.TrimPrefix(tag, "v") && r.PID > 1 && r.PID == p.pid() && r.At.After(after) {
+			if err := p.pause(ctx, 3*time.Second); err != nil {
+				return err
+			}
+			if p.pid() == r.PID {
 				return nil
 			}
 		}
-		time.Sleep(time.Second)
+		if err := p.pause(ctx, time.Second); err != nil {
+			return err
+		}
 	}
 	return errors.New("Updated network service did not become ready; restoring the previous executable")
 }
@@ -521,7 +520,7 @@ func waitReady(ctx context.Context, tag string, after time.Time) error {
 // ParseAgentUID keeps installer arguments decimal and excludes the root account.
 func ParseAgentUID(raw string) (int, error) {
 	uid, err := strconv.Atoi(raw)
-	if err != nil || uid <= 0 {
+	if err != nil || uid <= 0 || uid > 2147483647 || strconv.Itoa(uid) != raw {
 		return 0, errors.New("Invalid update assistant owner")
 	}
 	return uid, nil

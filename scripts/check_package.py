@@ -1,0 +1,124 @@
+#!/usr/bin/env python3
+"""Read-only validation of release artifacts; never installs or starts a service."""
+import hashlib
+import gzip
+import io
+import json
+import pathlib
+import platform
+import plistlib
+import re
+import subprocess
+import tarfile
+import zipfile
+
+
+def require(condition, message):
+    if not condition:
+        raise ValueError(message)
+
+
+def sha256(data):
+    return hashlib.sha256(data).hexdigest()
+
+
+def checksum_entries(text):
+    entries = {}
+    for line in text.splitlines():
+        match = re.fullmatch(r"([0-9a-fA-F]{64}) [ *](.+)", line)
+        require(match is not None, "Invalid checksum line")
+        digest, name = match.groups()
+        require(name not in entries, "Duplicate checksum entry: " + name)
+        entries[name] = digest.lower()
+    require(entries, "Empty checksums")
+    return entries
+
+
+def verify_checksums(entries, files):
+    require(set(entries) == set(files), "Checksum manifest does not cover exactly the expected files")
+    for name, data in files.items():
+        require(entries[name] == sha256(data), "Checksum mismatch: " + name)
+
+
+def verify_identity(info, identity):
+    require(info.get("CFBundleIdentifier") == "com.routepilot.app", "Wrong App identifier")
+    require(info.get("CFBundleShortVersionString") == identity["version"], "Wrong App version")
+    require(info.get("CFBundleVersion") == identity["build"], "Wrong App build")
+
+
+def verify_notes(read):
+    html = read("notes.html").decode("utf-8")
+    require(not re.search(r'type\s*=\s*[\"\']module', html), "Offline notes must use a classic script")
+    scripts = re.findall(r'<script[^>]+src=[\"\']([^\"\']+)', html)
+    require(len(scripts) == 1, "Offline notes must have exactly one bundled script")
+    for reference in scripts + re.findall(r'<link[^>]+href=[\"\']([^\"\']+)', html):
+        require(reference.startswith("./assets/") and ".." not in reference[2:].split("/"), "Non-local notes asset")
+        require(len(read(reference[2:])) > 0, "Empty notes asset")
+
+
+def verify_backend_archive(path, binaries):
+    # Reading to gzip EOF verifies its footer too; tar EOF alone does not.
+    with gzip.open(path, "rb") as compressed:
+        contents = compressed.read(512 * 1024 * 1024 + 1)
+    require(len(contents) <= 512 * 1024 * 1024, "Oversized decompressed archive")
+    with tarfile.open(fileobj=io.BytesIO(contents), mode="r:") as archive:
+        files = {}
+        for member in archive.getmembers():
+            name = member.name.removeprefix("./")
+            require(not name.startswith("/") and ".." not in name.split("/"), "Unsafe archive path")
+            require(member.isdir() or member.isfile(), "Archive contains a link or special file")
+            if member.isfile():
+                require(name not in files, "Duplicate archive member")
+                require(member.size <= 200 * 1024 * 1024, "Oversized archive member")
+                files[name] = archive.extractfile(member).read()
+                if name.startswith("bin/"):
+                    require(member.mode & 0o111, "Backend is not executable")
+        expected = {"bin/" + name: data for name, data in binaries.items()}
+        require({name for name in files if name.startswith("bin/")} == set(expected), "Unexpected backend binary")
+        verify_checksums(checksum_entries(files["SHA256SUMS"].decode()), expected)
+        for name, data in expected.items():
+            require(files.get(name) == data, "Archive binary differs from build: " + name)
+        for name in ("scripts/install_macos.sh", "scripts/update_macos.sh", "scripts/uninstall_macos.sh", "launchd/com.routepilot.surge-controller.plist"):
+            require(name in files, "Missing backend resource: " + name)
+
+
+def main():
+    root = pathlib.Path(__file__).resolve().parent.parent
+    artifacts = root / "artifacts"
+    report = artifacts / "package-verification.json"
+    report.unlink(missing_ok=True)  # A failed run must not leave an old success report.
+    identity = json.loads((root / "internal/buildinfo/release.json").read_text())
+    require(re.fullmatch(r"(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)", identity["version"]), "Release must have a stable semantic version")
+    arch = platform.machine()
+    names = [f"RoutePilot-macos-{arch}.dmg", f"RoutePilot-macos-{arch}.zip", f"surge-controller-macos-{arch}.tar.gz"]
+    files = {name: (artifacts / name).read_bytes() for name in names}
+    require(all(files.values()), "Empty release artifact")
+    checksums = checksum_entries((artifacts / "SHA256SUMS").read_text())
+    verify_checksums(checksums, files)
+    app = artifacts / "RoutePilot.app"
+    verify_identity(plistlib.loads((app / "Contents/Info.plist").read_bytes()), identity)
+    verify_notes(lambda name: (app / "Contents/Resources/ReleaseNotes" / name).read_bytes())
+    binaries = {name: (root / "bin" / name).read_bytes() for name in ("surge-controller", "dns-probe")}
+    require((app / "Contents/Resources/Service/bin/surge-controller").read_bytes() == binaries["surge-controller"], "App backend differs from standalone backend")
+    with zipfile.ZipFile(artifacts / names[1]) as archive:
+        require(len(archive.namelist()) == len(set(archive.namelist())), "Duplicate ZIP member")
+        require(archive.testzip() is None, "Corrupt ZIP member")
+        for file in app.rglob("*"):
+            if file.is_file():
+                require(archive.read(file.relative_to(artifacts).as_posix()) == file.read_bytes(), "ZIP differs from App: " + file.name)
+        verify_identity(plistlib.loads(archive.read("RoutePilot.app/Contents/Info.plist")), identity)
+        verify_notes(lambda name: archive.read("RoutePilot.app/Contents/Resources/ReleaseNotes/" + name))
+    verify_backend_archive(artifacts / names[2], binaries)
+    version = json.loads(subprocess.check_output([str(root / "bin/surge-controller"), "version"], text=True))
+    for key in ("name", "version", "build"):
+        require(version[key] == identity[key], "Backend identity differs: " + key)
+    require(version["os"] == "darwin" and version["arch"] == {"arm64": "arm64", "x86_64": "amd64"}[arch], "Wrong backend platform")
+    for file in (app, root / "bin/surge-controller", root / "bin/dns-probe"):
+        subprocess.run(["codesign", "--verify", "--deep", "--strict", str(file)], check=True)
+    subprocess.run(["hdiutil", "verify", str(artifacts / names[0])], check=True)
+    report.write_text(json.dumps({"passed": True, "identity": identity, "sha256": checksums, "checks": ["bundle identity", "backend identity", "offline notes", "ZIP/App equality", "backend archive and inner checksums", "outer checksums", "code signatures", "DMG integrity"], "scope": "Read-only package validation; no installation, notarization or live upgrade acceptance"}, indent=2) + "\n")
+    print("PASS package: versions, resources, archives, checksums, signatures, DMG")
+
+
+if __name__ == "__main__":
+    main()

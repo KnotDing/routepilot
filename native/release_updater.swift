@@ -1,6 +1,14 @@
 import CryptoKit
 import Foundation
 
+private final class ReleaseDownloadDelegate: NSObject, URLSessionTaskDelegate {
+    func urlSession(_ session: URLSession, task: URLSessionTask,
+                    willPerformHTTPRedirection response: HTTPURLResponse, newRequest request: URLRequest,
+                    completionHandler: @escaping (URLRequest?) -> Void) {
+        completionHandler(request.url.map(ReleaseUpdater.trustedDownloadURL) == true ? request : nil)
+    }
+}
+
 struct GiteaRelease: Decodable {
     struct Asset: Decodable {
         let name: String
@@ -13,9 +21,11 @@ struct GiteaRelease: Decodable {
     let tagName: String
     let assets: [Asset]
     let body: String?
+    let draft: Bool?
+    let prerelease: Bool?
     enum CodingKeys: String, CodingKey {
         case tagName = "tag_name"
-        case assets, body
+        case assets, body, draft, prerelease
     }
 }
 
@@ -30,24 +40,58 @@ enum ReleaseUpdater {
         var request = URLRequest(url: url)
         request.timeoutInterval = 10
         request.setValue("application/json", forHTTPHeaderField: "Accept")
-        let (data, response) = try await URLSession.shared.data(for: request)
+        let session = URLSession(configuration: .ephemeral, delegate: ReleaseDownloadDelegate(), delegateQueue: nil)
+        defer { session.finishTasksAndInvalidate() }
+        let (data, response) = try await session.data(for: request)
         guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode),
-              response.url?.scheme == "https", response.url?.host == host else {
+              response.url.map(trustedDownloadURL) == true, data.count <= 2 * 1024 * 1024 else {
             let code = (response as? HTTPURLResponse)?.statusCode ?? 0
             throw AppFailure(message: L("获取最新版本失败（HTTP {code}）", ["code": code]))
         }
-        return try JSONDecoder().decode(GiteaRelease.self, from: data)
+        let release = try JSONDecoder().decode(GiteaRelease.self, from: data)
+        guard release.draft != true, release.prerelease != true, stableVersion(release.tagName) != nil else {
+            throw AppFailure(message: "更新服务返回了无效的正式版本信息")
+        }
+        return release
     }
 
-    static func newer(_ release: GiteaRelease) -> Bool {
-        let latest = release.tagName.drop(while: { !$0.isNumber }).split(separator: ".").compactMap { Int($0.prefix(while: \.isNumber)) }
-        let currentVersion = (Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "0").split(separator: ".").compactMap { Int($0.prefix(while: \.isNumber)) }
-        for index in 0..<max(latest.count, currentVersion.count) {
-            let lhs = index < latest.count ? latest[index] : 0
-            let rhs = index < currentVersion.count ? currentVersion[index] : 0
-            if lhs != rhs { return lhs > rhs }
+    static func stableVersion(_ raw: String) -> [Int]? {
+        let value = raw.hasPrefix("v") ? String(raw.dropFirst()) : raw
+        let parts = value.split(separator: ".", omittingEmptySubsequences: false)
+        guard parts.count == 3 else { return nil }
+        let values = parts.compactMap { part -> Int? in
+            guard part.allSatisfy({ $0.isASCII && $0.isNumber }), let number = Int(part), number >= 0,
+                  String(number) == part else { return nil }
+            return number
+        }
+        return values.count == 3 ? values : nil
+    }
+    static func newer(_ release: GiteaRelease,
+                      current: String = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "0") -> Bool {
+        guard release.draft != true, release.prerelease != true,
+              let latest = stableVersion(release.tagName), let installed = stableVersion(current) else { return false }
+        for index in 0..<3 {
+            if latest[index] != installed[index] { return latest[index] > installed[index] }
         }
         return false
+    }
+
+    static func trustedDownloadURL(_ url: URL) -> Bool {
+        url.scheme == "https" && url.host == host && (url.port == nil || url.port == 443)
+            && url.user == nil && url.password == nil && url.fragment == nil
+    }
+    static func checksum(_ text: String, archiveName: String) throws -> String {
+        let matches = text.split(whereSeparator: \.isNewline).compactMap { line -> String? in
+            let columns = line.split(whereSeparator: \.isWhitespace)
+            guard columns.count == 2 else { return nil }
+            let name = columns[1].hasPrefix("*") ? columns[1].dropFirst() : columns[1][...]
+            return name == archiveName ? String(columns[0]).lowercased() : nil
+        }
+        guard matches.count == 1, let expected = matches.first, expected.count == 64,
+              expected.allSatisfy({ "0123456789abcdef".contains($0) }) else {
+            throw AppFailure(message: "Release 校验文件中没有本机安装包的 SHA-256")
+        }
+        return expected
     }
 
     static func downloadPackage(from release: GiteaRelease) async throws -> URL {
@@ -56,18 +100,15 @@ enum ReleaseUpdater {
         #else
         let archiveName = "RoutePilot-macos-x86_64.zip"
         #endif
-        guard let archive = release.assets.first(where: { $0.name == archiveName }),
-              let checksums = release.assets.first(where: { $0.name == "SHA256SUMS" }) else {
+        let archives = release.assets.filter { $0.name == archiveName }, sums = release.assets.filter { $0.name == "SHA256SUMS" }
+        guard archives.count == 1, sums.count == 1, let archive = archives.first, let checksums = sums.first else {
             throw AppFailure(message: L("此版本没有适用于本机的安装包"))
         }
         let checksumData = try await download(checksums.browserDownloadURL, maximumBytes: 1024 * 1024)
-        guard let checksumText = String(data: checksumData, encoding: .utf8),
-              let expected = checksumText.split(whereSeparator: \.isNewline).compactMap({ line -> String? in
-                  let columns = line.split(whereSeparator: \.isWhitespace)
-                  return columns.count == 2 && String(columns[1]) == archiveName ? String(columns[0]).lowercased() : nil
-              }).first, expected.count == 64, expected.allSatisfy({ "0123456789abcdef".contains($0) }) else {
+        guard let checksumText = String(data: checksumData, encoding: .utf8) else {
             throw AppFailure(message: "Release 校验文件中没有本机安装包的 SHA-256")
         }
+        let expected = try checksum(checksumText, archiveName: archiveName)
         let cache = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0].appendingPathComponent("RoutePilot/Updates", isDirectory: true)
         try FileManager.default.createDirectory(at: cache, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
         try FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: cache.path)
@@ -114,14 +155,16 @@ enum ReleaseUpdater {
     }
 
     private static func download(_ url: URL, maximumBytes: Int) async throws -> Data {
-        guard url.scheme == "https", url.host == host, url.user == nil, url.password == nil else {
+        guard trustedDownloadURL(url) else {
             throw AppFailure(message: "Release 下载地址不可信")
         }
         var request = URLRequest(url: url)
         request.timeoutInterval = 180
-        let (data, response) = try await URLSession.shared.data(for: request)
+        let session = URLSession(configuration: .ephemeral, delegate: ReleaseDownloadDelegate(), delegateQueue: nil)
+        defer { session.finishTasksAndInvalidate() }
+        let (data, response) = try await session.data(for: request)
         guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode),
-              response.url?.scheme == "https", response.url?.host == host else {
+              response.url.map(trustedDownloadURL) == true else {
             throw AppFailure(message: "Release 文件下载失败")
         }
         guard data.count <= maximumBytes else { throw AppFailure(message: "Release 文件超过大小限制") }

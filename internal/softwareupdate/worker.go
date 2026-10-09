@@ -96,72 +96,99 @@ func RunWorker() (result error) {
 		return err
 	}
 	// Give the accepted API response time to reach the client before stopping DNS.
-	time.Sleep(2 * time.Second)
-	if servicePID() != job.PreviousPID {
+	if err = pause(ctx, 2*time.Second); err != nil {
+		return err
+	}
+	return activateBackend(ctx, job.Target, job.PreviousPID, backendActivation{
+		executable: serviceBin, next: next, previous: filepath.Join(stagingDir, "previous"), directory: serviceDir,
+		pid: servicePID, wait: waitProcess, ready: waitReady,
+		stop: func(ctx context.Context) error {
+			return command(ctx, "/bin/launchctl", "bootout", "system", servicePlist)
+		},
+		start: func(ctx context.Context) error {
+			return command(ctx, "/bin/launchctl", "bootstrap", "system", servicePlist)
+		},
+	})
+}
+
+// The fixed-path worker validates ownership, signatures and the job before this
+// activation step. Tests supply only temporary files and simulated launchd/PIDs.
+type backendActivation struct {
+	executable, next, previous, directory string
+	pid                                   func() int
+	wait                                  func(int, time.Duration) error
+	ready                                 func(context.Context, string, time.Time) error
+	stop, start                           func(context.Context) error
+}
+
+func activateBackend(ctx context.Context, target string, previousPID int, a backendActivation) (result error) {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	if a.pid() != previousPID {
 		return errors.New("Backend process changed before the update; check and retry")
 	}
-	if err = command(ctx, "/bin/launchctl", "bootout", "system", servicePlist); err != nil {
+	if err := a.stop(ctx); err != nil {
 		return errors.New("Could not stop the existing backend service")
 	}
-	stopped, swapped := true, false
-	previous := filepath.Join(stagingDir, "previous")
+	swapped := false
 	defer func() {
-		if result == nil || !stopped {
+		if result == nil {
 			return
 		}
 		if swapped {
-			failedPID := servicePID()
-			_ = command(context.Background(), "/bin/launchctl", "bootout", "system", servicePlist)
-			if err := waitProcess(failedPID, 35*time.Second); err != nil {
+			failedPID := a.pid()
+			_ = a.stop(context.Background())
+			if err := a.wait(failedPID, 35*time.Second); err != nil {
 				result = errors.New("New backend did not stop during rollback; repair the service on the remote host")
 				return
 			}
-			if err := os.Rename(previous, serviceBin); err != nil {
+			if err := os.Rename(a.previous, a.executable); err != nil {
 				result = errors.New("Update failed and the old executable could not be restored; repair the service on the remote host")
 				return
 			}
 		}
-		if err := command(context.Background(), "/bin/launchctl", "bootstrap", "system", servicePlist); err != nil {
+		if err := a.start(context.Background()); err != nil {
 			result = errors.New("Update failed and the previous service could not be restarted; repair the service on the remote host")
 		}
 	}()
-	if err := waitProcess(job.PreviousPID, 35*time.Second); err != nil {
+	if err := a.wait(previousPID, 35*time.Second); err != nil {
 		return errors.New("Previous backend did not stop; replacement cancelled")
 	}
-	_ = os.Remove(previous)
-	if err = copyExecutable(serviceBin, previous); err != nil {
+	if err := copyExecutable(a.executable, a.previous); err != nil {
 		return err
 	}
-	if err = os.Chmod(next, 0755); err != nil {
+	if err := os.Chmod(a.next, 0755); err != nil {
 		return err
 	}
-	if err = os.Rename(next, serviceBin); err != nil {
+	if err := os.Rename(a.next, a.executable); err != nil {
 		return err
 	}
 	swapped = true
-	if dir, err := os.Open(serviceDir); err == nil {
+	if dir, err := os.Open(a.directory); err == nil {
 		_ = dir.Sync()
 		_ = dir.Close()
 	}
 	startedAt := time.Now()
-	if err = command(ctx, "/bin/launchctl", "bootstrap", "system", servicePlist); err != nil {
+	if err := a.start(ctx); err != nil {
 		return errors.New("New backend could not start; restoring the previous executable")
 	}
-	deadline := time.Now().Add(60 * time.Second)
-	for time.Now().Before(deadline) {
-		b, _ := os.ReadFile(readyFile)
-		var r ready
-		if json.Unmarshal(b, &r) == nil && r.Version == job.Target[1:] && r.PID > 1 && r.PID == servicePID() && r.At.After(startedAt) {
-			time.Sleep(3 * time.Second)
-			if servicePID() == r.PID {
-				stopped = false
-				_ = os.Remove(previous)
-				return nil
-			}
-		}
-		time.Sleep(time.Second)
+	if err := a.ready(ctx, target, startedAt); err != nil {
+		return err
 	}
-	return errors.New("New backend did not become ready; restoring the previous executable")
+	_ = os.Remove(a.previous)
+	return nil
+}
+
+func pause(ctx context.Context, duration time.Duration) error {
+	timer := time.NewTimer(duration)
+	defer timer.Stop()
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-timer.C:
+		return nil
+	}
 }
 
 func waitProcess(pid int, timeout time.Duration) error {

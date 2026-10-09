@@ -46,7 +46,8 @@ final class ReleaseUpdateDialog: NSObject, NSWindowDelegate, WKNavigationDelegat
     private var expanded = false
     private var continuation: CheckedContinuation<Choice, Never>?
 
-    init(release: GiteaRelease, assistantReady: Bool) {
+    init(release: GiteaRelease, assistantReady: Bool,
+         resourceDirectory: URL? = Bundle.main.resourceURL?.appendingPathComponent("ReleaseNotes", isDirectory: true)) {
         super.init()
         panel.title = L("软件更新")
         panel.backgroundColor = .windowBackgroundColor
@@ -91,7 +92,7 @@ final class ReleaseUpdateDialog: NSObject, NSWindowDelegate, WKNavigationDelegat
         if let data = try? JSONSerialization.data(withJSONObject: payload), let json = String(data: data, encoding: .utf8) {
             contentController.addUserScript(WKUserScript(source: "window.routepilotReleaseNotes = \(json);", injectionTime: .atDocumentStart, forMainFrameOnly: true))
         }
-        if let directory = Bundle.main.resourceURL?.appendingPathComponent("ReleaseNotes", isDirectory: true),
+        if let directory = resourceDirectory,
            FileManager.default.fileExists(atPath: directory.appendingPathComponent("notes.html").path) {
             notes.loadFileURL(directory.appendingPathComponent("notes.html"), allowingReadAccessTo: directory)
         } else {
@@ -180,12 +181,12 @@ final class ReleaseUpdateDialog: NSObject, NSWindowDelegate, WKNavigationDelegat
             decisionHandler(navigationAction.request.url?.isFileURL == true ? .allow : .cancel)
         }
     }
-    func run() async -> Choice {
+    func run(activate: Bool = true) async -> Choice {
         // Leave the normal application run loop available for WebKit loading and
         // JavaScript rendering while waiting for one of the window's actions.
         await withCheckedContinuation { pending in
             continuation = pending
-            NSApp.activate(ignoringOtherApps: true)
+            if activate { NSApp.activate(ignoringOtherApps: true) }
             panel.center()
             panel.makeKeyAndOrderFront(nil)
         }

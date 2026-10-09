@@ -17,7 +17,6 @@ import (
 	"net/url"
 	"os"
 	"os/exec"
-	"path"
 	"path/filepath"
 	"runtime"
 	"strconv"
@@ -74,10 +73,22 @@ type Manager struct {
 	latest          release
 	checkedAt       time.Time
 	beforeRestart   func() error
+	ops             updateOperations
+}
+
+type updateOperations struct {
+	fetch   func(context.Context, string, int64) ([]byte, error)
+	read    func() Status
+	write   func(Status) error
+	pid     func() int
+	prepare func(context.Context, release, func() error) error
 }
 
 func New(ctx context.Context, database string, beforeRestart func() error) *Manager {
-	m := &Manager{ctx: ctx, beforeRestart: beforeRestart}
+	m := &Manager{ctx: ctx, beforeRestart: beforeRestart, ops: updateOperations{
+		fetch: download, read: readState, write: func(s Status) error { return writeJSON(stateFile, s) },
+		pid: workerPID, prepare: prepare,
+	}}
 	m.standardService = runtime.GOOS == "darwin" && os.Geteuid() == 0 && filepath.Clean(database) == "/var/db/surge-controller/controller.sqlite"
 	m.reason = supportReason(database)
 	m.supported = m.reason == ""
@@ -191,7 +202,7 @@ func writeJSON(file string, value any) error {
 func (m *Manager) snapshot() Status {
 	s := Status{Phase: "idle"}
 	if m.supported {
-		s = readState()
+		s = m.ops.read()
 		if active(s.Phase) && !m.running && time.Since(s.UpdatedAt) > 10*time.Minute {
 			s.Phase = "failed"
 			s.Error = "Backend update was interrupted; check the remote service before retrying"
@@ -218,7 +229,7 @@ func (m *Manager) Check(ctx context.Context) (Status, error) {
 	}
 	m.mu.Unlock()
 	var r release
-	b, err := download(ctx, origin+"/api/v1/repos/knot/routepilot/releases/latest", 2<<20)
+	b, err := m.ops.fetch(ctx, origin+"/api/v1/repos/knot/routepilot/releases/latest", 2<<20)
 	if err != nil {
 		return m.Status(), err
 	}
@@ -243,14 +254,15 @@ func (m *Manager) Start(version string) (Status, error) {
 	if !m.supported {
 		return m.snapshot(), errors.New(m.reason)
 	}
-	if m.running || workerPID() > 0 || active(readState().Phase) && time.Since(readState().UpdatedAt) < 10*time.Minute {
+	previous := m.ops.read()
+	if m.running || m.ops.pid() > 0 || active(previous.Phase) && time.Since(previous.UpdatedAt) < 10*time.Minute {
 		return m.snapshot(), errors.New("A backend update is already in progress")
 	}
 	if version != m.latest.Tag || !newer(version, buildinfo.Current().Version) || time.Since(m.checkedAt) > 10*time.Minute {
 		return m.snapshot(), errors.New("Check the latest release again before updating")
 	}
 	s := Status{Phase: "downloading", Target: version, UpdatedAt: time.Now().UTC()}
-	if err := writeJSON(stateFile, s); err != nil {
+	if err := m.ops.write(s); err != nil {
 		return m.snapshot(), err
 	}
 	m.running = true
@@ -258,7 +270,7 @@ func (m *Manager) Start(version string) (Status, error) {
 	go func() {
 		ctx, cancel := context.WithTimeout(m.ctx, 5*time.Minute)
 		defer cancel()
-		err := prepare(ctx, r, m.beforeRestart)
+		err := m.ops.prepare(ctx, r, m.beforeRestart)
 		m.mu.Lock()
 		defer m.mu.Unlock()
 		m.running = false
@@ -266,18 +278,24 @@ func (m *Manager) Start(version string) (Status, error) {
 			s.Phase = "failed"
 			s.Error = err.Error()
 			s.UpdatedAt = time.Now().UTC()
-			_ = writeJSON(stateFile, s)
+			_ = m.ops.write(s)
 		}
 	}()
 	return m.snapshot(), nil
 }
 func download(ctx context.Context, address string, limit int64) ([]byte, error) {
+	return downloadWithTransport(ctx, address, limit, nil)
+}
+
+// A supplied transport lets offline checks exercise HTTP behavior without
+// relaxing the fixed release origin or changing process-wide HTTP defaults.
+func downloadWithTransport(ctx context.Context, address string, limit int64, transport http.RoundTripper) ([]byte, error) {
 	u, err := url.Parse(address)
 	if err != nil || u.Scheme != "https" || u.Host != "gitea.knotding.com" || u.User != nil || u.Fragment != "" || u.Opaque != "" {
 		return nil, errors.New("Release download origin is not trusted")
 	}
-	client := &http.Client{Timeout: 3 * time.Minute, CheckRedirect: func(req *http.Request, via []*http.Request) error {
-		if len(via) > 5 || req.URL.Scheme != "https" || req.URL.Host != u.Host || req.URL.User != nil {
+	client := &http.Client{Transport: transport, Timeout: 3 * time.Minute, CheckRedirect: func(req *http.Request, via []*http.Request) error {
+		if len(via) > 5 || req.URL.Scheme != "https" || req.URL.Host != u.Host || req.URL.User != nil || req.URL.Fragment != "" || req.URL.Opaque != "" {
 			return errors.New("Untrusted release redirect")
 		}
 		return nil
@@ -288,6 +306,9 @@ func download(ctx context.Context, address string, limit int64) ([]byte, error) 
 	}
 	response, err := client.Do(req)
 	if err != nil {
+		if ctx.Err() != nil {
+			return nil, ctx.Err()
+		}
 		return nil, errors.New("Cannot connect to the release server")
 	}
 	defer response.Body.Close()
@@ -305,52 +326,83 @@ func download(ctx context.Context, address string, limit int64) ([]byte, error) 
 }
 func prepare(ctx context.Context, r release, beforeRestart func() error) error {
 	asset := "surge-controller-macos-arm64.tar.gz"
-	urls := map[string]string{}
-	for _, a := range r.Assets {
-		if a.Name == asset || a.Name == "SHA256SUMS" {
-			if urls[a.Name] != "" {
-				return errors.New("Duplicate release assets")
-			}
-			urls[a.Name] = a.URL
-		}
-	}
-	if urls[asset] == "" || urls["SHA256SUMS"] == "" {
-		return errors.New("Release has no backend package for this platform")
+	urls, err := releaseAssets(r, asset)
+	if err != nil {
+		return err
 	}
 	sums, err := download(ctx, urls["SHA256SUMS"], 1<<20)
 	if err != nil {
 		return err
 	}
-	expected := ""
-	for _, line := range strings.Split(string(sums), "\n") {
-		fields := strings.Fields(line)
-		if len(fields) == 2 && strings.TrimPrefix(fields[1], "*") == asset {
-			if expected != "" {
-				return errors.New("Duplicate package checksums")
-			}
-			expected = strings.ToLower(fields[0])
-		}
-	}
-	digest, err := hex.DecodeString(expected)
-	if err != nil || len(digest) != sha256.Size {
-		return errors.New("Release checksum is missing or invalid")
+	expected, err := packageChecksum(sums, asset)
+	if err != nil {
+		return err
 	}
 	archive, err := download(ctx, urls[asset], 256<<20)
 	if err != nil {
 		return err
 	}
-	actual := sha256.Sum256(archive)
-	if hex.EncodeToString(actual[:]) != expected {
+	if err = verifyChecksum(archive, expected); err != nil {
 		return errors.New("Backend package SHA-256 verification failed")
 	}
+	return stageBackend(ctx, r, archive, beforeRestart)
+}
+
+func releaseAssets(r release, asset string) (map[string]string, error) {
+	urls := map[string]string{}
+	seen := map[string]bool{}
+	for _, a := range r.Assets {
+		if a.Name == asset || a.Name == "SHA256SUMS" {
+			if seen[a.Name] {
+				return nil, errors.New("Duplicate release assets")
+			}
+			seen[a.Name] = true
+			urls[a.Name] = a.URL
+		}
+	}
+	if urls[asset] == "" || urls["SHA256SUMS"] == "" {
+		return nil, errors.New("Release has no package for this platform")
+	}
+	return urls, nil
+}
+
+func packageChecksum(sums []byte, asset string) (string, error) {
+	expected := ""
+	found := false
+	for _, line := range strings.Split(string(sums), "\n") {
+		fields := strings.Fields(line)
+		if len(fields) == 2 && strings.TrimPrefix(fields[1], "*") == asset {
+			if found {
+				return "", errors.New("Duplicate package checksums")
+			}
+			found = true
+			expected = strings.ToLower(fields[0])
+		}
+	}
+	digest, err := hex.DecodeString(expected)
+	if err != nil || len(digest) != sha256.Size {
+		return "", errors.New("Release checksum is missing or invalid")
+	}
+	return expected, nil
+}
+
+func verifyChecksum(contents []byte, expected string) error {
+	actual := sha256.Sum256(contents)
+	if hex.EncodeToString(actual[:]) != expected {
+		return errors.New("Package SHA-256 verification failed")
+	}
+	return nil
+}
+
+func stageBackend(ctx context.Context, r release, archive []byte, beforeRestart func() error) error {
 	// Each updater stage is root-owned and never accepts uploaded executable bytes.
-	if err = os.MkdirAll(stagingDir, 0700); err != nil {
+	if err := os.MkdirAll(stagingDir, 0700); err != nil {
 		return err
 	}
-	if err = privateOwned(stagingDir, true); err != nil {
+	if err := privateOwned(stagingDir, true); err != nil {
 		return err
 	}
-	if err = os.Chmod(stagingDir, 0700); err != nil {
+	if err := os.Chmod(stagingDir, 0700); err != nil {
 		return err
 	}
 	// Remove a previous completed helper job before staging its successor.
@@ -424,7 +476,8 @@ func extract(archive []byte, out io.Writer) error {
 		return errors.New("Invalid backend archive")
 	}
 	defer z.Close()
-	t := tar.NewReader(io.LimitReader(z, 512<<20))
+	decompressed := &io.LimitedReader{R: z, N: (512 << 20) + 1}
+	t := tar.NewReader(decompressed)
 	found := false
 	for {
 		header, err := t.Next()
@@ -435,7 +488,7 @@ func extract(archive []byte, out io.Writer) error {
 			return errors.New("Invalid backend archive")
 		}
 		// No archive paths are unpacked. Only the single expected regular file is copied.
-		if path.Clean(header.Name) != "bin/surge-controller" {
+		if strings.TrimPrefix(header.Name, "./") != "bin/surge-controller" {
 			continue
 		}
 		if found || header.Typeflag != tar.TypeReg || header.Size <= 0 || header.Size > 200<<20 {
@@ -448,6 +501,11 @@ func extract(archive []byte, out io.Writer) error {
 	}
 	if !found {
 		return errors.New("Backend executable is missing from archive")
+	}
+	// tar EOF does not verify the gzip footer. Finish reading to reject truncated
+	// streams, checksum corruption and oversized trailing decompressed content.
+	if _, err := io.Copy(io.Discard, decompressed); err != nil || decompressed.N <= 0 {
+		return errors.New("Invalid backend archive")
 	}
 	return nil
 }

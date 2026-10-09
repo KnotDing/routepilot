@@ -1,5 +1,5 @@
 // Inspect built UI against deterministic API fixtures, without a live backend.
-const {chromium}=require(process.env.PLAYWRIGHT_MODULE||'playwright');
+const {chromium}=require(process.env.PLAYWRIGHT_MODULE||'../web/node_modules/playwright');
 const fs=require('node:fs');
 const source=fs.readFileSync('web/src/full-i18n.test.jsx','utf8');
 const fixture=Function(source.slice(source.indexOf('const settings='),source.indexOf('function noUntranslatedText'))+';return fixture;')();

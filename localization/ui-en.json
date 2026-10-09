@@ -727,6 +727,8 @@
   "Fake-IP 路由方式": "Fake-IP routing method",
   "DNS 拦截路由方式": "DNS interception method",
   "BGP 未启用。DNS 分流继续运行；外部静态路由状态请在“路由”查看。": "BGP is disabled. DNS classification remains active. View external static routes on the Routing page.",
+  "更新服务返回了无效的正式版本信息": "The update server returned invalid stable release metadata",
+  "分流动画：上支 DIRECT，下支 SURGE": "Traffic animation: upper branch DIRECT, lower branch SURGE",
   "分流模式": "Traffic mode",
   "当前分流模式": "Current traffic mode",
   "分流模式在设置中的路由分类调整": "Change traffic mode in Settings → Routing",

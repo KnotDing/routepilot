@@ -8,6 +8,7 @@ artifacts_dir="$project_dir/artifacts"
 for output in "$artifacts_dir"/RoutePilot.app \
   "$artifacts_dir"/RoutePilot-macos-*.dmg "$artifacts_dir"/RoutePilot-macos-*.zip \
   "$artifacts_dir"/surge-controller-macos-*.tar.gz "$artifacts_dir"/SHA256SUMS \
+  "$artifacts_dir"/package-verification.json \
   "$artifacts_dir"/app-build.* "$artifacts_dir"/app-previous.* \
   "$artifacts_dir"/surge-controller-macos.* "$artifacts_dir"/.DS_Store; do
   [ -e "$output" ] || [ -L "$output" ] || continue

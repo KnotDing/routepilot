@@ -50,15 +50,15 @@ jobs:
           path.write_text(json.dumps(release, ensure_ascii=False, indent=2) + "\n")
           PY
 
-      - name: Build packages
+      - name: Install locked test dependencies
         run: |
           npm --prefix web ci
-          make package
+          npm --prefix web exec -- playwright install chromium
 
-      - name: Create checksums
+      - name: Test, build and verify release artifacts
         run: |
-          cd artifacts
-          shasum -a 256 RoutePilot-macos-arm64.dmg RoutePilot-macos-arm64.zip surge-controller-macos-arm64.tar.gz > SHA256SUMS
+          make verify-release
+          make fuzz
 
       - name: Publish Gitea release and assets
         env:

@@ -1,5 +1,33 @@
 import AppKit
 
+enum StatusBarTrafficBranch: CaseIterable, Hashable {
+    case direct, surge
+    var endpointY: CGFloat { self == .direct ? 45 : 19 }
+}
+
+// Packet routing is separate from drawing, so its probability and mid-flight
+// stability can be checked with a deterministic random source.
+struct StatusBarPacketFlow {
+    private(set) var directProbability = 0.5
+    private var cycle = -1
+    private var branch: StatusBarTrafficBranch = .direct
+
+    mutating func setTraffic(direct: Double, surge: Double) {
+        let direct = direct.isFinite ? max(0, direct) : 0
+        let surge = surge.isFinite ? max(0, surge) : 0
+        let total = direct + surge
+        directProbability = total > 0 && total.isFinite ? direct / total : 0.5
+    }
+    mutating func reset() { cycle = -1 }
+    mutating func route(for packetCycle: Int, random: () -> Double = { Double.random(in: 0..<1) }) -> StatusBarTrafficBranch {
+        if cycle != packetCycle {
+            cycle = packetCycle
+            branch = random() < directProbability ? .direct : .surge
+        }
+        return branch
+    }
+}
+
 // Shape differences keep service status readable in light and dark menu bars.
 enum StatusBarVisualState: CaseIterable, Hashable {
     case healthy, warning, offline, connecting, login
@@ -45,9 +73,9 @@ enum StatusBarVisualState: CaseIterable, Hashable {
         return image
     }
 
-    // A packet enters from the left and splits onto the two original branches.
+    // Each packet enters from the left and follows exactly one branch.
     // Only the packet and its trail move; the mark's geometry stays fixed.
-    static func flowImage(progress: Double) -> NSImage {
+    static func flowImage(progress: Double, branch: StatusBarTrafficBranch) -> NSImage {
         let image = NSImage(size: NSSize(width: 18, height: 18), flipped: false) { rect in
             let unit = min(rect.width, rect.height) / 18
             func point(_ x: CGFloat, _ y: CGFloat) -> NSPoint {
@@ -88,15 +116,12 @@ enum StatusBarVisualState: CaseIterable, Hashable {
                 let time = progress - Double(segment) * 0.025
                 guard time >= 0 else { continue }
                 NSColor.black.withAlphaComponent(1 - CGFloat(segment) * 0.10).setStroke()
-                for (index, y) in [CGFloat(45), CGFloat(19)].enumerated() {
-                    if index == 1 && time <= 0.25 { continue }
-                    let trail = NSBezierPath()
-                    trail.lineWidth = 2.0 * unit
-                    trail.lineCapStyle = .round
-                    trail.move(to: packetPoint(max(0, time - 0.025), branchY: y))
-                    trail.line(to: packetPoint(time, branchY: y))
-                    trail.stroke()
-                }
+                let trail = NSBezierPath()
+                trail.lineWidth = 2.0 * unit
+                trail.lineCapStyle = .round
+                trail.move(to: packetPoint(max(0, time - 0.025), branchY: branch.endpointY))
+                trail.line(to: packetPoint(time, branchY: branch.endpointY))
+                trail.stroke()
             }
             return true
         }
@@ -116,6 +141,8 @@ final class StatusBarIconAnimator {
     private var displayedFrame: NSImage?
     private var motionEnabled = false
     private var frameCache: [StatusBarVisualState: [NSImage]] = [:]
+    private var flowFrames: [StatusBarTrafficBranch: [NSImage]] = [:]
+    private var packetFlow = StatusBarPacketFlow()
     private var frames: [NSImage] = []
     private var timer: Timer?
     private var stopped = false
@@ -140,7 +167,13 @@ final class StatusBarIconAnimator {
         if frameCache[state] == nil { frameCache[state] = makeFrames(state) }
         frames = frameCache[state] ?? []
         cycleStarted = ProcessInfo.processInfo.systemUptime
+        packetFlow.reset()
         updateMotionPreference()
+    }
+
+    func setTraffic(direct: Double, surge: Double) {
+        packetFlow.setTraffic(direct: direct, surge: surge)
+        // Updated odds apply to the next packet, never redirect one mid-flight.
     }
 
     private func makeFrames(_ state: StatusBarVisualState) -> [NSImage] {
@@ -150,14 +183,15 @@ final class StatusBarIconAnimator {
         case .connecting:
             return (0..<20).map { state.image(brand: brand, rotation: -CGFloat($0) * 18) ?? still }
         case .healthy:
-            return (0..<24).map { Self.flowFrame($0) }
+            for branch in StatusBarTrafficBranch.allCases {
+                flowFrames[branch] = (0..<24).map {
+                    StatusBarVisualState.flowImage(progress: Double($0) / 23, branch: branch)
+                }
+            }
+            return flowFrames[.direct] ?? [still]
         case .warning, .offline, .login:
             return [still]
         }
-    }
-
-    private static func flowFrame(_ index: Int) -> NSImage {
-        StatusBarVisualState.flowImage(progress: Double(index) / 23)
     }
 
     private func updateMotionPreference() {
@@ -184,7 +218,15 @@ final class StatusBarIconAnimator {
         guard !stopped, motionEnabled, !frames.isEmpty else { return }
         guard button != nil else { stop(); return }
         let elapsed = ProcessInfo.processInfo.systemUptime - cycleStarted
-        let frame = frames[Int(max(0, elapsed) * 10) % frames.count]
+        let step = Int(max(0, elapsed) * 10), index = step % frames.count
+        let frame: NSImage
+        if visual == .healthy {
+            let cycle = step / frames.count
+            let packetBranch = packetFlow.route(for: cycle)
+            frame = (flowFrames[packetBranch] ?? frames)[index]
+        } else {
+            frame = frames[index]
+        }
         display(frame)
     }
 

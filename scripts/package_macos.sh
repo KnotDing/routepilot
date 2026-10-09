@@ -21,5 +21,6 @@ cp README.md "$package_dir/"
 cp docs/*.md "$package_dir/docs/"
 (cd "$package_dir" && shasum -a 256 bin/* > SHA256SUMS)
 archive="$project_dir/artifacts/surge-controller-macos-$(uname -m).tar.gz"
-tar -czf "$archive" -C "$package_dir" .
+# Backend releases need executable bytes, not Finder resource-fork sidecars.
+COPYFILE_DISABLE=1 tar -czf "$archive" -C "$package_dir" .
 printf 'Release: %s\n' "$archive"

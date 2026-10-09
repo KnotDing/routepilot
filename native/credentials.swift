@@ -28,7 +28,7 @@ enum CredentialVault {
     static func load(from selected: CredentialStorage? = nil) -> LoginCredential? {
         switch selected ?? storage {
         case .keychain: return KeychainCredentials.load()
-        case .localFile: return try? LocalCredentials.load()
+        case .localFile: return try? LocalCredentials.shared.load()
         }
     }
 
@@ -36,7 +36,7 @@ enum CredentialVault {
         let credential = LoginCredential(username: username, password: password)
         switch selected ?? storage {
         case .keychain: try KeychainCredentials.save(credential, account: account(scope))
-        case .localFile: try LocalCredentials.save(credential, filename: filename(scope))
+        case .localFile: try LocalCredentials.shared.save(credential, filename: filename(scope))
         }
     }
 
@@ -48,20 +48,20 @@ enum CredentialVault {
     static func saved(scope: String, from selected: CredentialStorage? = nil) throws -> LoginCredential? {
         switch selected ?? storage {
         case .keychain: return KeychainCredentials.load(account: account(scope))
-        case .localFile: return try LocalCredentials.load(filename: filename(scope))
+        case .localFile: return try LocalCredentials.shared.load(filename: filename(scope))
         }
     }
     static func forget(scope: String, from selected: CredentialStorage? = nil) throws {
         switch selected ?? storage {
         case .keychain: KeychainCredentials.delete(account: account(scope))
-        case .localFile: try LocalCredentials.delete(filename: filename(scope))
+        case .localFile: try LocalCredentials.shared.delete(filename: filename(scope))
         }
     }
 
     static func delete(from selected: CredentialStorage? = nil) {
         switch selected ?? storage {
         case .keychain: KeychainCredentials.delete()
-        case .localFile: try? LocalCredentials.delete()
+        case .localFile: try? LocalCredentials.shared.delete()
         }
     }
 }
@@ -96,13 +96,14 @@ private enum KeychainCredentials {
     static func delete(account: String = "controller-login") { SecItemDelete(query(account) as CFDictionary) }
 }
 
-private enum LocalCredentials {
+struct LocalCredentials {
     // Keep credentials separate from the backend's data directory and exports.
-    private static let directory = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
-        .appendingPathComponent("RoutePilot/Credentials", isDirectory: true)
-    private static func failure() -> AppFailure { AppFailure(message: L("本地登录凭证文件无法访问，请检查用户目录权限。")) }
+    static let shared = LocalCredentials(directory: FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+        .appendingPathComponent("RoutePilot/Credentials", isDirectory: true))
+    let directory: URL
+    private func failure() -> AppFailure { AppFailure(message: L("本地登录凭证文件无法访问，请检查用户目录权限。")) }
 
-    private static func openDirectory(create: Bool) throws -> Int32? {
+    private func openDirectory(create: Bool) throws -> Int32? {
         if create {
             try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
         }
@@ -119,7 +120,8 @@ private enum LocalCredentials {
         return fd
     }
 
-    static func load(filename: String = "login.json") throws -> LoginCredential? {
+    func load(filename: String = "login.json") throws -> LoginCredential? {
+        guard filename.hasSuffix(".json"), !filename.contains("/"), filename.utf8.count <= 255 else { throw failure() }
         guard let directoryFD = try openDirectory(create: false) else { return nil }
         defer { Darwin.close(directoryFD) }
         let fd = openat(directoryFD, filename, O_RDONLY | O_NOFOLLOW | O_NONBLOCK | O_CLOEXEC)
@@ -137,7 +139,8 @@ private enum LocalCredentials {
         return try JSONDecoder().decode(LoginCredential.self, from: data)
     }
 
-    static func save(_ credential: LoginCredential, filename: String) throws {
+    func save(_ credential: LoginCredential, filename: String) throws {
+        guard filename.hasSuffix(".json"), !filename.contains("/"), filename.utf8.count <= 255 else { throw failure() }
         guard let directoryFD = try openDirectory(create: true) else { throw failure() }
         defer { Darwin.close(directoryFD) }
         let data = try JSONEncoder().encode(credential)
@@ -154,7 +157,8 @@ private enum LocalCredentials {
         guard renameat(directoryFD, temporary, directoryFD, filename) == 0 else { throw failure() }
     }
 
-    static func delete(filename: String = "login.json") throws {
+    func delete(filename: String = "login.json") throws {
+        guard filename.hasSuffix(".json"), !filename.contains("/"), filename.utf8.count <= 255 else { throw failure() }
         guard let directoryFD = try openDirectory(create: false) else { return }
         defer { Darwin.close(directoryFD) }
         guard unlinkat(directoryFD, filename, 0) == 0 || errno == ENOENT else { throw failure() }

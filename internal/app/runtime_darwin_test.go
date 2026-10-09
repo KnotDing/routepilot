@@ -4,7 +4,9 @@ package app
 
 import (
 	"context"
+	"crypto/rand"
 	"encoding/json"
+	"math/big"
 	"net"
 	"os"
 	"reflect"
@@ -17,6 +19,37 @@ import (
 	"surge-controller/internal/config"
 	"surge-controller/internal/resolver"
 )
+
+// Keep simultaneous test processes out of each other's pinned UDP source pool.
+// Reserve the whole randomly selected range before use, rather than relying on
+// fixed 31000/32000 ports that may already belong to another test or service.
+func testSourcePorts(t *testing.T) (uint16, uint16) {
+	t.Helper()
+	for attempt := 0; attempt < 100; attempt++ {
+		value, err := rand.Int(rand.Reader, big.NewInt(20000))
+		if err != nil {
+			t.Fatal(err)
+		}
+		first := 20000 + int(value.Int64())
+		var reserved []net.PacketConn
+		for port := first; port < first+32; port++ {
+			conn, err := net.ListenUDP("udp4", &net.UDPAddr{IP: net.IPv4(127, 0, 0, 1), Port: port})
+			if err != nil {
+				break
+			}
+			reserved = append(reserved, conn)
+		}
+		available := len(reserved) == 32
+		for _, conn := range reserved {
+			_ = conn.Close()
+		}
+		if available {
+			return uint16(first), uint16(first + 31)
+		}
+	}
+	t.Fatal("could not reserve isolated source ports")
+	return 0, 0
+}
 
 func TestFailedDNSActivationReportsStatusRestoresDNSAndReleasesPartialListener(t *testing.T) {
 	a := fixtureApp(t)
@@ -134,7 +167,7 @@ func TestRuntimeDNSCannotCreateRoutesAndSurgeFailureFallsBack(t *testing.T) {
 	d.Settings.DNS.Listeners = []string{bind}
 	d.Settings.DNS.EgressInterface = "lo0"
 	d.Settings.DNS.Source4 = "127.0.0.1"
-	d.Settings.DNS.SourcePortFirst, d.Settings.DNS.SourcePortLast = 31000, 31031
+	d.Settings.DNS.SourcePortFirst, d.Settings.DNS.SourcePortLast = testSourcePorts(t)
 	d.Settings.DNS.Upstreams = []resolver.ResolverEndpoint{{Name: "local real", Protocol: "udp", Address: upstream.LocalAddr().String(), Enabled: true}}
 	d.Settings.BGP.Enabled = true
 	d.Settings.BGP.RouterID = "127.0.0.1"
@@ -196,6 +229,20 @@ func TestRuntimeDNSCannotCreateRoutesAndSurgeFailureFallsBack(t *testing.T) {
 		t.Fatal(e)
 	}
 	wait(func() bool { return a.runtime.machine.Snapshot().DirectFallback })
+	// The state machine closes issuance before Reconcile/Refresh publishes the
+	// completed RIB snapshot. Wait for both, and keep asserting the manual route
+	// throughout that transition instead of racing the asynchronous withdrawal.
+	wait(func() bool {
+		rows := a.runtime.routes.ActiveStatus().Routes
+		manualPresent := false
+		for _, row := range rows {
+			manualPresent = manualPresent || row.Prefix == "10.20.0.0/16" && row.Kind == "manual"
+		}
+		if !manualPresent {
+			t.Fatal("Surge failure removed the independent manual route", rows)
+		}
+		return len(rows) == 1
+	})
 	q := new(dns.Msg)
 	q.SetQuestion("after-failure.test.", dns.TypeA)
 	r, _, e := client.Exchange(q, bind)
@@ -203,7 +250,7 @@ func TestRuntimeDNSCannotCreateRoutesAndSurgeFailureFallsBack(t *testing.T) {
 		t.Fatal("Surge loss did not enter independent fallback", e, r)
 	}
 	if rows := a.runtime.routes.ActiveStatus().Routes; len(rows) != 1 || rows[0].Prefix != "10.20.0.0/16" {
-		t.Fatal("Surge failure removed manual None route", rows)
+		t.Fatal("Surge failure left unexpected routes after convergence", rows)
 	}
 }
 
@@ -227,8 +274,7 @@ func TestStaticFakeAndRealDNSWorkWithoutBGPAndSurgeLossKeepsDeclaration(t *testi
 	d.Settings.DNS.Listeners = []string{bind}
 	d.Settings.DNS.EgressInterface = "lo0"
 	d.Settings.DNS.Source4 = "127.0.0.1"
-	d.Settings.DNS.SourcePortFirst = 32000
-	d.Settings.DNS.SourcePortLast = 32031
+	d.Settings.DNS.SourcePortFirst, d.Settings.DNS.SourcePortLast = testSourcePorts(t)
 	d.Settings.DNS.Upstreams = []resolver.ResolverEndpoint{{Protocol: "udp", Address: upstream.LocalAddr().String(), Enabled: true}}
 	d.Settings.Surge.NextHop4 = "127.0.0.1"
 	d.Settings.Health.StabilizeSeconds = 1

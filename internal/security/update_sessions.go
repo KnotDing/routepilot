@@ -1,7 +1,9 @@
 package security
 
 import (
+	"bytes"
 	"crypto/sha256"
+	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
@@ -50,12 +52,7 @@ func (m *Manager) SaveUpdateSessions() error {
 	}
 	m.updateHandoff = true
 	now := time.Now().UTC()
-	handoff := updateSessions{Created: now, Settings: m.settingsDigest(), Sessions: map[string]session{}}
-	for token, s := range m.sessions {
-		if s.Authenticated && s.Expires.After(now) {
-			handoff.Sessions[token] = s
-		}
-	}
+	handoff := m.snapshotUpdateSessions(now)
 	data, err := json.Marshal(handoff)
 	if err != nil {
 		return err
@@ -107,13 +104,44 @@ func (m *Manager) RestoreUpdateSessions() error {
 	if err = os.Remove(updateSessionFile); err != nil {
 		return err
 	}
-	var handoff updateSessions
-	if json.NewDecoder(io.LimitReader(file, 1<<20)).Decode(&handoff) != nil {
-		return errors.New("Invalid update session handoff")
+	data, err := io.ReadAll(io.LimitReader(file, 1<<20))
+	if err != nil {
+		return err
+	}
+	handoff, err := decodeUpdateSessions(data)
+	if err != nil {
+		return err
 	}
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	now := time.Now()
+	return m.restoreUpdateSessions(handoff, time.Now())
+}
+
+// Caller holds m.mu. These helpers keep the expiry and configuration rules
+// identical for persisted handoffs and isolated upgrade regression checks.
+func (m *Manager) snapshotUpdateSessions(now time.Time) updateSessions {
+	handoff := updateSessions{Created: now, Settings: m.settingsDigest(), Sessions: map[string]session{}}
+	for token, s := range m.sessions {
+		if s.Authenticated && s.Expires.After(now) {
+			handoff.Sessions[token] = s
+		}
+	}
+	return handoff
+}
+func decodeUpdateSessions(data []byte) (updateSessions, error) {
+	var handoff updateSessions
+	d := json.NewDecoder(bytes.NewReader(data))
+	d.DisallowUnknownFields()
+	if len(data) > 1<<20 || d.Decode(&handoff) != nil || d.Decode(new(any)) != io.EOF {
+		return handoff, errors.New("Invalid update session handoff")
+	}
+	return handoff, nil
+}
+func validUpdateToken(token string) bool {
+	data, err := base64.RawURLEncoding.DecodeString(token)
+	return err == nil && len(data) == 32 && base64.RawURLEncoding.EncodeToString(data) == token
+}
+func (m *Manager) restoreUpdateSessions(handoff updateSessions, now time.Time) error {
 	if !m.settings.Authentication || handoff.Settings != m.settingsDigest() || handoff.Created.After(now) || now.Sub(handoff.Created) > 5*time.Minute {
 		return nil
 	}
@@ -121,7 +149,7 @@ func (m *Manager) RestoreUpdateSessions() error {
 		return errors.New("Invalid update session count")
 	}
 	for token, s := range handoff.Sessions {
-		if len(token) == 43 && len(s.CSRF) == 43 && s.Authenticated && s.Expires.After(now) {
+		if validUpdateToken(token) && validUpdateToken(s.CSRF) && s.Authenticated && s.Expires.After(now) {
 			m.sessions[token] = s
 		}
 	}

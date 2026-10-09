@@ -5,6 +5,7 @@ import (
 	"errors"
 	"github.com/miekg/dns"
 	"net/netip"
+	"path/filepath"
 	"strings"
 	"surge-controller/internal/cache"
 	"surge-controller/internal/classifier"
@@ -89,6 +90,106 @@ func TestOptimisticDecisionAndResponseOptionsAreIndependent(t *testing.T) {
 			}
 			engine.Close()
 			real.Close()
+		}
+	}
+}
+
+func TestDecisionsSurviveUnrelatedSavesDNSRebuildAndDiskRestart(t *testing.T) {
+	a := fixtureApp(t)
+	key := classifier.Key{Domain: "persist.example.", ClientGroup: "192.0.2.10", QueryClass: "1/1"}
+	wait := func(check func() bool) {
+		t.Helper()
+		deadline := time.Now().Add(5 * time.Second)
+		for time.Now().Before(deadline) {
+			if check() {
+				return
+			}
+			time.Sleep(10 * time.Millisecond)
+		}
+		t.Fatal("decision cache did not reach expected state")
+	}
+	wait(func() bool { return a.runtime.decisionSnapshot().Digest != "" })
+	engine := a.runtime.engine
+	value := model.DecisionResult{Domain: key.Domain, QueryType: 1, ClientIP: netip.MustParseAddr(key.ClientGroup), Decision: model.Direct, Persistent: true, CreatedAt: time.Now()}
+	if !engine.Cache.Put(key, value, engine.Cache.Generation(), cache.Forever) {
+		t.Fatal("could not seed cache")
+	}
+	for _, change := range []string{"name", "aaaa", "dns-timeout"} {
+		d := a.Configuration()
+		switch change {
+		case "name":
+			d.Settings.General.Name = "saved unrelated name"
+		case "aaaa":
+			d.Settings.DNS.AAAAFallback = "block"
+		case "dns-timeout":
+			d.Settings.DNS.TimeoutMS += 100
+		}
+		if err := a.Apply(context.Background(), d); err != nil {
+			t.Fatal(err)
+		}
+		wait(func() bool { _, found := a.runtime.engine.Cache.Get(key); return found })
+		if change != "dns-timeout" && a.runtime.engine != engine {
+			t.Fatal("hot change rebuilt the classifier", change)
+		}
+		if change == "dns-timeout" && a.runtime.engine == engine {
+			t.Fatal("test did not exercise a DNS rebuild")
+		}
+	}
+	path := filepath.Join(a.dir, "c.sqlite")
+	if err := a.Close(); err != nil {
+		t.Fatal(err)
+	}
+	reopened, err := Open(context.Background(), path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = reopened.Close() })
+	wait(func() bool { _, found := reopened.runtime.engine.Cache.Get(key); return found })
+	if got, _ := reopened.runtime.engine.Cache.Get(key); !got.Persistent || !got.CreatedAt.Equal(value.CreatedAt) {
+		t.Fatal("restart changed saved decision", got)
+	}
+	if err := reopened.Flush(context.Background(), key.Domain); err != nil {
+		t.Fatal(err)
+	}
+	var saved decisionCacheSnapshot
+	if err := reopened.store.LoadDecisionCache(context.Background(), &saved); err != nil || len(saved.Entries) != 0 {
+		t.Fatal("manual deletion was not durable", saved, err)
+	}
+}
+
+func TestRetainedDecisionsRejectMismatchedAndExpiredRecords(t *testing.T) {
+	key := classifier.Key{Domain: "example.com.", ClientGroup: "192.0.2.1", QueryClass: "1/1"}
+	value := model.DecisionResult{Domain: key.Domain, QueryType: 1, ClientIP: netip.MustParseAddr(key.ClientGroup), Decision: model.Direct, Persistent: true}
+	base := decisionRecord{Key: key, Value: value}
+	if len(retainedDecisions([]decisionRecord{base}, false)) != 1 {
+		t.Fatal("valid persistent decision discarded")
+	}
+	for _, mutate := range []func(*decisionRecord){
+		func(r *decisionRecord) { r.Value.Decision = model.Unknown },
+		func(r *decisionRecord) { r.Key.Domain = "EXAMPLE.com." },
+		func(r *decisionRecord) { r.Value.Domain = "other.test." },
+		func(r *decisionRecord) { r.Key.ClientGroup = "192.0.2.2" },
+		func(r *decisionRecord) { r.Key.QueryClass = "28/1" },
+		func(r *decisionRecord) { r.Value.QueryType = 0 },
+		func(r *decisionRecord) { r.Value.Persistent = false },
+		func(r *decisionRecord) { r.ExpiresAt = time.Now().Add(time.Hour) },
+	} {
+		r := base
+		mutate(&r)
+		if len(retainedDecisions([]decisionRecord{r}, false)) != 0 {
+			t.Fatal("invalid decision retained", r)
+		}
+	}
+	timed := base
+	timed.Value.Persistent = false
+	timed.ExpiresAt = time.Now().Add(time.Minute)
+	if len(retainedDecisions([]decisionRecord{timed}, true)) != 1 {
+		t.Fatal("valid timed decision discarded")
+	}
+	for _, deadline := range []time.Time{{}, time.Now().Add(-time.Second)} {
+		timed.ExpiresAt = deadline
+		if len(retainedDecisions([]decisionRecord{timed}, true)) != 0 {
+			t.Fatal("expired or permanent decision restored as timed")
 		}
 	}
 }

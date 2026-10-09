@@ -321,12 +321,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
     }
     func updateToolTip() {
         let visual = serviceVisualState
+        let counters = status["counters"] as? [String: Any] ?? [:]
+        statusIconAnimator?.setTraffic(direct: (counters["Direct"] as? NSNumber)?.doubleValue ?? 0,
+                                      surge: (counters["Surge"] as? NSNumber)?.doubleValue ?? 0)
         statusIconAnimator?.setState(visual)
         let summary = "RoutePilot · " + L(visual.label)
         statusItem.button?.setAccessibilityLabel(summary)
         statusItem.button?.toolTip = summary + "\n" + (lastError.isEmpty ? stateText(status["state"] ?? "—") + " · " + stateText(status["mode"] ?? "auto") : L(lastError))
         let down = notificationHealth.filter { ($0["state"] as? String)?.uppercased() == "DOWN" }.compactMap { $0["name"] as? String }
         if authenticated && !down.isEmpty { statusItem.button?.toolTip? += "\n" + down.map { L($0) }.joined(separator: "、") }
+        if visual == .healthy { statusItem.button?.toolTip? += "\n" + L("分流动画：上支 DIRECT，下支 SURGE") }
         if let versionWarning { statusItem.button?.toolTip? += "\n" + L(versionWarning) }
     }
     func userContentController(_ userContentController: WKUserContentController, didReceive message: WKScriptMessage) {
@@ -814,9 +818,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
             panel.contentView = view; panel.delegate = self; panel.isReleasedWhenClosed = false
             // AppKit persists the normal window frame across app restarts and
             // adjusts restored frames for the screens currently available.
-            let frameName = "RoutePilotManagementWindow"
-            if !panel.setFrameUsingName(frameName) { panel.center() }
-            panel.setFrameAutosaveName(frameName)
+            ManagementWindowFrame.restore(panel)
             window = panel; webView = view
             let cookies = client.session.configuration.httpCookieStorage?.cookies(for: client.base) ?? []
             let group = DispatchGroup()
@@ -828,6 +830,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
     }
     func windowWillClose(_ notification: Notification) {
         guard let closed = notification.object as? NSWindow, closed === window else { return }
+        ManagementWindowFrame.remember(closed)
         NSApp.setActivationPolicy(.accessory)
     }
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { false }
