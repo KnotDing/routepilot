@@ -35,7 +35,7 @@ fuzz:
 	$(GO) test -run '^$$' -fuzz '^FuzzVersionParser$$' -fuzztime=5s -parallel=2 ./internal/softwareupdate
 checksums:
 	rm -f artifacts/package-verification.json
-	cd artifacts && shasum -a 256 RoutePilot-macos-$$(uname -m).dmg RoutePilot-macos-$$(uname -m).zip surge-controller-macos-$$(uname -m).tar.gz > SHA256SUMS
+	cd artifacts && shasum -a 256 RoutePilot-macos-$$(uname -m).dmg RoutePilot-macos-$$(uname -m).zip > SHA256SUMS
 package-check: checksums
 	python3 scripts/check_package_test.py
 	python3 scripts/check_package.py
@@ -44,4 +44,3 @@ fmt:
 app: build
 	sh scripts/build_app.sh
 package: app
-	sh scripts/package_macos.sh

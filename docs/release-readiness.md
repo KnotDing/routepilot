@@ -18,7 +18,7 @@ make coverage
 make fuzz
 ```
 
-`verify-release` 按顺序执行前端测试、全部 Go 竞态测试、go vet、前后端构建、原生检查、浏览器检查、App/DMG/ZIP/后台打包及校验。每次实际执行 Go 测试，不使用旧的成功缓存。构建会清理历史发布产物，保留 UI 检查截图；不要同时运行多个构建命令。
+`verify-release` 按顺序执行前端测试、全部 Go 竞态测试、go vet、前后端构建、原生检查、浏览器检查、完整 App/DMG/ZIP 打包及校验。每次实际执行 Go 测试，不使用旧的成功缓存。构建会清理历史发布产物，保留 UI 检查截图；不要同时运行多个构建命令。
 
 可单独运行：
 
@@ -74,15 +74,15 @@ make fuzz
 - `.cache/native-tests/ui.log`：真实 WKWebView 测试结果。
 - `artifacts/ui-forms/verification.json` 与同目录 PNG：页面检查及截图。
 - `artifacts/package-verification.json`：当前安装包版本、校验和与检查范围。
-- `artifacts/SHA256SUMS`：发布用的三个压缩包校验和。
+- `artifacts/SHA256SUMS`：发布用的 DMG 和 ZIP 校验和。
 
 构建会删除旧的安装包成功报告；任何校验失败都返回非零，工作流不会继续发布。签名检查验证包未损坏；目前仍使用 ad-hoc 签名，不代表 Developer ID 签名、公证或 Gatekeeper 首次打开验收。
 
 ## Gitea 门禁
 
-`.gitea/workflows/test.yaml` 在 main 推送与 PR 时运行回归、原生/页面检查和模糊测试；`.gitea/workflows/release.yaml` 在版本标签推送后先完成全部检查与安装包校验，再创建 Release 和上传四项资产。两者均使用 `macos-arm64` Runner。
+`.gitea/workflows/test.yaml` 在 main 推送与 PR 时运行回归、原生/页面检查和模糊测试；`.gitea/workflows/release.yaml` 在版本标签推送后先完成全部检查与安装包校验，再创建 Release 和上传 DMG、ZIP 和 SHA256SUMS 三项资产。两者均使用 `macos-arm64` Runner。
 
-本机记录不等于远端 Actions 的执行结果；推送提交和标签后需要确认两个工作流均通过，且 Release 的四项资产上传完成。图形会话或工具缺失会直接失败，应修复 Runner 条件，不应绕过门禁。
+本机记录不等于远端 Actions 的执行结果；推送提交和标签后需要确认两个工作流均通过，且 Release 的三项资产上传完成。图形会话或工具缺失会直接失败，应修复 Runner 条件，不应绕过门禁。
 
 ## 1.0.0 前仍需真实环境验收
 

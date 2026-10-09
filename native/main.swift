@@ -588,13 +588,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
 
         let login = item(SMAppService.mainApp.status == .requiresApproval ? "登录时启动（等待系统授权）" : "登录时启动", action: #selector(toggleLogin), enabled: !smoke)
         login.state = SMAppService.mainApp.status == .enabled ? .on : SMAppService.mainApp.status == .requiresApproval ? .mixed : .off
+        menu.addItem(login)
         let stores = CredentialStorage.allCases.map { storage -> NSMenuItem in
             let row = item(storage.title, action: #selector(changeCredentialStorage(_:)))
             row.representedObject = storage.rawValue
             row.state = CredentialVault.storage == storage ? .on : .off
             return row
         }
-        menu.addItem(submenu("应用偏好", items: [login, submenu("登录凭证保存方式", items: stores)]))
+        menu.addItem(submenu("应用偏好", items: [submenu("登录凭证保存方式", items: stores)]))
         menu.addItem(.separator())
         let quit = item(child == nil ? "退出 RoutePilot" : "退出 RoutePilot（停止临时后台）", action: #selector(quit))
         quit.toolTip = L(child == nil ? "后台独立运行，不会随 App 退出。" : "同时停止 App 启动的临时后台。")

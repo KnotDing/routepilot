@@ -1,15 +1,12 @@
 #!/usr/bin/env python3
 """Read-only validation of release artifacts; never installs or starts a service."""
 import hashlib
-import gzip
-import io
 import json
 import pathlib
 import platform
 import plistlib
 import re
 import subprocess
-import tarfile
 import zipfile
 
 
@@ -56,30 +53,9 @@ def verify_notes(read):
         require(len(read(reference[2:])) > 0, "Empty notes asset")
 
 
-def verify_backend_archive(path, binaries):
-    # Reading to gzip EOF verifies its footer too; tar EOF alone does not.
-    with gzip.open(path, "rb") as compressed:
-        contents = compressed.read(512 * 1024 * 1024 + 1)
-    require(len(contents) <= 512 * 1024 * 1024, "Oversized decompressed archive")
-    with tarfile.open(fileobj=io.BytesIO(contents), mode="r:") as archive:
-        files = {}
-        for member in archive.getmembers():
-            name = member.name.removeprefix("./")
-            require(not name.startswith("/") and ".." not in name.split("/"), "Unsafe archive path")
-            require(member.isdir() or member.isfile(), "Archive contains a link or special file")
-            if member.isfile():
-                require(name not in files, "Duplicate archive member")
-                require(member.size <= 200 * 1024 * 1024, "Oversized archive member")
-                files[name] = archive.extractfile(member).read()
-                if name.startswith("bin/"):
-                    require(member.mode & 0o111, "Backend is not executable")
-        expected = {"bin/" + name: data for name, data in binaries.items()}
-        require({name for name in files if name.startswith("bin/")} == set(expected), "Unexpected backend binary")
-        verify_checksums(checksum_entries(files["SHA256SUMS"].decode()), expected)
-        for name, data in expected.items():
-            require(files.get(name) == data, "Archive binary differs from build: " + name)
-        for name in ("scripts/install_macos.sh", "scripts/update_macos.sh", "scripts/uninstall_macos.sh", "launchd/com.routepilot.surge-controller.plist"):
-            require(name in files, "Missing backend resource: " + name)
+def verify_service_resources(read):
+    for name in ("bin/surge-controller", "scripts/install_macos.sh", "scripts/update_macos.sh", "scripts/uninstall_macos.sh", "launchd/com.routepilot.surge-controller.plist"):
+        require(len(read(name)) > 0, "Missing or empty bundled service resource: " + name)
 
 
 def main():
@@ -90,7 +66,7 @@ def main():
     identity = json.loads((root / "internal/buildinfo/release.json").read_text())
     require(re.fullmatch(r"(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)", identity["version"]), "Release must have a stable semantic version")
     arch = platform.machine()
-    names = [f"RoutePilot-macos-{arch}.dmg", f"RoutePilot-macos-{arch}.zip", f"surge-controller-macos-{arch}.tar.gz"]
+    names = [f"RoutePilot-macos-{arch}.dmg", f"RoutePilot-macos-{arch}.zip"]
     files = {name: (artifacts / name).read_bytes() for name in names}
     require(all(files.values()), "Empty release artifact")
     checksums = checksum_entries((artifacts / "SHA256SUMS").read_text())
@@ -98,8 +74,10 @@ def main():
     app = artifacts / "RoutePilot.app"
     verify_identity(plistlib.loads((app / "Contents/Info.plist").read_bytes()), identity)
     verify_notes(lambda name: (app / "Contents/Resources/ReleaseNotes" / name).read_bytes())
-    binaries = {name: (root / "bin" / name).read_bytes() for name in ("surge-controller", "dns-probe")}
-    require((app / "Contents/Resources/Service/bin/surge-controller").read_bytes() == binaries["surge-controller"], "App backend differs from standalone backend")
+    service = app / "Contents/Resources/Service"
+    verify_service_resources(lambda name: (service / name).read_bytes())
+    backend = service / "bin/surge-controller"
+    require(backend.stat().st_mode & 0o111, "Bundled service is not executable")
     with zipfile.ZipFile(artifacts / names[1]) as archive:
         require(len(archive.namelist()) == len(set(archive.namelist())), "Duplicate ZIP member")
         require(archive.testzip() is None, "Corrupt ZIP member")
@@ -108,15 +86,15 @@ def main():
                 require(archive.read(file.relative_to(artifacts).as_posix()) == file.read_bytes(), "ZIP differs from App: " + file.name)
         verify_identity(plistlib.loads(archive.read("RoutePilot.app/Contents/Info.plist")), identity)
         verify_notes(lambda name: archive.read("RoutePilot.app/Contents/Resources/ReleaseNotes/" + name))
-    verify_backend_archive(artifacts / names[2], binaries)
-    version = json.loads(subprocess.check_output([str(root / "bin/surge-controller"), "version"], text=True))
+    require(not list(artifacts.glob("surge-controller-macos-*.tar.gz")), "Obsolete backend archive remains in release output")
+    version = json.loads(subprocess.check_output([str(backend), "version"], text=True))
     for key in ("name", "version", "build"):
         require(version[key] == identity[key], "Backend identity differs: " + key)
     require(version["os"] == "darwin" and version["arch"] == {"arm64": "arm64", "x86_64": "amd64"}[arch], "Wrong backend platform")
-    for file in (app, root / "bin/surge-controller", root / "bin/dns-probe"):
+    for file in (app, backend):
         subprocess.run(["codesign", "--verify", "--deep", "--strict", str(file)], check=True)
     subprocess.run(["hdiutil", "verify", str(artifacts / names[0])], check=True)
-    report.write_text(json.dumps({"passed": True, "identity": identity, "sha256": checksums, "checks": ["bundle identity", "backend identity", "offline notes", "ZIP/App equality", "backend archive and inner checksums", "outer checksums", "code signatures", "DMG integrity"], "scope": "Read-only package validation; no installation, notarization or live upgrade acceptance"}, indent=2) + "\n")
+    report.write_text(json.dumps({"passed": True, "identity": identity, "sha256": checksums, "checks": ["bundle identity", "backend identity", "offline notes", "ZIP/App equality", "bundled service resources", "outer checksums", "code signatures", "DMG integrity"], "scope": "Read-only package validation; no installation, notarization or live upgrade acceptance"}, indent=2) + "\n")
     print("PASS package: versions, resources, archives, checksums, signatures, DMG")
 
 

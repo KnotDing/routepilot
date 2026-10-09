@@ -81,7 +81,7 @@ jobs:
             --data "$(jq -n --arg tag "$TAG" --arg build "$BUILD_NUMBER" --rawfile notes "$notes_file" \
               '{tag_name:$tag,name:("RoutePilot " + $tag),body:($notes + "\n\nGitea Actions Build " + $build + "."),draft:false,prerelease:false}')")
           release_id=$(printf '%s' "$release" | jq -er '.id')
-          for asset in artifacts/RoutePilot-macos-arm64.dmg artifacts/RoutePilot-macos-arm64.zip artifacts/surge-controller-macos-arm64.tar.gz artifacts/SHA256SUMS; do
+          for asset in artifacts/RoutePilot-macos-arm64.dmg artifacts/RoutePilot-macos-arm64.zip artifacts/SHA256SUMS; do
             name=${asset##*/}
             curl --fail --silent --show-error \
               -H "Authorization: token ${GITEA_TOKEN}" \

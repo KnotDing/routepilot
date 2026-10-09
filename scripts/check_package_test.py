@@ -1,11 +1,6 @@
 import unittest
-import gzip
-import io
-import pathlib
-import tarfile
-import tempfile
 
-from check_package import checksum_entries, sha256, verify_backend_archive, verify_checksums, verify_identity, verify_notes
+from check_package import checksum_entries, sha256, verify_service_resources, verify_checksums, verify_identity, verify_notes
 
 
 class PackageChecks(unittest.TestCase):
@@ -36,34 +31,16 @@ class PackageChecks(unittest.TestCase):
             with self.subTest(html=html), self.assertRaises(ValueError):
                 verify_notes(read(html))
 
-    def test_backend_archive(self):
-        binaries = {"surge-controller": b"controller", "dns-probe": b"probe"}
-        files = {"bin/" + name: data for name, data in binaries.items()}
-        files["SHA256SUMS"] = "".join(sha256(data) + "  " + name + "\n" for name, data in files.items()).encode()
-        for name in ("scripts/install_macos.sh", "scripts/update_macos.sh", "scripts/uninstall_macos.sh", "launchd/com.routepilot.surge-controller.plist"):
-            files[name] = b"resource"
-        def pack(extra=None):
-            output = io.BytesIO()
-            with tarfile.open(fileobj=output, mode="w:gz") as archive:
-                for name, data in [*files.items(), *(extra or [])]:
-                    member = tarfile.TarInfo("./" + name)
-                    member.size = len(data)
-                    member.mode = 0o755
-                    archive.addfile(member, io.BytesIO(data))
-            return output.getvalue()
-        with tempfile.TemporaryDirectory() as directory:
-            path = pathlib.Path(directory) / "backend.tar.gz"
-            path.write_bytes(pack())
-            verify_backend_archive(path, binaries)
-            for extra in [[("bin/._surge-controller", b"metadata")], [("../escape", b"bad")], [("bin/dns-probe", b"duplicate")]]:
-                with self.subTest(extra=extra), self.assertRaises(ValueError):
-                    path.write_bytes(pack(extra))
-                    verify_backend_archive(path, binaries)
-            # tar EOF must not hide a broken gzip footer.
-            contents = bytearray(pack()); contents[-8] ^= 1
-            path.write_bytes(contents)
-            with self.assertRaises(gzip.BadGzipFile):
-                verify_backend_archive(path, binaries)
+    def test_bundled_service_resources(self):
+        files = {name: b"resource" for name in ("bin/surge-controller", "scripts/install_macos.sh", "scripts/update_macos.sh", "scripts/uninstall_macos.sh", "launchd/com.routepilot.surge-controller.plist")}
+        verify_service_resources(files.__getitem__)
+        for name in files:
+            with self.subTest(name=name), self.assertRaises(ValueError):
+                verify_service_resources({**files, name: b""}.__getitem__)
+            missing = {key:value for key,value in files.items() if key!=name}
+            with self.subTest(missing=name), self.assertRaises(KeyError):
+                verify_service_resources(missing.__getitem__)
+
 
 
 if __name__ == "__main__":
