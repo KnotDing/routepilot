@@ -488,3 +488,6 @@ label[data-missing=true] > :is(input,textarea,select):not(:disabled),.form-grid 
 @media(max-width:900px) { .topbar { flex-direction:row; justify-content:space-between; align-items:flex-start; } .topbar > div { min-width:0; } }
 
 .nav-mode.mode-overridden { color:#f1cf89; border-color:#bfa46b80; background-color:#bfa46b15; }
+
+.settings-section{margin-top:24px;padding-top:20px;border-top:1px solid var(--border,#dbe3f0)}
+.plain-fieldset{border:0;margin:0;padding:0;min-width:0}

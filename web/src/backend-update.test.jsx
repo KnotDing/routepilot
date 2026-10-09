@@ -54,3 +54,12 @@ it('upgrades the complete application even when only the installed App is old',a
  expect(screen.getByText(/同步更新 App、管理页面和网络服务/)).toBeInTheDocument();
  fireEvent.click(screen.getByRole('button',{name:'稍后升级'}));expect(request.mock.calls.some(([path])=>path==='updates/install')).toBe(false);
 });
+
+it('continues checking failed App restart state until a manual relaunch clears it',async()=>{
+ vi.useFakeTimers();const onReady=vi.fn();request.mockResolvedValue({...available,available:false,phase:'succeeded',app_restart:'failed',app_restart_error:'Remote App did not quit; reopen RoutePilot on the remote Mac'});mount(onReady);
+ await act(async()=>{await Promise.resolve()});expect(screen.getByText('远端 App 未能重启，请在远端手动重新打开')).toBeInTheDocument();
+ await act(async()=>vi.advanceTimersByTimeAsync(4000));expect(onReady).not.toHaveBeenCalled();
+ request.mockResolvedValue({...available,available:false,phase:'succeeded',app_restart:'restarted'});
+ await act(async()=>vi.advanceTimersByTimeAsync(2000));expect(onReady).toHaveBeenCalledTimes(1);expect(screen.queryByLabelText('远程软件更新')).not.toBeInTheDocument();
+ const count=request.mock.calls.length;await act(async()=>vi.advanceTimersByTimeAsync(6000));expect(request.mock.calls.length).toBe(count);
+});

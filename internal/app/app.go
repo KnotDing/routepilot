@@ -9,6 +9,7 @@ import (
 	"github.com/miekg/dns"
 	"golang.org/x/net/netutil"
 	"log/slog"
+	"math"
 	"net"
 	"net/http"
 	"net/netip"
@@ -136,6 +137,8 @@ type Runtime struct {
 	latencySum                                       atomic.Uint64
 }
 type App struct {
+	surgeRecovery      surge.Recovery
+	queryRateBits      atomic.Uint64
 	notifications      *notifications.Manager
 	notificationCancel context.CancelFunc
 	notificationDone   chan struct{}
@@ -144,6 +147,7 @@ type App struct {
 	dnsCounters        dnsserver.Counters
 	statsCancel        context.CancelFunc
 	statsDone          chan struct{}
+	queryRateDone      chan struct{}
 	ruleTests          chan struct{}
 	lockFile           *os.File
 	eventRetention     atomic.Int64
@@ -242,9 +246,11 @@ func Open(ctx context.Context, path string) (*App, error) {
 		if previous, loadErr := store.LoadActiveConfiguration(ctx); loadErr == nil && previous.Version != 0 {
 			if restored, restoreErr := a.build(previous, &savedDecisions); restoreErr == nil {
 				rt, e = restored, nil
+				a.mu.Lock()
 				a.applied = previous
 				a.security.Update(previous.Settings.Security)
 				a.application = ApplicationStatus{Revision: 1, State: "failed", Error: original.Error()}
+				a.mu.Unlock()
 			}
 		}
 	}
@@ -254,7 +260,9 @@ func Open(ctx context.Context, path string) (*App, error) {
 		store.Close()
 		return nil, e
 	}
+	a.mu.Lock()
 	a.runtime = rt
+	a.mu.Unlock()
 	// Keep an existing last-working listener checkpoint until Serve confirms
 	// the desired management address can actually bind.
 	if previous, loadErr := store.LoadActiveConfiguration(ctx); loadErr == nil && previous.Version == 0 {
@@ -268,6 +276,8 @@ func Open(ctx context.Context, path string) (*App, error) {
 	statsCtx, statsCancel := context.WithCancel(context.Background())
 	a.statsCancel = statsCancel
 	a.statsDone = make(chan struct{})
+	a.queryRateDone = make(chan struct{})
+	go a.sampleQueryRate(statsCtx)
 	go a.persistStatistics(statsCtx, counters)
 	opened = true
 	a.event("INFO", "startup", "Controller management service started")
@@ -515,13 +525,18 @@ func (a *App) monitor(ctx context.Context, rt *Runtime) {
 	lastPeers := ""
 	for {
 		begin := time.Now()
-		probeCtx, cancel := context.WithTimeout(ctx, time.Duration(s.DNS.TimeoutMS)*time.Millisecond+time.Second)
+		restart := a.activeConfiguration().Settings.Surge.Restart.Effective()
+		probeTimeout := time.Duration(s.DNS.TimeoutMS)*time.Millisecond + time.Second
+		if restart.Enabled && len(restart.Groups)+len(restart.Nodes) > 0 {
+			probeTimeout = max(probeTimeout, time.Duration(restart.ProbeTimeoutMS)*time.Millisecond)
+		}
+		probeCtx, cancel := context.WithTimeout(ctx, probeTimeout)
 		type probe struct {
 			name    string
 			ok      bool
 			latency time.Duration
 		}
-		results := make(chan probe, 5)
+		results := make(chan probe, 21)
 		var wg sync.WaitGroup
 		run := func(name string, fn func() bool) {
 			wg.Add(1)
@@ -590,13 +605,35 @@ func (a *App) monitor(ctx context.Context, rt *Runtime) {
 			}
 			return surge.ProbeAPI(probeCtx, s.Surge.APIURL, s.Surge.APIToken)
 		})
+		if restart.Enabled {
+			for _, target := range appendTargets(restart) {
+				target := target
+				run(target.name, func() bool {
+					targetCtx, targetCancel := context.WithTimeout(probeCtx, time.Duration(restart.ProbeTimeoutMS)*time.Millisecond)
+					defer targetCancel()
+					_, err := surge.ProbePolicy(targetCtx, rt.adapter.Runner, restart.ProbeURL, target.policy)
+					return err == nil
+				})
+			}
+		}
+
 		wg.Wait()
 		close(results)
 		up := map[string]bool{}
+		rawChecks := map[string]bool{}
 		for p := range results {
+			rawChecks[p.name] = p.ok
 			up[p.name] = rt.health.Observe(p.name, p.ok, p.latency, "component probe failed")
 		}
 		cancel()
+		a.observeSurgeRecovery(ctx, rt, restart, rawChecks)
+		for _, component := range rt.health.Values() {
+			if strings.HasPrefix(component.Name, "Surge group ") || strings.HasPrefix(component.Name, "Surge node ") {
+				if _, selected := rawChecks[component.Name]; !selected {
+					rt.health.Remove(component.Name)
+				}
+			}
+		}
 		if s.Surge.APIURL == "" {
 			rt.health.Disabled("Surge API")
 		}
@@ -819,6 +856,8 @@ func (a *App) activateConfiguration(ctx context.Context, d config.Document) erro
 	newRuntime.Settings.Logging.EventRetention = 0
 	oldRuntime.Settings.Routing = config.Routing{}
 	newRuntime.Settings.Routing = config.Routing{}
+	oldRuntime.Settings.Surge.Restart = config.SurgeRestart{}
+	newRuntime.Settings.Surge.Restart = config.SurgeRestart{}
 	oldRuntime.Settings.Surge.NextHop4 = ""
 	oldRuntime.Settings.Surge.NextHop6 = ""
 	newRuntime.Settings.Surge.NextHop4 = ""
@@ -970,7 +1009,7 @@ func (a *App) View(ctx context.Context, key string) (any, error) {
 		return application, nil
 	case "status":
 		p := rt.machine.Plan()
-		return map[string]any{"software": buildinfo.Current(), "online_update": true, "remote_credential_origin_binding": true, "fast_configuration_save": true, "configuration_application": application, "name": name, "mode": mode, "state": p.State, "fake_ip_enabled": p.AllowFakeIP, "queries_per_minute": rt.queryRate.Load(), "counters": rt.dispatcher.Statistics().Snapshot(), "warning": rt.Fault(), "uptime_seconds": int(time.Since(rt.started).Seconds())}, nil
+		return map[string]any{"software": buildinfo.Current(), "online_update": true, "remote_credential_origin_binding": true, "fast_configuration_save": true, "configuration_application": application, "name": name, "mode": mode, "state": p.State, "fake_ip_enabled": p.AllowFakeIP, "queries_per_minute": rt.queryRate.Load(), "queries_per_second": math.Float64frombits(a.queryRateBits.Load()), "surge_restart": a.surgeRecovery.Status(), "counters": rt.dispatcher.Statistics().Snapshot(), "warning": rt.Fault(), "uptime_seconds": int(time.Since(rt.started).Seconds())}, nil
 	case "health":
 		values := rt.health.Values()
 		sort.Slice(values, func(i, j int) bool { return values[i].Name < values[j].Name })
@@ -1306,6 +1345,9 @@ func (a *App) Close() error {
 	if a.statsCancel != nil {
 		a.statsCancel()
 		<-a.statsDone
+		if a.queryRateDone != nil {
+			<-a.queryRateDone
+		}
 		statsErr = a.saveDNSStatistics(a.dnsCounters.Snapshot())
 	}
 	cacheErr := a.saveDecisionCache()

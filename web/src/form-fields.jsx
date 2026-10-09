@@ -34,6 +34,7 @@ export function settingsRequirement(category,name,draft,interception=[]){
   for(const family of [4,6])if(name==='source'+family||name==='gateway'+family){result.required=Boolean((dns.interception_enabled||name.startsWith('source')&&routing.static_dns_configured)&&families.some(value=>value.includes(':')===(family===6)));if(result.required)result.hint='当前拦截地址族需要源地址与网关。'}
   if(name==='bypass_verified')result.required=Boolean(dns.interception_enabled);
  }
+ if(category==='surge'&&name==='api_url'&&surge.restart?.enabled&&surge.restart?.api)result.required=true;
  if(category==='surge'&&(name==='next_hop4'||name==='next_hop6')){
   const backend=routing.mode==='hybrid'?routing.fake_ip_backend:(routing.mode||'bgp');
   const active=backend==='bgp'?bgp.enabled:routing.static_fake_ip_configured;

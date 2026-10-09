@@ -147,3 +147,19 @@ func TestUpdateStatusReadsAppVersionAfterRollback(t *testing.T) {
 		t.Fatal("App rollback hidden by stale version cache")
 	}
 }
+
+func TestManualAppReopenClearsOnlyOldRestartFailures(t *testing.T) {
+	at := time.Date(2026, 10, 9, 21, 10, 57, 0, time.Local)
+	old := "Fri Oct 9 20:51:41 2026 /Applications/RoutePilot.app/Contents/MacOS/RoutePilot\n"
+	fresh := "Fri Oct 9 21:11:56 2026 /Applications/RoutePilot.app/Contents/MacOS/RoutePilot\n"
+	helper := "Fri Oct 9 21:10:20 2026 /Applications/RoutePilot.app/Contents/MacOS/RoutePilot --finish-remote-update\n"
+	for _, tc := range []struct {
+		output         string
+		clear, running bool
+	}{{old, false, false}, {fresh, true, true}, {fresh + old, false, false}, {helper, true, false}, {fresh + helper, true, true}, {"", true, false}, {"invalid invalid invalid invalid invalid /Applications/RoutePilot.app/Contents/MacOS/RoutePilot", false, false}} {
+		clear, running := appsReopened(tc.output, at)
+		if clear != tc.clear || running != tc.running {
+			t.Fatal(tc, clear, running)
+		}
+	}
+}

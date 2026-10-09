@@ -75,6 +75,8 @@ type Manager struct {
 	checkedAt       time.Time
 	beforeRestart   func() error
 	appRestartOnce  sync.Once
+	appReconcileMu  sync.Mutex
+	appReconcileAt  time.Time
 	ops             updateOperations
 }
 
@@ -218,6 +220,7 @@ func (m *Manager) snapshot() Status {
 		s.AppCurrent = m.ops.appVersion()
 		if restart := readAppRestart(); restart.Target == s.Target {
 			s.AppRestart, s.AppRestartError = restart.Phase, restart.Error
+			m.reconcileAppRestart(s, restart)
 		}
 	}
 	s.CompleteApplication = true

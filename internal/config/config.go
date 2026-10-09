@@ -48,16 +48,17 @@ type PolicyUpstream struct {
 	FallbackUpstreams []resolver.ResolverEndpoint `json:"fallback_upstreams,omitempty"`
 }
 type Surge struct {
-	TrustDirect     bool     `json:"trust_direct"`
-	UserName        string   `json:"user_name"`
-	CLIPath         string   `json:"cli_path"`
-	APIURL          string   `json:"api_url"`
-	APIToken        string   `json:"api_token,omitempty"`
-	TokenConfigured bool     `json:"token_configured"`
-	DNS             string   `json:"dns"`
-	FakePrefixes    []string `json:"fake_prefixes"`
-	NextHop4        string   `json:"next_hop4"`
-	NextHop6        string   `json:"next_hop6"`
+	Restart         SurgeRestart `json:"restart"`
+	TrustDirect     bool         `json:"trust_direct"`
+	UserName        string       `json:"user_name"`
+	CLIPath         string       `json:"cli_path"`
+	APIURL          string       `json:"api_url"`
+	APIToken        string       `json:"api_token,omitempty"`
+	TokenConfigured bool         `json:"token_configured"`
+	DNS             string       `json:"dns"`
+	FakePrefixes    []string     `json:"fake_prefixes"`
+	NextHop4        string       `json:"next_hop4"`
+	NextHop6        string       `json:"next_hop6"`
 }
 type BGP struct {
 	Enabled          bool   `json:"enabled"`
@@ -277,6 +278,8 @@ func (d Document) Clone() Document {
 		c.Settings.DNS.PolicyUpstreams[i].Upstreams = append([]resolver.ResolverEndpoint{}, d.Settings.DNS.PolicyUpstreams[i].Upstreams...)
 		c.Settings.DNS.PolicyUpstreams[i].FallbackUpstreams = append([]resolver.ResolverEndpoint{}, d.Settings.DNS.PolicyUpstreams[i].FallbackUpstreams...)
 	}
+	c.Settings.Surge.Restart.Groups = append([]string{}, d.Settings.Surge.Restart.Groups...)
+	c.Settings.Surge.Restart.Nodes = append([]string{}, d.Settings.Surge.Restart.Nodes...)
 	c.Settings.Surge.FakePrefixes = append([]string{}, d.Settings.Surge.FakePrefixes...)
 	c.Settings.Security.AllowedNetworks = append([]string{}, d.Settings.Security.AllowedNetworks...)
 	c.Peers = append([]Peer{}, d.Peers...)
@@ -405,6 +408,9 @@ func (d Document) Validate() error {
 	}
 	if !filepath.IsAbs(s.Surge.CLIPath) || s.DNS.TimeoutMS < 100 || s.DNS.TimeoutMS > 10000 {
 		return errors.New("absolute CLI path and bounded DNS timeout required")
+	}
+	if err := s.Surge.Restart.Validate(s.Surge.APIURL); err != nil {
+		return err
 	}
 	if s.Surge.APIURL != "" {
 		u, e := url.Parse(s.Surge.APIURL)

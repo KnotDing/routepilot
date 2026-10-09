@@ -27,8 +27,9 @@ struct AppPreferences: Codable {
     var checkIntervalHours = 12
     var desktopNotifications = false
     var notificationSound = true
+    var statusBar = StatusBarPreferences()
 
-    enum CodingKeys: String, CodingKey { case automaticCheck, automaticDownload, automaticInstall, updatePrompts, checkIntervalHours, desktopNotifications, notificationSound }
+    enum CodingKeys: String, CodingKey { case statusBar, automaticCheck, automaticDownload, automaticInstall, updatePrompts, checkIntervalHours, desktopNotifications, notificationSound }
     init() {}
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
@@ -38,6 +39,7 @@ struct AppPreferences: Codable {
         updatePrompts = try c.decodeIfPresent(Bool.self, forKey: .updatePrompts) ?? true
         checkIntervalHours = try c.decodeIfPresent(Int.self, forKey: .checkIntervalHours) ?? 12
         desktopNotifications = try c.decodeIfPresent(Bool.self, forKey: .desktopNotifications) ?? false
+        statusBar = try c.decodeIfPresent(StatusBarPreferences.self, forKey: .statusBar) ?? StatusBarPreferences()
         notificationSound = try c.decodeIfPresent(Bool.self, forKey: .notificationSound) ?? true
     }
 

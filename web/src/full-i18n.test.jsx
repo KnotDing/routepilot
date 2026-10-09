@@ -36,7 +36,7 @@ it('localizes every page, settings category, editor and query detail through the
   if(page==='Rule test'){fireEvent.click(screen.getByRole('button',{name:'Test rules'}));await screen.findByText('Raw evaluation result');noUntranslatedText()}
   if(page==='Local DNS'){fireEvent.click(screen.getByRole('button',{name:'Import from Surge'}));await screen.findByText('Imported 1 / skipped 1');noUntranslatedText()}
   if(page==='BGP neighbors'){fireEvent.click(screen.getByRole('button',{name:'Preview FRR configuration'}));await screen.findByText(/Mac's reachable address/);noUntranslatedText()}
-  if(page==='Settings')for(let category=1;category<=12;category++){fireEvent.click(document.querySelector('.tabs button:nth-child('+category+')'));noUntranslatedText()}
+  if(page==='Settings')for(let category=1;category<=13;category++){fireEvent.click(document.querySelector('.tabs button:nth-child('+category+')'));noUntranslatedText()}
  }
  fireEvent.click(screen.getByRole('button',{name:'Local service · Switch'}));await screen.findByRole('dialog',{name:'Manage backends'});noUntranslatedText();fireEvent.click(screen.getByRole('button',{name:'Add remote backend'}));noUntranslatedText();expect(screen.queryAllByLabelText(/页面语言|Page language/)).toHaveLength(0);
 });

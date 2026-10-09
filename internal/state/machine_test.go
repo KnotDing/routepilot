@@ -133,3 +133,12 @@ func TestWithdrawalWaitsForResponseWrite(t *testing.T) {
 		t.Fatal("response barrier failed to drain")
 	}
 }
+
+func TestRemoveOptionalHealthChecks(t *testing.T) {
+	h := NewHealth(1, 1)
+	h.Observe("Surge node Fixture", false, 0, "fixture")
+	h.Remove("Surge node Fixture")
+	if len(h.Values()) != 0 {
+		t.Fatal("removed policy health retained")
+	}
+}

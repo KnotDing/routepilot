@@ -140,6 +140,8 @@ final class StatusBarIconAnimator {
     private var stillImages: [StatusBarVisualState: NSImage] = [:]
     private var displayedFrame: NSImage?
     private var motionEnabled = false
+    private var animationEnabled = true
+    private var flowClock = StatusBarFlowClock()
     private var frameCache: [StatusBarVisualState: [NSImage]] = [:]
     private var flowFrames: [StatusBarTrafficBranch: [NSImage]] = [:]
     private var packetFlow = StatusBarPacketFlow()
@@ -170,12 +172,19 @@ final class StatusBarIconAnimator {
         frames = frameCache[state] ?? []
         cycleStarted = ProcessInfo.processInfo.systemUptime
         packetFlow.reset()
+        flowClock.reset()
         updateMotionPreference()
     }
 
     func setTraffic(direct: Double, surge: Double) {
         packetFlow.setTraffic(direct: direct, surge: surge)
         // Updated odds apply to the next packet, never redirect one mid-flight.
+    }
+
+    func configure(animation: Bool, queriesPerSecond: Double) {
+        _ = flowClock.advance(ProcessInfo.processInfo.systemUptime)
+        flowClock.queriesPerSecond = queriesPerSecond
+        if animationEnabled != animation { animationEnabled = animation; updateMotionPreference() }
     }
 
     private func makeFrames(_ state: StatusBarVisualState) -> [NSImage] {
@@ -200,7 +209,9 @@ final class StatusBarIconAnimator {
         guard !stopped else { return }
         timer?.invalidate()
         timer = nil
-        motionEnabled = !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion && frames.count > 1
+        flowClock.reset()
+        cycleStarted = ProcessInfo.processInfo.systemUptime
+        motionEnabled = animationEnabled && !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion && frames.count > 1
         if !motionEnabled {
             display(stillImages[visual])
             return
@@ -219,7 +230,8 @@ final class StatusBarIconAnimator {
     private func tick() {
         guard !stopped, motionEnabled, !frames.isEmpty else { return }
         guard button != nil else { stop(); return }
-        let elapsed = ProcessInfo.processInfo.systemUptime - cycleStarted
+        let now = ProcessInfo.processInfo.systemUptime
+        let elapsed = visual == .healthy ? flowClock.advance(now) : now - cycleStarted
         let step = Int(max(0, elapsed) / frameInterval), index = step % frames.count
         let frame: NSImage
         if visual == .healthy {

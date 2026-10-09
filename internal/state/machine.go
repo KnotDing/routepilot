@@ -254,3 +254,11 @@ func (h *Health) Disabled(name string) {
 	defer h.mu.Unlock()
 	h.components[name] = Component{Name: name, State: "DISABLED"}
 }
+
+// Remove checks that no longer exist in the configuration. Optional policy
+// probes can otherwise accumulate indefinitely as names are edited.
+func (h *Health) Remove(name string) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	delete(h.components, name)
+}

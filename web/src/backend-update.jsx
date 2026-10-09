@@ -16,16 +16,16 @@ export function BackendUpdate({backend,capable,software,onReady}){
  const check=async(manual=true)=>{if(busy)return;setBusy(true);try{const value=await request('updates/check');if(mounted.current){setUpdate(value);setError('');if(manual){setSkipped('');if(value.available&&value.supported)setConfirmation({version:value.latest,notes:value.release_notes})}}}catch(e){if(mounted.current&&e.name!=='AbortError')setError(message(e.message))}finally{if(mounted.current)setBusy(false)}};
  useEffect(()=>{if(capable&&!checked.current){checked.current=true;check(false)}},[capable]);
  useEffect(()=>{
-  if(!active(update?.phase)&&!appPending(update?.app_restart))return;
+  if(!active(update?.phase)&&!appNotice(update?.app_restart))return;
   const started=Date.now();
   const poll=async()=>{
    if(polling.current)return;polling.current=true;
-   try{const value=await request('updates/status');if(!mounted.current)return;setUpdate(value);setOffline(false);setError('');if(!active(value.phase)&&!appPending(value.app_restart))readyCallback.current?.()}
+   try{const value=await request('updates/status');if(!mounted.current)return;setUpdate(value);setOffline(false);setError('');if(!active(value.phase)&&!appNotice(value.app_restart))readyCallback.current?.()}
    catch(e){if(!mounted.current||e.name==='AbortError')return;setOffline(true);if(e.status===401||e.status===403){setError(t('后台已重启，请重新登录查看升级结果'));setUpdate(previous=>({...previous,phase:'idle',app_restart:undefined}))}else if(Date.now()-started>10*60*1000){setError(t('等待后台恢复超时，请检查远端服务后重新连接'));setUpdate(previous=>({...previous,phase:'idle',app_restart:undefined}))}}
    finally{polling.current=false}
   };
   const timer=setInterval(poll,2000);return()=>clearInterval(timer);
- },[Boolean(active(update?.phase)||appPending(update?.app_restart))]);
+ },[Boolean(active(update?.phase)||appNotice(update?.app_restart))]);
  useEffect(()=>{
   if(!confirmation)return;
   const previous=document.activeElement,overflow=document.body.style.overflow;

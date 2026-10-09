@@ -9,7 +9,7 @@ export function appPreferences(){
  if(nativeApp())return {...defaults,...window.routepilotNativePreferences};
  try{return {...defaults,...JSON.parse(localStorage.getItem('routepilot.appPreferences')||'{}')}}catch{return {...defaults}}
 }
-async function savePreferences(value,onWarning){
+export async function savePreferences(value,onWarning){
  if(nativeApp()){
   if(window.routepilotNativePreferences?.preferencesSaveAcknowledgement){
    const requestID=globalThis.crypto?.randomUUID?.()||Date.now().toString(36)+'-'+Math.random().toString(36).slice(2);

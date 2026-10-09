@@ -32,6 +32,75 @@ func readAppRestart() appRestartStatus {
 	return s
 }
 
+func installedAppProcess(path string) bool {
+	return path == appTarget+"/Contents/MacOS/RoutePilot" ||
+		strings.HasPrefix(path, "/Applications/.RoutePilot-update-") && strings.HasSuffix(path, "/previous.app/Contents/MacOS/RoutePilot")
+}
+
+// Inspect real process launch times instead of treating the installed bundle's
+// version as proof that a running App has restarted. Helpers aren't normal Apps.
+func appsReopened(output string, updatedAt time.Time) (bool, bool) {
+	if updatedAt.IsZero() {
+		return false, false
+	}
+	found := false
+	for _, line := range strings.Split(output, "\n") {
+		fields := strings.Fields(line)
+		if len(fields) < 6 || !installedAppProcess(fields[5]) {
+			continue
+		}
+		helper := false
+		for _, argument := range fields[6:] {
+			if argument == "--finish-remote-update" {
+				helper = true
+			}
+		}
+		if helper {
+			continue
+		}
+		launched, err := time.ParseInLocation("Mon Jan _2 15:04:05 2006", strings.Join(fields[:5], " "), time.Local)
+		if err != nil || launched.Before(updatedAt) {
+			return false, false
+		}
+		found = true
+	}
+	return true, found
+}
+
+// Reconcile asynchronously so status requests remain quick. A manual quit or
+// relaunch clears an obsolete error without installing or restarting anything.
+func (m *Manager) reconcileAppRestart(update Status, restart appRestartStatus) {
+	if update.Phase != "succeeded" || update.Target != "v"+buildinfo.Current().Version || update.AppCurrent != buildinfo.Current().Version || restart.Phase != "failed" && restart.Phase != "deferred" {
+		return
+	}
+	m.appReconcileMu.Lock()
+	if time.Since(m.appReconcileAt) < 3*time.Second {
+		m.appReconcileMu.Unlock()
+		return
+	}
+	m.appReconcileAt = time.Now()
+	m.appReconcileMu.Unlock()
+	go func() {
+		ctx, cancel := context.WithTimeout(m.ctx, 5*time.Second)
+		defer cancel()
+		cmd := exec.CommandContext(ctx, "/bin/ps", "-axo", "lstart=,command=")
+		cmd.Env = append(os.Environ(), "LC_ALL=C")
+		output, err := cmd.Output()
+		if err != nil {
+			return
+		}
+		clear, running := appsReopened(string(output), update.UpdatedAt)
+		if !clear || readAppRestart() != restart || readState().Target != update.Target {
+			return
+		}
+		phase := "not_running"
+		if running {
+			phase = "restarted"
+		}
+		_ = writeJSON(appRestartFile, appRestartStatus{Target: restart.Target, Phase: phase})
+	}()
+}
+
 // The newly installed backend handles the GUI handoff. This also works when an
 // older update worker installed this release. Rollbacks never restart the App.
 func (m *Manager) resumeRemoteApp(initial Status) {
@@ -71,9 +140,7 @@ func appSessionUIDs(output string) []int {
 		if len(fields) != 3 {
 			continue
 		}
-		path := fields[2]
-		backup := strings.HasPrefix(path, "/Applications/.RoutePilot-update-") && strings.HasSuffix(path, "/previous.app/Contents/MacOS/RoutePilot")
-		if path != appTarget+"/Contents/MacOS/RoutePilot" && !backup {
+		if !installedAppProcess(fields[2]) {
 			continue
 		}
 		uid, err := strconv.Atoi(fields[1])

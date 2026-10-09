@@ -367,5 +367,12 @@
   "Invalid remote App restart request": "远端 App 重启请求无效",
   "Remote App refused to quit; reopen RoutePilot on the remote Mac": "远端 App 拒绝退出，请在远端手动重新打开 RoutePilot",
   "Remote App did not quit; reopen RoutePilot on the remote Mac": "远端 App 未能退出，请在远端手动重新打开 RoutePilot",
-  "Remote App did not relaunch; reopen RoutePilot on the remote Mac": "远端 App 未能重新启动，请在远端手动重新打开 RoutePilot"
+  "Remote App did not relaunch; reopen RoutePilot on the remote Mac": "远端 App 未能重新启动，请在远端手动重新打开 RoutePilot",
+  "invalid Surge restart tolerance": "Surge 异常重启的容忍参数不合法",
+  "Surge restart requires selected checks and an API URL for API checks": "请至少选择一个异常判定条件，HTTP API 检查还需要 API 地址",
+  "at most 16 Surge restart targets are allowed": "策略组与节点最多配置 16 项",
+  "invalid or duplicate Surge restart target": "Surge 重启检查目标为空、重复或名称不合法",
+  "Surge restart probe URL must use HTTP(S) without credentials": "策略探测 URL 必须使用 HTTP(S)，且不能包含凭据",
+  "Surge policy health probe failed": "Surge 策略健康探测失败",
+  "invalid Surge policy probe duration": "Surge 策略探测耗时不合法"
 }

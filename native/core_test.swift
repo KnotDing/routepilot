@@ -38,6 +38,33 @@ struct NativeCoreTests {
         try nativeCheck(upper.tiffRepresentation != lower.tiffRepresentation, "both branches render the same packet")
         try nativeCheck(StatusBarVisualState.flowImage(progress:0.1,branch:.direct).tiffRepresentation == StatusBarVisualState.flowImage(progress:0.1,branch:.surge).tiffRepresentation, "single input packet was duplicated")
 
+
+        for qps in [0.0, 1, 10, 100, 10000] {
+            let speed = StatusBarFlowClock.multiplier(qps)
+            try nativeCheck(speed >= 1 && speed <= 4, "animation speed out of bounds")
+        }
+        try nativeCheck(StatusBarFlowClock.multiplier(100) > StatusBarFlowClock.multiplier(1), "QPS did not accelerate flow")
+        try nativeCheck(StatusBarFlowClock.multiplier(.nan) == 1 && StatusBarFlowClock.multiplier(.infinity) == 1, "invalid QPS accelerated flow")
+        var clock = StatusBarFlowClock()
+        _ = clock.advance(1); let first = clock.advance(1.1)
+        clock.queriesPerSecond = 100
+        let second = clock.advance(1.2)
+        try nativeCheck(second > first && second - first > 0.1, "flow clock rewound or did not accelerate")
+        try nativeCheck(clock.advance(1.15) == second, "backwards clock changed packet position")
+        clock.reset(); try nativeCheck(clock.advance(10) == 0, "clock reset failed")
+        var preference = StatusBarPreferences()
+        try nativeCheck(preference.valid && preference.animation && preference.display == "none", "status defaults changed")
+        preference.display = "metric"
+        let sample: [String: Any] = ["queries_per_second": 12.6, "counters": ["Errors": 5]]
+        try nativeCheck(preference.text(status: sample, health: [], bgp: [:], available: true) == "13/s", "QPS text wrong")
+        try nativeCheck(preference.text(status: sample, health: [], bgp: [:], available: false) == "—", "offline displayed stale data")
+        preference.display = "health_state"
+        try nativeCheck(preference.text(status: [:], health: [["name":"Surge API", "state":"DOWN"]], bgp: [:], available: true) == "!", "health state missing")
+        preference.display = "health_value"
+        try nativeCheck(preference.text(status: [:], health: [["name":"Surge API", "latency_ms":1.6]], bgp: [:], available: true) == "2ms", "health metric wrong")
+        try nativeCheck(preference.text(status: [:], health: [], bgp: [:], available: true) == "—", "missing component fabricated value")
+        preference.display = "unsafe"; try nativeCheck(!preference.valid, "invalid display accepted")
+
         let files=FileManager.default, directory=files.temporaryDirectory.appendingPathComponent("RoutePilot-credentials-test-"+UUID().uuidString)
         try files.createDirectory(at:directory,withIntermediateDirectories:false);defer{try? files.removeItem(at:directory)}
         let store=LocalCredentials(directory:directory), credential=LoginCredential(username:"fixture",password:"fixture-password")

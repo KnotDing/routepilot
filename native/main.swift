@@ -97,8 +97,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
         hideOthers.keyEquivalentModifierMask = [.command, .option]
         appMenu.addItem(withTitle: L("显示全部"), action: #selector(NSApplication.unhideAllApplications(_:)), keyEquivalent: "")
         appMenu.addItem(.separator())
-        let quitItem = appMenu.addItem(withTitle: L("退出 RoutePilot"), action: #selector(quit), keyEquivalent: "q")
-        quitItem.target = self
+        let quitItem = appMenu.addItem(withTitle: L("退出 RoutePilot"), action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
+        quitItem.target = NSApp
         appItem.submenu = appMenu
         mainMenu.addItem(appItem)
         let editItem = NSMenuItem(title: L("编辑"), action: nil, keyEquivalent: "")
@@ -321,6 +321,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
     }
     func updateToolTip() {
         let visual = serviceVisualState
+        let preference = AppPreferences.current.statusBar
+        statusIconAnimator?.configure(animation: preference.animation, queriesPerSecond: (status["queries_per_second"] as? NSNumber)?.doubleValue ?? 0)
+        let caption = preference.text(status: status, health: health, bgp: bgp, available: authenticated && lastError.isEmpty)
+        statusItem.length = caption.isEmpty ? NSStatusItem.squareLength : NSStatusItem.variableLength
+        statusItem.button?.title = caption.isEmpty ? "" : " " + caption
+        statusItem.button?.font = NSFont.monospacedDigitSystemFont(ofSize: 12, weight: .regular)
+        statusItem.button?.imagePosition = .imageLeading
         let counters = status["counters"] as? [String: Any] ?? [:]
         statusIconAnimator?.setTraffic(direct: (counters["Direct"] as? NSNumber)?.doubleValue ?? 0,
                                       surge: (counters["Surge"] as? NSNumber)?.doubleValue ?? 0)
@@ -331,6 +338,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
         let down = notificationHealth.filter { ($0["state"] as? String)?.uppercased() == "DOWN" }.compactMap { $0["name"] as? String }
         if authenticated && !down.isEmpty { statusItem.button?.toolTip? += "\n" + down.map { L($0) }.joined(separator: "、") }
         if visual == .healthy { statusItem.button?.toolTip? += "\n" + L("分流动画：上支 DIRECT，下支 SURGE") }
+        if !caption.isEmpty { statusItem.button?.toolTip? += "\n" + (preference.display == "metric" ? L(["queries_per_second":"每秒 DNS 请求数", "queries":"DNS 请求总数", "direct":"DIRECT 请求总数", "surge":"SURGE 请求总数", "reject":"REJECT 请求总数", "errors":"DNS 错误总数", "bgp_advertised":"BGP 已发布路由数", "uptime_seconds":"后台运行秒数"][preference.metric] ?? "状态栏指标") : preference.health) + " · " + caption }
         if let versionWarning { statusItem.button?.toolTip? += "\n" + L(versionWarning) }
     }
     func userContentController(_ userContentController: WKUserContentController, didReceive message: WKScriptMessage) {
@@ -345,10 +353,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
                 webView?.evaluateJavaScript("window.dispatchEvent(new CustomEvent('routepilot-preferences-saved',{detail:" + json + "}));", completionHandler: nil)
             }
             guard let data = try? JSONSerialization.data(withJSONObject: values),
-                  var preferences = try? JSONDecoder().decode(AppPreferences.self, from: data), (1...168).contains(preferences.checkIntervalHours) else { reply(false); return }
+                  var preferences = try? JSONDecoder().decode(AppPreferences.self, from: data), (1...168).contains(preferences.checkIntervalHours), preferences.statusBar.valid else { reply(false); return }
             preferences.automaticInstall = preferences.automaticInstall && preferences.automaticCheck && UpdateAssistant.configured
             let previous = AppPreferences.current
             AppPreferences.current = preferences
+            updateToolTip()
             if preferences.automaticCheck && (!previous.automaticCheck || preferences.automaticDownload != previous.automaticDownload || preferences.updatePrompts != previous.updatePrompts || preferences.automaticInstall != previous.automaticInstall) {
                 UserDefaults.standard.removeObject(forKey: "releaseUpdateLastCheck")
             }
@@ -438,6 +447,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
         scripts.forEach { controller.addUserScript($0) }
         guard let data = try? JSONEncoder().encode(AppPreferences.current),
               var preferences = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { return }
+        preferences["statusBarHealth"] = health.compactMap { $0["name"] as? String }
         preferences["assistantReady"] = UpdateAssistant.configured
         preferences["assistantSupported"] = true
         preferences["remoteCredentialsSupported"] = true
