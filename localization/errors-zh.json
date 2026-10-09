@@ -358,5 +358,14 @@
   "another configuration save is in progress; try again shortly": "另一项配置正在保存，请稍后重试",
   "background operation capacity exhausted; try again later": "后台任务已满，请稍后重试",
   "background operation not found; check whether it completed before submitting again": "未找到后台任务，请先确认操作是否已完成再重新提交",
-  "Configuration saved, but runtime application failed: {reason}": "配置已保存，但后台应用失败：{reason}"
+  "Configuration saved, but runtime application failed: {reason}": "配置已保存，但后台应用失败：{reason}",
+  "Cannot inspect the remote App session; reopen RoutePilot on the remote Mac": "无法检查远端 App 会话，请在远端手动重新打开 RoutePilot",
+  "Cannot validate the updated App; reopen RoutePilot on the remote Mac": "无法验证更新后的 App，请在远端手动重新打开 RoutePilot",
+  "Remote App user session is unavailable; reopen RoutePilot on the remote Mac": "远端 App 用户会话不可用，请在远端手动重新打开 RoutePilot",
+  "Cannot start the remote App restart helper; reopen RoutePilot on the remote Mac": "无法启动远端 App 重启助手，请在远端手动重新打开 RoutePilot",
+  "Remote App restart did not complete; reopen RoutePilot on the remote Mac": "远端 App 重启未完成，请在远端手动重新打开 RoutePilot",
+  "Invalid remote App restart request": "远端 App 重启请求无效",
+  "Remote App refused to quit; reopen RoutePilot on the remote Mac": "远端 App 拒绝退出，请在远端手动重新打开 RoutePilot",
+  "Remote App did not quit; reopen RoutePilot on the remote Mac": "远端 App 未能退出，请在远端手动重新打开 RoutePilot",
+  "Remote App did not relaunch; reopen RoutePilot on the remote Mac": "远端 App 未能重新启动，请在远端手动重新打开 RoutePilot"
 }

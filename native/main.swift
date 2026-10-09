@@ -1059,6 +1059,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
 struct RoutePilot {
     @MainActor static func main() {
         let application = NSApplication.shared
+        if CommandLine.arguments.contains("--finish-remote-update") {
+            application.setActivationPolicy(.accessory)
+            Task { @MainActor in
+                await RemoteUpdateRestart.run()
+                Darwin.exit(0)
+            }
+            application.run()
+            return
+        }
         let delegate = AppDelegate()
         application.delegate = delegate
         application.run()

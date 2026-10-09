@@ -740,7 +740,19 @@
   "软件已是最新版本": "Software is up to date",
   "检查远程更新": "Check remote updates",
   "升级远程应用": "Upgrade remote application",
-  "远端将下载并校验完整 App 安装包，同步更新 App、管理页面和网络服务。未安装 App 时会安装到 /Applications；已打开的远端 App 需重新打开。": "The remote host downloads and verifies the complete app package, updating the app, management interface and network service together. If missing, the app is installed in /Applications. Reopen a running remote app after the update.",
   "此后台仅支持服务升级，请先升级一次，再重新检查更新以同步完整 App。": "This older backend only supports service updates. Update it once, then check again to synchronize the complete app.",
-  "将远端 {name} 的完整应用和网络服务更新至 {version}。DNS 和 BGP 会短暂中断，配置与数据库保留。是否继续？": "Update the complete application and network service on {name} to {version}? DNS and BGP will briefly stop. Configuration and databases are preserved."
+  "将远端 {name} 的完整应用和网络服务更新至 {version}。DNS 和 BGP 会短暂中断，配置与数据库保留。是否继续？": "Update the complete application and network service on {name} to {version}? DNS and BGP will briefly stop. Configuration and databases are preserved.",
+  "RoutePilot 已更新至 {version}": "RoutePilot updated to {version}",
+  "管理窗口正在使用，请在远端确认是否重启 App。网络服务已更新。": "The management window is in use. Confirm the App restart on the remote Mac. The network service has been updated.",
+  "App 正在后台运行，即将自动重启以加载新版本。网络服务已更新。": "The App is running in the background and will restart to load the new version. The network service has been updated.",
+  "远端应用已更新": "Remote App updated",
+  "RoutePilot 已更新至 {version}。管理窗口正在使用，是否现在重启 App？选择稍后可继续使用当前窗口。网络服务已更新，不会再次重启。": "RoutePilot has been updated to {version}. The management window is in use. Restart the App now, or choose Later to keep using this window. The network service has already been updated and will not restart again.",
+  "立即重启": "Restart now",
+  "稍后重启": "Restart later",
+  "正在检查远端 App 的运行状态": "Checking the remote App session",
+  "远端 App 正在使用，等待远端用户确认重启": "The remote App is in use. Waiting for the remote user to confirm the restart.",
+  "正在重启远端 App": "Restarting the remote App",
+  "远端用户选择稍后重启 App；应用文件和网络服务已更新": "The remote user chose to restart the App later. Application files and the network service have been updated.",
+  "远端 App 未能重启，请在远端手动重新打开": "The remote App could not restart. Reopen it on the remote Mac.",
+  "远端将下载并校验完整 App 安装包，同步更新 App、管理页面和网络服务。未安装 App 时会安装到 /Applications。已运行的 App 在重启前收到通知：管理窗口可见或 App 在前台时须由远端确认，仅后台运行时自动重启。": "The remote host downloads and verifies the complete App package and updates the App, management UI and network service. A missing App is installed in /Applications. Running Apps receive a restart notification: a visible management window or foreground App requires remote confirmation; background Apps restart automatically."
 }

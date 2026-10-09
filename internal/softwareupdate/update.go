@@ -50,6 +50,8 @@ type Status struct {
 	Error               string    `json:"error,omitempty"`
 	CheckedAt           time.Time `json:"checked_at,omitempty"`
 	UpdatedAt           time.Time `json:"updated_at,omitempty"`
+	AppRestart          string    `json:"app_restart,omitempty"`
+	AppRestartError     string    `json:"app_restart_error,omitempty"`
 }
 type release struct {
 	Tag        string `json:"tag_name"`
@@ -72,6 +74,7 @@ type Manager struct {
 	latest          release
 	checkedAt       time.Time
 	beforeRestart   func() error
+	appRestartOnce  sync.Once
 	ops             updateOperations
 }
 
@@ -213,6 +216,9 @@ func (m *Manager) snapshot() Status {
 	s.ReleaseNotes = m.latest.Body
 	if m.supported {
 		s.AppCurrent = m.ops.appVersion()
+		if restart := readAppRestart(); restart.Target == s.Target {
+			s.AppRestart, s.AppRestartError = restart.Phase, restart.Error
+		}
 	}
 	s.CompleteApplication = true
 	s.Available = newer(s.Latest, s.Current) || m.supported && applicationUpdateAvailable(s.Latest, s.Current, s.AppCurrent)

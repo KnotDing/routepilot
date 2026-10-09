@@ -26,7 +26,9 @@ type ready struct {
 // listener is created. The helper uses it to identify the new process.
 func (m *Manager) MarkReady() {
 	if m.standardService && servicePID() == os.Getpid() && privateOwned("/private/var/db/surge-controller", true) == nil {
+		update := readState()
 		_ = writeJSON(readyFile, ready{buildinfo.Current().Version, os.Getpid(), time.Now().UTC()})
+		m.appRestartOnce.Do(func() { m.resumeRemoteApp(update) })
 	}
 }
 
