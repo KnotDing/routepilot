@@ -217,3 +217,113 @@ func TestRuleDNSFailureCannotBecomeConfiguredDirectAndRetainsTrace(t *testing.T)
 		t.Fatalf("cached failure lost its DNS trace: %+v", cached)
 	}
 }
+
+func TestOptimisticCacheRespondsBeforeRefreshAndDeduplicates(t *testing.T) {
+	entered, release := make(chan struct{}, 1), make(chan struct{})
+	mock := &mocks.Surge{Match: func(ctx context.Context, _ model.RuleMatchRequest) (model.RuleMatchResult, error) {
+		entered <- struct{}{}
+		select {
+		case <-release:
+		case <-ctx.Done():
+			return model.RuleMatchResult{}, ctx.Err()
+		}
+		return model.RuleMatchResult{FinalPolicy: "REJECT", ContextSafe: true}, nil
+	}}
+	cfg := classifier.DefaultConfig()
+	cfg.Optimistic = true
+	e, _ := classifier.New(context.Background(), mock, cfg)
+	defer e.Close()
+	q := query()
+	q.Question.Name = "example.com."
+	key := classifier.Key{Domain: q.Question.Name, ClientGroup: q.ClientIP.String(), QueryClass: "1/1"}
+	e.Cache.Put(key, model.DecisionResult{Domain: q.Question.Name, Decision: model.Direct, Confidence: model.Certain}, e.Cache.Generation(), -1)
+	e.Cache.MarkStale(func(model.DecisionResult) bool { return true })
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+	done := make(chan model.DecisionResult, 1)
+	go func() { d, _ := e.Classify(ctx, q); done <- d }()
+	select {
+	case d := <-done:
+		if d.Decision != model.Direct || d.Source != "cache" {
+			t.Fatal("did not return old cache", d)
+		}
+	case <-ctx.Done():
+		t.Fatal("waited for refresh")
+	}
+	<-entered
+	for i := 0; i < 32; i++ {
+		d, _ := e.Classify(ctx, q)
+		if d.Decision != model.Direct {
+			t.Fatal("stale decision lost")
+		}
+	}
+	if mock.Calls.Load() != 1 {
+		t.Fatal("duplicate background evaluations", mock.Calls.Load())
+	}
+	close(release)
+	deadline := time.Now().Add(time.Second)
+	for time.Now().Before(deadline) {
+		d, _, stale, _ := e.Cache.GetState(key)
+		if !stale && d.Decision == model.Reject {
+			return
+		}
+		time.Sleep(time.Millisecond)
+	}
+	t.Fatal("successful refresh did not replace the decision")
+}
+
+func TestOptimisticCacheRetainsFailedAndUncertainRefreshes(t *testing.T) {
+	for _, failure := range []error{nil, errors.New("Surge unavailable")} {
+		mock := &mocks.Surge{Match: func(context.Context, model.RuleMatchRequest) (model.RuleMatchResult, error) {
+			return model.RuleMatchResult{}, failure
+		}}
+		cfg := classifier.DefaultConfig()
+		cfg.Optimistic = true
+		e, _ := classifier.New(context.Background(), mock, cfg)
+		q := query()
+		q.Question.Name = "example.com."
+		key := classifier.Key{Domain: q.Question.Name, ClientGroup: q.ClientIP.String(), QueryClass: "1/1"}
+		e.Cache.Put(key, model.DecisionResult{Decision: model.Surge}, e.Cache.Generation(), -1)
+		e.Cache.MarkStale(func(model.DecisionResult) bool { return true })
+		e.Classify(context.Background(), q)
+		deadline := time.Now().Add(time.Second)
+		for mock.Calls.Load() == 0 && time.Now().Before(deadline) {
+			time.Sleep(time.Millisecond)
+		}
+		time.Sleep(20 * time.Millisecond)
+		d, ok, stale, _ := e.Cache.GetState(key)
+		if !ok || !stale || d.Decision != model.Surge {
+			t.Fatal("failed refresh replaced old decision", d)
+		}
+		e.Close()
+	}
+}
+
+func TestOptimisticRefreshCannotResurrectManuallyClearedCache(t *testing.T) {
+	entered, release := make(chan struct{}), make(chan struct{})
+	mock := &mocks.Surge{Match: func(ctx context.Context, _ model.RuleMatchRequest) (model.RuleMatchResult, error) {
+		close(entered)
+		select {
+		case <-release:
+		case <-ctx.Done():
+			return model.RuleMatchResult{}, ctx.Err()
+		}
+		return model.RuleMatchResult{FinalPolicy: "DIRECT", ContextSafe: true}, nil
+	}}
+	cfg := classifier.DefaultConfig()
+	cfg.Optimistic = true
+	e, _ := classifier.New(context.Background(), mock, cfg)
+	q := query()
+	q.Question.Name = "example.com."
+	key := classifier.Key{Domain: q.Question.Name, ClientGroup: q.ClientIP.String(), QueryClass: "1/1"}
+	e.Cache.Put(key, model.DecisionResult{Decision: model.Surge}, e.Cache.Generation(), -1)
+	e.Cache.MarkStale(func(model.DecisionResult) bool { return true })
+	e.Classify(context.Background(), q)
+	<-entered
+	e.Cache.Flush()
+	close(release)
+	e.Close()
+	if e.Cache.Stats().Entries != 0 {
+		t.Fatal("background refresh resurrected manually cleared cache")
+	}
+}

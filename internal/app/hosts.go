@@ -9,20 +9,28 @@ import (
 	"surge-controller/internal/surge"
 )
 
-func (a *App) ImportHosts(ctx context.Context) (any, error) {
+func (a *App) FetchHosts(ctx context.Context) (surge.HostImport, error) {
 	select {
 	case a.ruleTests <- struct{}{}:
 		defer func() { <-a.ruleTests }()
 	default:
-		return nil, errors.New("Surge reader capacity exhausted")
+		return surge.HostImport{}, errors.New("Surge reader capacity exhausted")
 	}
 	a.mu.RLock()
 	runner := a.runtime.adapter.Runner
 	a.mu.RUnlock()
-	imported, e := surge.ReadHosts(ctx, runner)
-	if e != nil {
-		return nil, e
+	return surge.ReadHosts(ctx, runner)
+}
+
+func (a *App) ImportHosts(ctx context.Context) (any, error) {
+	imported, err := a.FetchHosts(ctx)
+	if err != nil {
+		return nil, err
 	}
+	return a.CommitHostsImport(ctx, imported)
+}
+
+func (a *App) CommitHostsImport(ctx context.Context, imported surge.HostImport) (any, error) {
 	d := a.Configuration()
 	retained := []config.Host{}
 	for _, h := range d.Hosts {
@@ -46,7 +54,7 @@ func (a *App) ImportHosts(ctx context.Context) (any, error) {
 		count++
 	}
 	d.Hosts = retained
-	if e = a.Apply(ctx, d); e != nil {
+	if e := a.SaveConfiguration(ctx, d); e != nil {
 		return nil, e
 	}
 	a.event("INFO", "hosts_import", "Static local DNS mappings imported from effective Surge profile")

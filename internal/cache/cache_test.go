@@ -132,3 +132,38 @@ func TestCachePageSearchesBeyondFirstPageAndSkipsExpired(t *testing.T) {
 		t.Fatal("search limited to visible page")
 	}
 }
+
+func TestMarkStaleRetainsDecisionsAndRejectsOldWrites(t *testing.T) {
+	c := New[string, string](4)
+	now := time.Unix(1, 0)
+	c.now = func() time.Time { return now }
+	gen := c.Generation()
+	c.Put("stable", "DIRECT", gen, time.Minute)
+	c.Put("unknown", "UNKNOWN", gen, time.Minute)
+	c.MarkStale(func(v string) bool { return v != "UNKNOWN" })
+	_, ok, stale, current := c.GetState("stable")
+	if !ok || !stale || current == gen || c.Stats().Invalidations != 0 || c.Stats().StaleEntries != 1 {
+		t.Fatal("optimistic update discarded the entry or reported a flush")
+	}
+	if c.Put("stable", "SURGE", gen, Forever) {
+		t.Fatal("old evaluation overwrote a stale decision")
+	}
+	if _, ok := c.Get("unknown"); ok {
+		t.Fatal("UNKNOWN retained as an optimistic decision")
+	}
+	saved := c.Snapshot()
+	restored := New[string, string](4)
+	restored.now = c.now
+	restored.Restore(saved)
+	if _, ok, stale, _ := restored.GetState("stable"); !ok || !stale {
+		t.Fatal("restoration lost pending refresh")
+	}
+	c.Put("stable", "REJECT", current, time.Minute)
+	if _, _, stale, _ := c.GetState("stable"); stale {
+		t.Fatal("successful replacement remains stale")
+	}
+	now = now.Add(time.Minute)
+	if _, ok := c.Get("stable"); ok {
+		t.Fatal("optimistic caching bypassed configured TTL")
+	}
+}

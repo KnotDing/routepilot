@@ -129,6 +129,7 @@ type LocalResolver interface {
 
 type Dispatcher struct {
 	AAAAFallback     string
+	aaaaOverride     atomic.Pointer[string]
 	IPv6Status       interface{ IPv6Disabled() bool }
 	Local            LocalResolver
 	Classifier       model.Classifier
@@ -144,6 +145,11 @@ type Dispatcher struct {
 	FakeTTLMax       *uint32
 	RealIPDomains    interface{ MatchAlwaysRealIP(string) (string, bool) }
 	PolicyDNS        []PolicyDNSBinding
+}
+
+// SetAAAAFallback changes only query policy; listeners and route leases remain live.
+func (d *Dispatcher) SetAAAAFallback(mode string) {
+	d.aaaaOverride.Store(&mode)
 }
 
 // Statistics allows successive runtimes to use the same cumulative counters.
@@ -219,10 +225,14 @@ func (d *Dispatcher) Dispatch(ctx context.Context, q model.DNSQueryContext, m *d
 		counters.Reject.Add(1)
 		return failure(m, dns.RcodeRefused)
 	}
-	if q.Question.Qtype == dns.TypeAAAA && (d.AAAAFallback == "block" || d.AAAAFallback == "upstream") && d.IPv6Status != nil && d.IPv6Status.IPv6Disabled() {
+	aaaaFallback := d.AAAAFallback
+	if mode := d.aaaaOverride.Load(); mode != nil {
+		aaaaFallback = *mode
+	}
+	if q.Question.Qtype == dns.TypeAAAA && (aaaaFallback == "block" || aaaaFallback == "upstream") && d.IPv6Status != nil && d.IPv6Status.IPv6Disabled() {
 		result.Confidence = model.Certain
 		result.Source = "surge-ipv6-fallback"
-		if d.AAAAFallback == "block" {
+		if aaaaFallback == "block" {
 			result.Decision = model.Reject
 			result.Reason = "Surge IPv6 is disabled; AAAA query blocked with an empty successful response"
 			trace.Endpoint = "AAAA fallback: blocked"

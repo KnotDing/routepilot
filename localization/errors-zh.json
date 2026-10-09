@@ -81,7 +81,7 @@
   "Configuration rejected by safety validation": "配置未通过安全验证",
   "Configuration applied": "配置已应用",
   "DNS caches invalidated": "DNS 缓存已失效",
-  "Management address failed; previous listener restored": "管理地址无法启用，已恢复原监听地址",
+  "Management address failed; previous listener restored": "管理地址启用失败，已恢复之前的监听地址",
   "Controller stopped; managed route/PF cleanup requires inspection": "Controller 已停止，请检查受管理路由与 PF 的清理状态",
   "Controller stopped; managed routing resources released; external static routes unchanged": "Controller 已停止，受管理路由资源已释放，外部静态路由保留",
   "insufficient connection context": "连接上下文不足",
@@ -351,5 +351,12 @@
   "Surge IPv6 setting is unavailable": "Surge IPv6 配置不可用",
   "Surge IPv6 is disabled; AAAA query blocked with an empty successful response": "Surge 已关闭 IPv6，AAAA 查询已拦截并返回成功空响应",
   "Surge IPv6 is disabled; AAAA query sent to configured real DNS upstreams": "Surge 已关闭 IPv6，AAAA 查询直接交给配置的真实 DNS 上游",
-  "AAAA fallback: blocked": "AAAA 回落：已拦截"
+  "AAAA fallback: blocked": "AAAA 回落：已拦截",
+  "configuration operation not found; reload settings to confirm the current configuration": "配置应用任务已不存在，请刷新设置确认当前配置",
+  "configuration is being applied; wait for completion before saving again": "正在应用配置，请等待完成后再保存",
+  "could not create configuration operation": "无法创建配置应用任务",
+  "another configuration save is in progress; try again shortly": "另一项配置正在保存，请稍后重试",
+  "background operation capacity exhausted; try again later": "后台任务已满，请稍后重试",
+  "background operation not found; check whether it completed before submitting again": "未找到后台任务，请先确认操作是否已完成再重新提交",
+  "Configuration saved, but runtime application failed: {reason}": "配置已保存，但后台应用失败：{reason}"
 }

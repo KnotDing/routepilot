@@ -72,8 +72,12 @@ func (rt *Runtime) observeDecisionRevision(snapshot surge.Snapshot, err error) (
 	if pending != nil && confirmed {
 		rt.decisionRevision = decisionRevision{digest: pending.Digest, selection: pending.Selection}
 	}
+	previousDigest := rt.decisionRevision.digest
 	reason, selection := rt.decisionRevision.observe(snapshot.Digest, snapshot.SelectionDigest, err, rt.settings.Settings.Cache)
 	c := rt.settings.Settings.Cache
+	configurationChanged := confirmed && previousDigest != "" && snapshot.Digest != previousDigest
+	optimistic := c.Optimistic && configurationChanged
+	optimisticResponses := c.OptimisticResponses && configurationChanged
 	selected := func(_ classifier.Key, value model.DecisionResult) bool {
 		return value.Decision == model.Direct && c.InvalidateDirectOnSelectionChange || value.Decision == model.Reject && c.InvalidateRejectOnSelectionChange
 	}
@@ -81,25 +85,27 @@ func (rt *Runtime) observeDecisionRevision(snapshot surge.Snapshot, err error) (
 		if selection {
 			rt.engine.Cache.FlushValuesWhere(selected, reason)
 		} else {
-			rt.engine.Cache.FlushReason(reason)
+			if !optimistic {
+				rt.engine.Cache.FlushReason(reason)
+			}
 			if rt.real != nil {
-				rt.real.Cache.FlushReason(reason)
+				rt.real.ConfigurationChanged(reason, optimisticResponses)
 			}
 			for _, upstream := range rt.policyResolvers {
-				upstream.Cache.FlushReason(reason)
+				upstream.ConfigurationChanged(reason, optimisticResponses)
 			}
 		}
 	}
 	restored := 0
 	if pending != nil && confirmed {
-		// A full configuration change rejects the saved entries. A selection change
-		// restores only the decisions allowed by the existing invalidation settings.
-		if reason == "" || selection {
+		// Optimistic updates restore saved decisions as stale. Otherwise a full
+		// update rejects them; selection updates follow the configured policy.
+		if reason == "" || selection || optimistic {
 			records := retainedDecisions(pending.Entries, c.ExpireDecisions)
-			if selection {
+			if selection || !c.Optimistic {
 				kept := records[:0]
 				for _, record := range records {
-					if !selected(record.Key, record.Value) {
+					if (!selection || !selected(record.Key, record.Value)) && (c.Optimistic || !record.Stale) {
 						kept = append(kept, record)
 					}
 				}
@@ -111,6 +117,15 @@ func (rt *Runtime) observeDecisionRevision(snapshot surge.Snapshot, err error) (
 	} else if reason != "" && !selection {
 		// An explicit invalidate-on-read-failure setting also discards startup rows.
 		rt.pendingDecisions = nil
+	}
+	if optimistic {
+		rt.engine.Cache.MarkStale(func(value model.DecisionResult) bool {
+			return value.Decision == model.Direct || value.Decision == model.Surge || value.Decision == model.Reject
+		})
+		reason += "；乐观缓存保留旧决策，按需后台刷新"
+	}
+	if optimisticResponses {
+		reason += "；乐观响应缓存保留旧响应，按需后台刷新"
 	}
 	return reason, restored
 }
@@ -126,7 +141,7 @@ func (rt *Runtime) decisionSnapshot() decisionCacheSnapshot {
 		snapshot.Entries = retainedDecisions(pending.Entries, c.ExpireDecisions)
 		return snapshot
 	}
-	snapshot := decisionCacheSnapshot{Version: 1, Scope: rt.decisionScope,
+	snapshot := decisionCacheSnapshot{Version: 2, Scope: rt.decisionScope,
 		Digest: rt.decisionRevision.digest, Selection: rt.decisionRevision.selection}
 	if snapshot.Digest != "" {
 		snapshot.Entries = retainedDecisions(rt.engine.Cache.Snapshot(), c.ExpireDecisions)

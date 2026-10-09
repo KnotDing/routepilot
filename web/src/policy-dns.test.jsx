@@ -34,7 +34,7 @@ it('shows the matched field and policy alongside the actual resolver in query de
 });
 
 it('saves custom backups and switches to Surge or the global real pool without changing the primary',async()=>{
- const fetch=vi.fn().mockResolvedValue({ok:true,status:200,json:async()=>({csrf:'test'})});vi.stubGlobal('fetch',fetch);
+ const fetch=vi.fn(async(url,options)=>({ok:true,status:200,json:async()=>({settings:JSON.parse(options.body)})}));vi.stubGlobal('fetch',fetch);
  const primary={field:'final_policy',policy:'Node A',enabled:true,upstreams:[{protocol:'udp',address:'223.6.6.6:53',enabled:true}]};
  const settings={general:{web_listen:'127.0.0.1:1055'},security:{tls_cert:''},dns:{upstreams:[{protocol:'udp',address:'192.0.2.1:53',enabled:true}],policy_upstreams:[primary]}};
  render(<Settings settings={settings} refresh={()=>{}} notify={()=>{}}/>);fireEvent.click(screen.getByRole('button',{name:'DNS'}));

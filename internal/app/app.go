@@ -150,6 +150,12 @@ type App struct {
 	logLevel           slog.LevelVar
 	mu                 sync.RWMutex
 	transition         sync.Mutex
+	saveMu             sync.Mutex
+	applied            config.Document
+	application        ApplicationStatus
+	applyWake          chan struct{}
+	applyCancel        context.CancelFunc
+	applyDone          chan struct{}
 	config             config.Document
 	runtime            *Runtime
 	store              *database.Store
@@ -201,7 +207,7 @@ func Open(ctx context.Context, path string) (*App, error) {
 		store.Close()
 		return nil, fmt.Errorf("load DNS statistics: %w", e)
 	}
-	a := &App{ruleTests: make(chan struct{}, 2), lockFile: lock, config: d, store: store, bus: events.New(), security: security.New(d.Settings.Security), ctx: ctx, dir: filepath.Dir(path), webChanged: make(chan struct{}, 1)}
+	a := &App{ruleTests: make(chan struct{}, 2), lockFile: lock, config: d, applied: d, applyWake: make(chan struct{}, 1), applyDone: make(chan struct{}), store: store, bus: events.New(), security: security.New(d.Settings.Security), ctx: ctx, dir: filepath.Dir(path), webChanged: make(chan struct{}, 1)}
 	if os.Geteuid() == 0 && filepath.Clean(path) == "/var/db/surge-controller/controller.sqlite" {
 		if err := a.security.RestoreUpdateSessions(); err != nil {
 			slog.Warn("Update session handoff could not be restored", "error", err)
@@ -224,7 +230,24 @@ func Open(ctx context.Context, path string) (*App, error) {
 		slog.Warn("Saved decision cache could not be loaded; starting empty", "error", err)
 		savedDecisions = decisionCacheSnapshot{}
 	}
-	rt, e := a.build(d, &savedDecisions)
+	var rt *Runtime
+	if d.Settings.Security.TLSCert != "" {
+		_, e = tls.LoadX509KeyPair(d.Settings.Security.TLSCert, d.Settings.Security.TLSKey)
+	}
+	if e == nil {
+		rt, e = a.build(d, &savedDecisions)
+	}
+	if e != nil {
+		original := e
+		if previous, loadErr := store.LoadActiveConfiguration(ctx); loadErr == nil && previous.Version != 0 {
+			if restored, restoreErr := a.build(previous, &savedDecisions); restoreErr == nil {
+				rt, e = restored, nil
+				a.applied = previous
+				a.security.Update(previous.Settings.Security)
+				a.application = ApplicationStatus{Revision: 1, State: "failed", Error: original.Error()}
+			}
+		}
+	}
 	if e != nil {
 		a.notificationCancel()
 		<-a.notificationDone
@@ -232,6 +255,16 @@ func Open(ctx context.Context, path string) (*App, error) {
 		return nil, e
 	}
 	a.runtime = rt
+	// Keep an existing last-working listener checkpoint until Serve confirms
+	// the desired management address can actually bind.
+	if previous, loadErr := store.LoadActiveConfiguration(ctx); loadErr == nil && previous.Version == 0 {
+		if e := store.SaveActiveConfiguration(ctx, a.applied); e != nil {
+			slog.Error("Active configuration checkpoint failed", "error", e)
+		}
+	}
+	applyCtx, applyCancel := context.WithCancel(ctx)
+	a.applyCancel = applyCancel
+	go a.runConfigurationWorker(applyCtx)
 	statsCtx, statsCancel := context.WithCancel(context.Background())
 	a.statsCancel = statsCancel
 	a.statsDone = make(chan struct{})
@@ -304,14 +337,14 @@ func (a *App) build(d config.Document, saved ...*decisionCacheSnapshot) (rt *Run
 	if err != nil {
 		return nil, err
 	}
-	rt.engine, err = classifier.New(ctx, rt.adapter, classifier.Config{ExpireDecisions: s.Cache.ExpireDecisions, TrustDirect: s.Surge.TrustDirect, Capacity: s.Cache.Capacity, Workers: s.Cache.Workers, QueueSize: s.Cache.Queue, Timeout: time.Duration(s.Cache.TimeoutMS) * time.Millisecond, DirectTTL: time.Duration(s.Cache.DirectTTLSeconds) * time.Second, SurgeTTL: time.Duration(s.Cache.SurgeTTLSeconds) * time.Second, UnknownTTL: time.Duration(s.Cache.UnknownTTLSeconds) * time.Second, ErrorTTL: time.Duration(s.Cache.ErrorTTLSeconds) * time.Second})
+	rt.engine, err = classifier.New(ctx, rt.adapter, classifier.Config{Optimistic: s.Cache.Optimistic, ExpireDecisions: s.Cache.ExpireDecisions, TrustDirect: s.Surge.TrustDirect, Capacity: s.Cache.Capacity, Workers: s.Cache.Workers, QueueSize: s.Cache.Queue, Timeout: time.Duration(s.Cache.TimeoutMS) * time.Millisecond, DirectTTL: time.Duration(s.Cache.DirectTTLSeconds) * time.Second, SurgeTTL: time.Duration(s.Cache.SurgeTTLSeconds) * time.Second, UnknownTTL: time.Duration(s.Cache.UnknownTTLSeconds) * time.Second, ErrorTTL: time.Duration(s.Cache.ErrorTTLSeconds) * time.Second})
 	if err != nil {
 		return nil, err
 	}
 	rt.policy = &policy{engine: rt.engine, realIPDomains: rt.adapter}
 	rt.policy.update(s.General.Mode, d.Overrides)
 	rt.decisionScope = decisionCacheScope(d)
-	if len(saved) > 0 && saved[0] != nil && saved[0].Version == 1 && saved[0].Scope == rt.decisionScope && saved[0].Digest != "" {
+	if len(saved) > 0 && saved[0] != nil && (saved[0].Version == 1 || saved[0].Version == 2) && saved[0].Scope == rt.decisionScope && saved[0].Digest != "" {
 		copy := *saved[0]
 		rt.pendingDecisions = &copy
 	}
@@ -337,7 +370,7 @@ func (a *App) build(d config.Document, saved ...*decisionCacheSnapshot) (rt *Run
 			return nil, e
 		}
 		rt.wire, _ = resolver.NewWireTransport(dial, time.Duration(s.DNS.TimeoutMS)*time.Millisecond)
-		rt.real, err = resolver.NewReal(rt.wire, s.DNS.Upstreams, s.DNS.PreserveOriginal, s.Cache.ResponseCapacity)
+		rt.real, err = resolver.NewReal(rt.wire, s.DNS.Upstreams, s.DNS.PreserveOriginal, s.Cache.ResponseCapacity, resolver.OptimisticOptions{Context: ctx, Enabled: s.Cache.OptimisticResponses, Timeout: time.Duration(s.DNS.TimeoutMS) * time.Millisecond, Workers: s.Cache.Workers})
 		if err != nil {
 			return nil, err
 		}
@@ -356,14 +389,14 @@ func (a *App) build(d config.Document, saved ...*decisionCacheSnapshot) (rt *Run
 				continue
 			}
 			capacity := max(1, s.Cache.ResponseCapacity/max(1, policyPools))
-			upstream, e := resolver.NewReal(rt.wire, rule.Upstreams, false, capacity)
+			upstream, e := resolver.NewReal(rt.wire, rule.Upstreams, false, capacity, resolver.OptimisticOptions{Context: ctx, Enabled: s.Cache.OptimisticResponses, Timeout: time.Duration(s.DNS.TimeoutMS) * time.Millisecond, Workers: s.Cache.Workers})
 			if e != nil {
 				return nil, e
 			}
 			rt.policyResolvers = append(rt.policyResolvers, upstream)
 			binding := dnsserver.PolicyDNSBinding{Field: rule.Field, Policy: rule.Policy, Resolver: &observedReal{real: upstream, rt: rt}, Fallback: rule.Fallback, AttemptTimeout: time.Duration(s.DNS.TimeoutMS) * time.Millisecond}
 			if rule.Fallback == "upstreams" {
-				backup, err := resolver.NewReal(rt.wire, rule.FallbackUpstreams, false, capacity)
+				backup, err := resolver.NewReal(rt.wire, rule.FallbackUpstreams, false, capacity, resolver.OptimisticOptions{Context: ctx, Enabled: s.Cache.OptimisticResponses, Timeout: time.Duration(s.DNS.TimeoutMS) * time.Millisecond, Workers: s.Cache.Workers})
 				if err != nil {
 					return nil, err
 				}
@@ -659,7 +692,7 @@ func (a *App) monitor(ctx context.Context, rt *Runtime) {
 			rateAt = time.Now()
 		}
 		if a.notifications != nil && ctx.Err() == nil {
-			document := a.Configuration()
+			document := a.activeConfiguration()
 			values := rt.health.Values()
 			activePeers := map[string]bool{}
 			for _, peer := range document.Peers {
@@ -704,7 +737,11 @@ func (rt *Runtime) shutdown(ctx context.Context, waitTTL bool) error {
 		_ = rt.routes.Reconcile(context.Background(), desired)
 		// A disconnected management caller does not interrupt safety cleanup.
 		timer := time.NewTimer(time.Until(expiry))
-		<-timer.C
+		select {
+		case <-timer.C:
+		case <-ctx.Done():
+			timer.Stop()
+		}
 	}
 
 	e := rt.routes.Close(context.Background())
@@ -716,10 +753,16 @@ func (rt *Runtime) shutdown(ctx context.Context, waitTTL bool) error {
 	if rt.pf != nil {
 		_ = rt.pf.Close()
 	}
+	if rt.real != nil {
+		rt.real.Close()
+	}
+	for _, upstream := range rt.policyResolvers {
+		upstream.Close()
+	}
 	rt.engine.Close()
 	return e
 }
-func (a *App) Apply(ctx context.Context, d config.Document) error {
+func (a *App) activateConfiguration(ctx context.Context, d config.Document) error {
 	d = d.Clone()
 	a.transition.Lock()
 	defer a.transition.Unlock()
@@ -730,26 +773,18 @@ func (a *App) Apply(ctx context.Context, d config.Document) error {
 		a.event("CRITICAL", "configuration_rejected", "Configuration rejected by safety validation")
 		return e
 	}
-	old := a.Configuration()
+	old := a.activeConfiguration()
 	if d.Settings.DNS.InterceptionEnabled {
 		// Check access before stopping working DNS. Opening the state device does
 		// not install PF rules; the normal build still owns the eventual lease.
 		pf, e := dnsserver.OpenPF()
 		if e != nil {
 			if errors.Is(e, os.ErrPermission) {
-				return errors.New("透明 DNS 需要管理员权限：请在状态栏菜单安装网络后台服务后重试；当前配置未更改")
+				return errors.New("透明 DNS 需要管理员权限：请在状态栏菜单安装网络后台服务后重新应用；已保存配置尚未生效")
 			}
-			return errors.New("无法访问系统 PF 设备，透明 DNS 未启用；当前配置未更改")
+			return errors.New("无法访问系统 PF 设备，透明 DNS 未启用；已保存配置尚未生效")
 		}
 		_ = pf.Close()
-	}
-	d.Settings.Routing = d.Settings.Routing.Effective()
-	oldRouting := old.Settings.Routing.Effective()
-	if !reflect.DeepEqual(old.Settings.Surge.FakePrefixes, d.Settings.Surge.FakePrefixes) || old.Settings.Surge.NextHop4 != d.Settings.Surge.NextHop4 || old.Settings.Surge.NextHop6 != d.Settings.Surge.NextHop6 || oldRouting.Mode != d.Settings.Routing.Mode || oldRouting.FakeIPBackend != d.Settings.Routing.FakeIPBackend {
-		d.Settings.Routing.StaticFakeIPConfigured = false
-	}
-	if !reflect.DeepEqual(old.Interception, d.Interception) || old.Settings.DNS.Source4 != d.Settings.DNS.Source4 || old.Settings.DNS.Source6 != d.Settings.DNS.Source6 || oldRouting.Mode != d.Settings.Routing.Mode || oldRouting.DNSBackend != d.Settings.Routing.DNSBackend || oldRouting.StaticDNSInterception != d.Settings.Routing.StaticDNSInterception {
-		d.Settings.Routing.StaticDNSConfigured = false
 	}
 	webChange := d.Settings.General.WebListen != old.Settings.General.WebListen || d.Settings.Security.TLSCert != old.Settings.Security.TLSCert || d.Settings.Security.TLSKey != old.Settings.Security.TLSKey
 	if webChange {
@@ -768,6 +803,8 @@ func (a *App) Apply(ctx context.Context, d config.Document) error {
 	}
 	routingChanged := old.Settings.Surge.NextHop4 != d.Settings.Surge.NextHop4 || old.Settings.Surge.NextHop6 != d.Settings.Surge.NextHop6 || !reflect.DeepEqual(old.Settings.Routing, d.Settings.Routing) || !reflect.DeepEqual(old.Settings.BGP, d.Settings.BGP) || !reflect.DeepEqual(old.Peers, d.Peers) || !reflect.DeepEqual(old.Routes, d.Routes)
 	oldRuntime, newRuntime := old, d
+	oldRuntime.Settings.DNS.AAAAFallback = ""
+	newRuntime.Settings.DNS.AAAAFallback = ""
 	oldRuntime.Settings.RemoteBackends = nil
 	newRuntime.Settings.RemoteBackends = nil
 	oldRuntime.Settings.General = config.General{}
@@ -814,12 +851,15 @@ func (a *App) Apply(ctx context.Context, d config.Document) error {
 		a.mu.RLock()
 		previous := a.runtime
 		a.mu.RUnlock()
+		// Preserve valid classification decisions across DNS-only restarts. Build
+		// checks the scope, and the monitor verifies Surge's revision before reuse.
+		decisions := previous.decisionSnapshot()
 		if e := previous.close(ctx, true); e != nil {
 			return e
 		}
-		next, e := a.build(d)
+		next, e := a.build(d, &decisions)
 		if e != nil {
-			restored, re := a.build(old)
+			restored, re := a.build(old, &decisions)
 			if re == nil {
 				a.mu.Lock()
 				a.runtime = restored
@@ -828,17 +868,9 @@ func (a *App) Apply(ctx context.Context, d config.Document) error {
 			}
 			return fmt.Errorf("DNS 配置无法启用，恢复也失败；启用失败：%v；恢复失败：%v", e, re)
 		}
-		if e = a.store.Save(ctx, d); e != nil {
-			_ = next.close(context.Background(), false)
-			restored, _ := a.build(old)
-			a.mu.Lock()
-			a.runtime = restored
-			a.mu.Unlock()
-			return errors.New("configuration transaction failed")
-		}
 		a.mu.Lock()
 		a.runtime = next
-		a.config = d
+		a.applied = d
 		a.mu.Unlock()
 	} else {
 		if routingChanged {
@@ -851,17 +883,8 @@ func (a *App) Apply(ctx context.Context, d config.Document) error {
 					rt.routingMu.Unlock()
 					return fmt.Errorf("BGP neighbor update failed: %w", e)
 				}
-				if e := a.store.Save(ctx, d); e != nil {
-					_ = rt.routes.SyncPeers(context.Background(), old)
-					rt.routingMu.Unlock()
-					return errors.New("routing configuration transaction failed")
-				}
 				rt.routingMu.Unlock()
 			} else if canUpdateRoutes {
-				if e := a.store.Save(ctx, d); e != nil {
-					rt.routingMu.Unlock()
-					return errors.New("routing configuration transaction failed")
-				}
 				rt.routes.UpdateDocument(d)
 				rt.routingMu.Unlock()
 				select {
@@ -873,32 +896,28 @@ func (a *App) Apply(ctx context.Context, d config.Document) error {
 				rt.machine.DrainResponses()
 				if old.Settings.Routing.Effective().FakeIPBackend == "bgp" && time.Now().Before(expiry) {
 					timer := time.NewTimer(time.Until(expiry))
-					<-timer.C
+					select {
+					case <-timer.C:
+					case <-ctx.Done():
+						timer.Stop()
+						rt.routingMu.Unlock()
+						return ctx.Err()
+					}
 				}
 				if e := rt.routes.Close(context.Background()); e != nil {
 					rt.routingMu.Unlock()
 					return errors.New("old BGP backend could not be released; DNS remains running")
 				}
 				next := routing.New(a.ctx, d, func(severity, message string) { a.event(severity, "routing", message) })
-				if e := a.store.Save(ctx, d); e != nil {
-					next.Close(context.Background())
-					restored := routing.New(a.ctx, old, nil)
-					a.mu.Lock()
-					rt.routes = restored
-					a.mu.Unlock()
-					rt.routingMu.Unlock()
-					return errors.New("routing configuration transaction failed")
-				}
 				a.mu.Lock()
 				rt.routes = next
 				a.mu.Unlock()
 				rt.routingMu.Unlock()
 			}
-		} else if e := a.store.Save(ctx, d); e != nil {
-			return errors.New("configuration transaction failed")
 		}
 		a.mu.Lock()
-		a.config = d
+		a.applied = d
+		a.runtime.dispatcher.SetAAAAFallback(d.Settings.DNS.AAAAFallback)
 		hostsChanged := !reflect.DeepEqual(old.Hosts, d.Hosts)
 		policyChanged := old.Settings.General.Mode != d.Settings.General.Mode || !reflect.DeepEqual(old.Overrides, d.Overrides)
 		if hostsChanged || policyChanged {
@@ -931,25 +950,27 @@ func (a *App) Apply(ctx context.Context, d config.Document) error {
 		slog.Error("Configuration applied, but decision cache persistence failed", "error", err)
 	}
 	a.event("INFO", "configuration", "Configuration applied")
-	if webChange {
-		select {
-		case a.webChanged <- struct{}{}:
-		default:
-		}
-	}
 	return nil
 }
 func (a *App) View(ctx context.Context, key string) (any, error) {
 	a.mu.RLock()
-	defer a.mu.RUnlock()
 	rt := a.runtime
+	application := a.application
+	name, mode := a.config.Settings.General.Name, a.config.Settings.General.Mode
+	var manager *routing.Manager
+	if rt != nil {
+		manager = rt.routes
+	}
+	a.mu.RUnlock()
 	if rt == nil {
 		return nil, errors.New("runtime unavailable")
 	}
 	switch key {
+	case "configuration/status":
+		return application, nil
 	case "status":
 		p := rt.machine.Plan()
-		return map[string]any{"software": buildinfo.Current(), "online_update": true, "remote_credential_origin_binding": true, "name": a.config.Settings.General.Name, "mode": a.config.Settings.General.Mode, "state": p.State, "fake_ip_enabled": p.AllowFakeIP, "queries_per_minute": rt.queryRate.Load(), "counters": rt.dispatcher.Statistics().Snapshot(), "warning": rt.Fault(), "uptime_seconds": int(time.Since(rt.started).Seconds())}, nil
+		return map[string]any{"software": buildinfo.Current(), "online_update": true, "remote_credential_origin_binding": true, "fast_configuration_save": true, "configuration_application": application, "name": name, "mode": mode, "state": p.State, "fake_ip_enabled": p.AllowFakeIP, "queries_per_minute": rt.queryRate.Load(), "counters": rt.dispatcher.Statistics().Snapshot(), "warning": rt.Fault(), "uptime_seconds": int(time.Since(rt.started).Seconds())}, nil
 	case "health":
 		values := rt.health.Values()
 		sort.Slice(values, func(i, j int) bool { return values[i].Name < values[j].Name })
@@ -970,14 +991,18 @@ func (a *App) View(ctx context.Context, key string) (any, error) {
 		snapshot, observed := rt.adapter.Snapshot()
 		return map[string]any{"snapshot": snapshot, "observed_at": observed, "fresh": snapshot.Digest != "" && time.Since(observed) <= rt.adapter.MaxSnapshotAge}, nil
 	case "bgp/status", "routing/status":
-		return rt.routes.Status(), nil
+		return manager.Status(), nil
 	}
 	return nil, errors.New("unknown view")
 }
 func (a *App) CacheView(ctx context.Context, offset, limit int, domain, decision string) (any, error) {
 	a.mu.RLock()
-	defer a.mu.RUnlock()
-	return a.cacheViewLocked(a.runtime, offset, limit, domain, decision), nil
+	rt := a.runtime
+	a.mu.RUnlock()
+	if rt == nil {
+		return nil, errors.New("runtime unavailable")
+	}
+	return a.cacheViewLocked(rt, offset, limit, domain, decision), nil
 }
 func (a *App) cacheViewLocked(rt *Runtime, offset, limit int, domain, decision string) any {
 	rt.decisionMu.Lock()
@@ -986,7 +1011,15 @@ func (a *App) cacheViewLocked(rt *Runtime, offset, limit int, domain, decision s
 	rows, total := rt.engine.Cache.Page(offset, limit, func(d model.DecisionResult) bool {
 		return (domain == "" || strings.Contains(d.Domain, strings.ToLower(domain))) && (decision == "" || string(d.Decision) == decision)
 	})
-	return map[string]any{"stats": rt.engine.Cache.Stats(), "entries": rows, "total": total, "offset": offset, "limit": limit, "capacity": rt.settings.Settings.Cache.Capacity, "ttl": rt.settings.Settings.Cache, "restoration_pending": pending}
+	responseEntries, responsePending := 0, 0
+	for _, upstream := range append([]*resolver.Real{rt.real}, rt.policyResolvers...) {
+		if upstream != nil {
+			stats := upstream.Cache.Stats()
+			responseEntries += stats.Entries
+			responsePending += stats.StaleEntries
+		}
+	}
+	return map[string]any{"response_stats": map[string]int{"entries": responseEntries, "stale_entries": responsePending}, "stats": rt.engine.Cache.Stats(), "entries": rows, "total": total, "offset": offset, "limit": limit, "capacity": rt.settings.Settings.Cache.Capacity, "ttl": rt.settings.Settings.Cache, "restoration_pending": pending}
 }
 func (a *App) Flush(ctx context.Context, domain string) error {
 	a.transition.Lock()
@@ -1074,14 +1107,18 @@ func (a *App) Test(ctx context.Context, body json.RawMessage) (any, error) {
 
 func (a *App) Metrics() string {
 	a.mu.RLock()
-	defer a.mu.RUnlock()
 	rt := a.runtime
+	var manager *routing.Manager
+	if rt != nil {
+		manager = rt.routes
+	}
+	a.mu.RUnlock()
 	if rt == nil {
 		return ""
 	}
 	c := rt.dispatcher.Statistics().Snapshot()
 	cache := rt.engine.Cache.Stats()
-	bs := rt.routes.Status()
+	bs := manager.Status()
 	values := map[string]uint64{"dns_queries_total": c.Queries, "dns_direct_total": c.Direct, "dns_surge_total": c.Surge, "dns_reject_total": c.Reject, "dns_intercepted_total": c.Intercepted, "dns_direct_addressed_total": c.Addressed, "decision_cache_hits_total": cache.Hits, "decision_cache_misses_total": cache.Misses, "fake_ip_queries_total": rt.fakeQueries.Load(), "fake_ip_errors_total": rt.fakeErrors.Load(), "real_dns_queries_total": rt.realQueries.Load(), "real_dns_errors_total": rt.realErrors.Load(), "bgp_routes_announced": uint64(bs.Advertised), "surge_rule_match_errors_total": rt.engine.RuleErrors.Load()}
 	var b strings.Builder
 	keys := []string{}
@@ -1139,31 +1176,54 @@ func (rt *Runtime) SetFault(message string) {
 	rt.fault = message
 }
 func (a *App) Serve(ctx context.Context) error {
-	previous := a.Configuration().Settings
+	previous := a.activeConfiguration().Settings
 	// Configuration applied before the initial listener needs no restart.
 	select {
 	case <-a.webChanged:
 	default:
 	}
 	for {
-		c := a.Configuration().Settings
+		c := a.activeConfiguration().Settings
 		listener, e := net.Listen("tcp", c.General.WebListen)
 		if e != nil {
 			if c.General.WebListen == previous.General.WebListen {
-				return e
+				checkpoint, loadErr := a.store.LoadActiveConfiguration(ctx)
+				if loadErr != nil || checkpoint.Version == 0 || checkpoint.Settings.General.WebListen == c.General.WebListen {
+					return e
+				}
+				previous = checkpoint.Settings
 			}
 			a.transition.Lock()
 			a.mu.Lock()
-			a.config.Settings.General.WebListen = previous.General.WebListen
-			a.config.Settings.Security.TLSCert = previous.Security.TLSCert
-			a.config.Settings.Security.TLSKey = previous.Security.TLSKey
-			fallback := a.config
+			a.applied.Settings.General.WebListen = previous.General.WebListen
+			a.applied.Settings.Security.TLSCert = previous.Security.TLSCert
+			a.applied.Settings.Security.TLSKey = previous.Security.TLSKey
+			if a.application.Revision == 0 {
+				a.application.Revision = 1
+			}
+			a.application.State = "failed"
+			a.application.Error = "Management address failed; previous listener restored"
+			fallback := a.applied.Clone()
 			a.mu.Unlock()
-			_ = a.store.Save(context.Background(), fallback)
+			_ = a.store.SaveActiveConfiguration(context.Background(), fallback)
 			a.transition.Unlock()
 			a.event("CRITICAL", "management_bind", "Management address failed; previous listener restored")
 			continue
 		}
+		if c.Security.TLSCert != "" {
+			if _, tlsErr := tls.LoadX509KeyPair(c.Security.TLSCert, c.Security.TLSKey); tlsErr != nil {
+				listener.Close()
+				return tlsErr
+			}
+		}
+		bound := a.activeConfiguration()
+		bound.Settings.General.WebListen = c.General.WebListen
+		bound.Settings.Security.TLSCert, bound.Settings.Security.TLSKey = c.Security.TLSCert, c.Security.TLSKey
+		checkpointCtx, checkpointCancel := context.WithTimeout(ctx, 2*time.Second)
+		if err := a.store.SaveActiveConfiguration(checkpointCtx, bound); err != nil {
+			slog.Warn("Management checkpoint failed", "error", err)
+		}
+		checkpointCancel()
 		listener = netutil.LimitListener(listener, 256)
 		server := &http.Server{Handler: a.Handler(), ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 10 * time.Second, IdleTimeout: 60 * time.Second, MaxHeaderBytes: 16384}
 		result := make(chan error, 1)
@@ -1179,9 +1239,10 @@ func (a *App) Serve(ctx context.Context) error {
 		var recoveryListener net.Listener
 		var recoveryServer *http.Server
 		if c.General.WebListen != managementRecoveryAddress {
-			recoveryListener, e = net.Listen("tcp", managementRecoveryAddress)
-			if e != nil {
-				slog.Warn("local management recovery listener unavailable", "address", managementRecoveryAddress, "error", e)
+			var recoveryErr error
+			recoveryListener, recoveryErr = net.Listen("tcp", managementRecoveryAddress)
+			if recoveryErr != nil {
+				slog.Warn("local management recovery listener unavailable", "address", managementRecoveryAddress, "error", recoveryErr)
 			} else {
 				recoveryListener = netutil.LimitListener(recoveryListener, 64)
 				recoveryServer = &http.Server{Handler: a.Handler(), ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 10 * time.Second, IdleTimeout: 60 * time.Second, MaxHeaderBytes: 16384}
@@ -1221,6 +1282,12 @@ func (a *App) Serve(ctx context.Context) error {
 }
 func (a *App) Close() error {
 	a.closing.Store(true)
+	a.saveMu.Lock()
+	defer a.saveMu.Unlock()
+	if a.applyCancel != nil {
+		a.applyCancel()
+		<-a.applyDone
+	}
 	if a.remote != nil {
 		a.remote.Close()
 	}

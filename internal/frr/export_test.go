@@ -30,20 +30,20 @@ func TestGatewayASNDirectionDynamicImportsAndNoRouteExports(t *testing.T) {
 			t.Fatalf("unsafe output %q", text)
 		}
 	}
-	if strings.Index(e.Content, "ip prefix-list") < strings.Index(e.Content, "exit-address-family") {
-		t.Fatal("UniFi requires prefix lists after router section")
+	if strings.Index(e.Content, "route-map RP-IN-V4 permit") < strings.Index(e.Content, "exit-address-family") {
+		t.Fatal("UniFi requires route maps after router section")
 	}
 }
-func TestStaticAndHybridExcludeExternallyManagedPrefixes(t *testing.T) {
+func TestStaticAndHybridKeepDynamicInboundPolicy(t *testing.T) {
 	d, r := fixture()
 	d.Settings.Routing = config.Routing{Mode: "hybrid", FakeIPBackend: "static", DNSBackend: "bgp"}
 	e, err := Generate(d, r)
-	if err != nil || strings.Contains(e.Content, "permit 198.18.0.0/15") || !strings.Contains(e.Content, "permit 8.8.8.8/32") {
+	if err != nil || strings.Contains(e.Content, "permit 198.18.0.0/15") || !strings.Contains(e.Content, "route-map RP-IN-V4 permit 10") || strings.Contains(e.Content, "ip prefix-list") {
 		t.Fatal(e, err)
 	}
 	d.Settings.Routing = config.Routing{Mode: "static"}
 	e, err = Generate(d, r)
-	if err != nil || strings.Contains(e.Content, "seq 10 permit") || !strings.Contains(e.Content, "deny 0.0.0.0/0 le 32") {
+	if err != nil || strings.Contains(e.Content, "seq 10 permit") || !strings.Contains(e.Content, "route-map RP-IN-V4 permit 10") || !strings.Contains(e.Content, "route-map RP-OUT deny 10") {
 		t.Fatal(e, err)
 	}
 }
@@ -59,7 +59,7 @@ func TestExportRejectsMismatchAndInjectionAndSupportsIPv6(t *testing.T) {
 	d.Settings.DNS.Source6 = "fd00:20::2"
 	d.Settings.Surge.FakePrefixes = append(d.Settings.Surge.FakePrefixes, "fd00:18::/64")
 	e, err := Generate(d, r)
-	if err != nil || !strings.Contains(e.Content, "address-family ipv6 unicast") || !strings.Contains(e.Content, "ipv6 prefix-list RP-PREFIXES-V6 seq 10 permit fd00:18::/64") {
+	if err != nil || !strings.Contains(e.Content, "address-family ipv6 unicast") || !strings.Contains(e.Content, "route-map RP-IN-V6 permit 10") || strings.Contains(e.Content, "ipv6 prefix-list") {
 		t.Fatal(e, err)
 	}
 	if _, err := Generate(d, Request{GatewayASN: 65001, GatewayRouterID: "192.168.20.1", ControllerAddress: "fd00:20::2"}); err != nil {

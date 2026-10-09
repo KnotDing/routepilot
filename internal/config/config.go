@@ -69,6 +69,8 @@ type BGP struct {
 	KeepaliveSeconds uint64 `json:"keepalive_seconds"`
 }
 type Cache struct {
+	Optimistic                        bool `json:"optimistic"`
+	OptimisticResponses               bool `json:"optimistic_responses"`
 	ExpireDecisions                   bool `json:"expire_decisions"`
 	InvalidateOnReadFailure           bool `json:"invalidate_on_read_failure"`
 	InvalidateDirectOnSelectionChange bool `json:"invalidate_direct_on_selection_change"`

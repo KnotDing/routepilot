@@ -46,6 +46,7 @@ type Adapter struct {
 	realIPCheckedAt   time.Time
 	realIPObservedAt  time.Time
 	ipv6State         string
+	ipv6Effective     string
 	ipv6ObservedAt    time.Time
 	ipv6ReadError     string
 	profileIdentity   string
@@ -189,6 +190,7 @@ func (a *Adapter) Refresh(ctx context.Context) (Snapshot, error) {
 	a.mu.RLock()
 	realIPEntries := append([]string{}, a.realIPEntries...)
 	ipv6State, ipv6Observed, ipv6Error := a.ipv6State, a.ipv6ObservedAt, a.ipv6ReadError
+	ipv6Effective := a.ipv6Effective
 	realIPObserved, realIPError := a.realIPObservedAt, a.realIPReadError
 	a.mu.RUnlock()
 	canonical, err := json.Marshal(struct {
@@ -198,7 +200,7 @@ func (a *Adapter) Refresh(ctx context.Context) (Snapshot, error) {
 		Resources        string
 		AlwaysRealIP     []string
 		IPv6             string
-	}{st, rules, temp, groupObject.Groups, a.resourceDigest, realIPEntries, ipv6State})
+	}{st, rules, temp, groupObject.Groups, a.resourceDigest, realIPEntries, ipv6Effective})
 	if err != nil {
 		return Snapshot{}, err
 	}

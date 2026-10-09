@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"reflect"
 	"strconv"
 	"strings"
 	"surge-controller/internal/config"
@@ -36,6 +37,8 @@ type API struct {
 	Store             *database.Store
 	Bus               *events.Bus
 	mutation          sync.Mutex
+	operationMu       sync.Mutex
+	operations        map[string]operation
 	RouteImportClient *http.Client
 	SoftwareUpdates   *softwareupdate.Manager
 }
@@ -63,8 +66,20 @@ func (a *API) refreshDueRouteFeeds(ctx context.Context) {
 		if !feed.Enabled || !feed.LastAttempt.IsZero() && now.Sub(feed.LastAttempt) < time.Duration(feed.IntervalMinutes)*time.Minute {
 			continue
 		}
+		// Fetch outside the save lock. A slow rule source must not block forms.
+		snapshot := a.Service.Configuration()
+		fetchDoc := snapshot.Clone()
+		fetchDoc.Routes = filterFeedRoutes(fetchDoc.Routes, feed.ID)
+		ctxFetch, cancel := context.WithTimeout(ctx, 25*time.Second)
+		preview, err := routeimport.Fetch(ctxFetch, a.RouteImportClientOrDefault(), feed.URL, fetchDoc)
+		cancel()
 		a.mutation.Lock()
 		current := a.Service.Configuration()
+		if !reflect.DeepEqual(snapshot, current) {
+			a.mutation.Unlock()
+			continue
+		}
+
 		idx := -1
 		for i := range current.RouteFeeds {
 			if current.RouteFeeds[i].ID == feed.ID {
@@ -85,9 +100,6 @@ func (a *API) refreshDueRouteFeeds(ctx context.Context) {
 			}
 		}
 		base.Routes = filterFeedRoutes(base.Routes, feed.ID)
-		ctxFetch, cancel := context.WithTimeout(ctx, 25*time.Second)
-		preview, err := routeimport.Fetch(ctxFetch, a.RouteImportClientOrDefault(), feed.URL, base)
-		cancel()
 		candidate := base
 		if err == nil {
 			if len(preview.Prefixes) == 0 {
@@ -121,11 +133,11 @@ func (a *API) refreshDueRouteFeeds(ctx context.Context) {
 			updated.LastUpdated = now
 		}
 		candidate.RouteFeeds[idx] = updated
-		if applyErr := a.Service.Apply(ctx, candidate); applyErr != nil {
+		if applyErr := a.saveConfiguration(ctx, candidate); applyErr != nil {
 			// Preserve the existing installed route set and expose the failed attempt.
 			current.RouteFeeds[idx].LastAttempt = now
 			current.RouteFeeds[idx].LastError = "automatic route update could not be applied"
-			_ = a.Service.Apply(ctx, current)
+			_ = a.saveConfiguration(ctx, current)
 		}
 		a.mutation.Unlock()
 	}
@@ -182,6 +194,14 @@ func (a *API) Handler() http.Handler {
 }
 func (a *API) serve(w http.ResponseWriter, r *http.Request) {
 	path := strings.TrimPrefix(r.URL.Path, "/api/v1/")
+	if path == "operations/status" && r.Method == "GET" {
+		a.operationStatus(w, r)
+		return
+	}
+	if path == "configuration/status" && r.Method == "GET" {
+		a.configurationStatus(w, r)
+		return
+	}
 	if strings.HasPrefix(path, "updates/") {
 		if a.SoftwareUpdates == nil {
 			fail(w, 501, errors.New("Backend online updates are not supported"))
@@ -191,6 +211,10 @@ func (a *API) serve(w http.ResponseWriter, r *http.Request) {
 		case path == "updates/status" && r.Method == "GET":
 			write(w, 200, a.SoftwareUpdates.Status())
 		case path == "updates/check" && r.Method == "GET":
+			if r.Header.Get("Prefer") == "respond-async" {
+				a.startOperation(w, path, func(ctx context.Context) (any, error) { return a.SoftwareUpdates.Check(ctx) })
+				return
+			}
 			status, err := a.SoftwareUpdates.Check(r.Context())
 			if err != nil {
 				fail(w, 502, err)
@@ -233,7 +257,10 @@ func (a *API) serve(w http.ResponseWriter, r *http.Request) {
 			fail(w, 400, errors.New("select between 1 and 512 rows to delete"))
 			return
 		}
-		a.mutation.Lock()
+		if !a.mutation.TryLock() {
+			fail(w, 409, errors.New("another configuration save is in progress; try again shortly"))
+			return
+		}
 		defer a.mutation.Unlock()
 		d := a.Service.Configuration()
 		var deleted int
@@ -257,7 +284,7 @@ func (a *API) serve(w http.ResponseWriter, r *http.Request) {
 			fail(w, 404, e)
 			return
 		}
-		if e = a.Service.Apply(r.Context(), d); e != nil {
+		if e = a.saveConfiguration(r.Context(), d); e != nil {
 			fail(w, 409, e)
 			return
 		}
@@ -276,6 +303,11 @@ func (a *API) serve(w http.ResponseWriter, r *http.Request) {
 		if client == nil {
 			client = routeimport.NewClient()
 		}
+		if r.Header.Get("Prefer") == "respond-async" {
+			doc := a.Service.Configuration()
+			a.startOperation(w, path, func(ctx context.Context) (any, error) { return routeimport.Fetch(ctx, client, body.URL, doc) })
+			return
+		}
 		ctx, cancel := context.WithTimeout(r.Context(), 20*time.Second)
 		defer cancel()
 		v, e := routeimport.Fetch(ctx, client, body.URL, a.Service.Configuration())
@@ -292,7 +324,10 @@ func (a *API) serve(w http.ResponseWriter, r *http.Request) {
 			fail(w, 400, e)
 			return
 		}
-		a.mutation.Lock()
+		if !a.mutation.TryLock() {
+			fail(w, 409, errors.New("another configuration save is in progress; try again shortly"))
+			return
+		}
 		defer a.mutation.Unlock()
 		d, result, e := routeimport.Append(a.Service.Configuration(), body)
 		if e != nil {
@@ -300,7 +335,7 @@ func (a *API) serve(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		if result.Imported > 0 {
-			if e = a.Service.Apply(r.Context(), d); e != nil {
+			if e = a.saveConfiguration(r.Context(), d); e != nil {
 				fail(w, 409, e)
 				return
 			}
@@ -337,9 +372,11 @@ func (a *API) serve(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if path == "dns/hosts/import-surge" && r.Method == "POST" {
-		a.mutation.Lock()
-		defer a.mutation.Unlock()
-		value, e := a.Service.ImportHosts(r.Context())
+		if r.Header.Get("Prefer") == "respond-async" {
+			a.startOperation(w, path, a.importHosts)
+			return
+		}
+		value, e := a.importHosts(r.Context())
 		if e != nil {
 			fail(w, 409, e)
 			return
@@ -351,6 +388,10 @@ func (a *API) serve(w http.ResponseWriter, r *http.Request) {
 		var body json.RawMessage
 		if e := decode(w, r, &body); e != nil {
 			fail(w, 400, e)
+			return
+		}
+		if r.Header.Get("Prefer") == "respond-async" {
+			a.startOperation(w, path, func(ctx context.Context) (any, error) { return a.Service.VerifyRoute(ctx, body) })
 			return
 		}
 		v, e := a.Service.VerifyRoute(r.Context(), body)
@@ -367,6 +408,10 @@ func (a *API) serve(w http.ResponseWriter, r *http.Request) {
 			fail(w, 400, e)
 			return
 		}
+		if r.Header.Get("Prefer") == "respond-async" {
+			a.startOperation(w, path, func(ctx context.Context) (any, error) { return a.Service.Test(ctx, body) })
+			return
+		}
 		v, e := a.Service.Test(r.Context(), body)
 		if e != nil {
 			fail(w, 400, e)
@@ -381,6 +426,15 @@ func (a *API) serve(w http.ResponseWriter, r *http.Request) {
 		}
 		if e := decode(w, r, &body); e != nil {
 			fail(w, 400, e)
+			return
+		}
+		if r.Header.Get("Prefer") == "respond-async" {
+			a.startOperation(w, path, func(ctx context.Context) (any, error) {
+				if err := a.Service.Flush(ctx, body.Domain); err != nil {
+					return nil, err
+				}
+				return map[string]bool{"ok": true}, nil
+			})
 			return
 		}
 		if e := a.Service.Flush(r.Context(), body.Domain); e != nil {
@@ -459,7 +513,10 @@ func (a *API) serve(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(405)
 		return
 	}
-	a.mutation.Lock()
+	if !a.mutation.TryLock() {
+		fail(w, 409, errors.New("another configuration save is in progress; try again shortly"))
+		return
+	}
 	defer a.mutation.Unlock()
 	d := a.Service.Configuration()
 	old := d
@@ -478,6 +535,11 @@ func (a *API) serve(w http.ResponseWriter, r *http.Request) {
 		d.Settings = settings
 		if e := mergeSecrets(&d, &old); e != nil {
 			fail(w, 400, e)
+			return
+		}
+	case "configuration/retry":
+		if r.Method != "POST" {
+			w.WriteHeader(405)
 			return
 		}
 	case "mode":
@@ -511,7 +573,7 @@ func (a *API) serve(w http.ResponseWriter, r *http.Request) {
 	default:
 		parts := strings.Split(path, "/")
 		key, id := path, ""
-		if len(parts) > 1 {
+		if len(parts) > 1 && path != "bgp/routes/feeds" {
 			candidate := strings.Join(parts[:len(parts)-1], "/")
 			if candidate == "dns/interception" || candidate == "bgp/peers" || candidate == "bgp/routes" || candidate == "bgp/routes/feeds" || candidate == "overrides" || candidate == "dns/hosts" || candidate == "management/backends" {
 				key, id = candidate, parts[len(parts)-1]
@@ -578,7 +640,7 @@ func (a *API) serve(w http.ResponseWriter, r *http.Request) {
 		fail(w, 422, e)
 		return
 	}
-	if e := a.Service.Apply(r.Context(), d); e != nil {
+	if e := a.saveConfiguration(r.Context(), d); e != nil {
 		fail(w, 409, e)
 		return
 	}

@@ -3,7 +3,7 @@ import events from '../../internal/config/notification-events.json';
 import {useT} from './i18n';
 
 function legacyCategory(name){return name.startsWith('Surge')?'surge':name.startsWith('BGP')||name.includes('routing')?'bgp':name.includes('DNS')?'dns':'controller'}
-export function notificationSelected(name,settings){
+export function notificationSelected(name,settings={}){
  if(!Array.isArray(settings.errors))return Boolean(settings[legacyCategory(name)]);
  const event=events.find(event=>event.prefix?name.startsWith(event.name):name===event.name);
  return Boolean(event&&settings.errors.includes(event.id));

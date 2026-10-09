@@ -105,3 +105,25 @@ func TestAlwaysRealIPRefreshRetainsLastConfirmedListThenRemovesIt(t *testing.T) 
 		t.Fatal("removed entry still bypasses Surge")
 	}
 }
+
+func TestIPv6ReadFailureKeepsConfirmedDigestWithoutActivatingFallback(t *testing.T) {
+	r := &realIPRunner{runner: &runner{rules: []string{"FINAL,Proxy"}}, profile: "[General]\nipv6 = false\n"}
+	a := &Adapter{Runner: r, MaxSnapshotAge: time.Minute}
+	first, err := a.Refresh(context.Background())
+	if err != nil || !a.IPv6Disabled() {
+		t.Fatal("IPv6 configuration not confirmed", err)
+	}
+	r.err = errors.New("temporary profile read failure")
+	a.realIPCheckedAt = time.Time{}
+	failed, err := a.Refresh(context.Background())
+	if err != nil || failed.Digest != first.Digest || failed.IPv6State != "unknown" || a.IPv6Disabled() {
+		t.Fatal("read failure became config update or retained AAAA interception", failed, err)
+	}
+	r.err = nil
+	r.profile = "[General]\nipv6 = true\n"
+	a.realIPCheckedAt = time.Time{}
+	changed, err := a.Refresh(context.Background())
+	if err != nil || changed.Digest == first.Digest || changed.IPv6State != "enabled" {
+		t.Fatal("confirmed IPv6 change missed", changed, err)
+	}
+}

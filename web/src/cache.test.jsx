@@ -25,3 +25,12 @@ it('translates cache lifecycle, filters and persistent entries to English',async
  render(<><LanguageSelector/><CachePanel notify={()=>{}}/></>);await screen.findByText('stable.test.');fireEvent.change(screen.getByLabelText(/页面语言|Page language/),{target:{value:'en'}});
  expect(screen.getByText('Cache lifecycle')).toBeInTheDocument();expect(screen.getByLabelText('Search cached domains')).toBeInTheDocument();expect(screen.getByText('Until configuration update')).toBeInTheDocument();expect(screen.getByText('Keep cached decisions')).toBeInTheDocument();expect(screen.getByRole('button',{name:'Clear all decisions'})).toBeInTheDocument();
 });
+
+it('explains independent optimistic decision and response cache options',async()=>{
+ vi.stubGlobal('fetch',vi.fn().mockResolvedValue({ok:true,json:async()=>({stats:{entries:1,stale_entries:1},total:1,entries:[{domain:'stale.test.',decision:'DIRECT',persistent:true}],ttl:{optimistic:true,optimistic_responses:true}})}));
+ render(<CachePanel notify={()=>{}}/>);await screen.findByText('stale.test.');
+ expect(screen.getByText('待刷新决策')).toBeInTheDocument();
+ expect(screen.getByText(/乐观缓存已开启/)).toBeInTheDocument();
+ expect(screen.getByText(/乐观响应缓存已开启/)).toBeInTheDocument();
+ expect(screen.queryByText('直到配置更新')).not.toBeInTheDocument();
+});

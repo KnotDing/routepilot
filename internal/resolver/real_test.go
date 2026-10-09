@@ -131,3 +131,130 @@ func TestPolicyPoolRetriesDNSFailuresButKeepsNegativeAnswers(t *testing.T) {
 		})
 	}
 }
+
+func TestOptimisticResponseReturnsCacheBeforeRefresh(t *testing.T) {
+	entered, release := make(chan struct{}, 1), make(chan struct{})
+	tr := &mocks.Transport{Func: func(ctx context.Context, _ resolver.ResolverEndpoint, q *dns.Msg) (*dns.Msg, error) {
+		if q.Id == 100 {
+			return mocks.AddressReply(q, "203.0.113.1"), nil
+		}
+		entered <- struct{}{}
+		select {
+		case <-release:
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		}
+		return mocks.AddressReply(q, "203.0.113.2"), nil
+	}}
+	r, _ := resolver.NewReal(tr, []resolver.ResolverEndpoint{{Enabled: true, Protocol: "udp", Address: "192.0.2.53:53"}}, false, 10, resolver.OptimisticOptions{Enabled: true})
+	defer r.Close()
+	q := new(dns.Msg)
+	q.SetQuestion("example.test.", dns.TypeA)
+	q.Id = 100
+	if _, err := r.Resolve(context.Background(), model.ResolveRequest{Message: q}); err != nil {
+		t.Fatal(err)
+	}
+	r.ConfigurationChanged("resource updated", true)
+	q.Id = 200
+	trace := &model.ResolutionTrace{}
+	done := make(chan *dns.Msg, 1)
+	go func() {
+		reply, _ := r.Resolve(context.Background(), model.ResolveRequest{Message: q, Trace: trace})
+		done <- reply
+	}()
+	select {
+	case reply := <-done:
+		if reply == nil || reply.Id != 200 || reply.Answer[0].(*dns.A).A.String() != "203.0.113.1" || !trace.CacheHit {
+			t.Fatal("cached response not returned immediately")
+		}
+	case <-time.After(time.Second):
+		t.Fatal("response waited for refresh")
+	}
+	<-entered
+	for i := 0; i < 32; i++ {
+		r.Resolve(context.Background(), model.ResolveRequest{Message: q})
+	}
+	if tr.Calls.Load() != 2 {
+		t.Fatal("duplicate response refreshes", tr.Calls.Load())
+	}
+	close(release)
+	deadline := time.Now().Add(time.Second)
+	for time.Now().Before(deadline) {
+		if r.Cache.Stats().StaleEntries == 0 {
+			reply, err := r.Resolve(context.Background(), model.ResolveRequest{Message: q})
+			if err != nil || reply.Answer[0].(*dns.A).A.String() != "203.0.113.2" {
+				t.Fatal("new response missing")
+			}
+			return
+		}
+		time.Sleep(time.Millisecond)
+	}
+	t.Fatal("response refresh did not replace cache")
+}
+
+func TestOptimisticResponseKeepsOldAnswerOnUpstreamFailure(t *testing.T) {
+	for _, rcode := range []int{-1, dns.RcodeServerFailure} {
+		first := true
+		tr := &mocks.Transport{Func: func(_ context.Context, _ resolver.ResolverEndpoint, q *dns.Msg) (*dns.Msg, error) {
+			if first {
+				first = false
+				return mocks.AddressReply(q, "203.0.113.1"), nil
+			}
+			if rcode < 0 {
+				return nil, errors.New("upstream unavailable")
+			}
+			m := new(dns.Msg)
+			m.SetRcode(q, rcode)
+			return m, nil
+		}}
+		r, _ := resolver.NewReal(tr, []resolver.ResolverEndpoint{{Enabled: true, Protocol: "udp", Address: "192.0.2.53:53"}}, false, 10, resolver.OptimisticOptions{Enabled: true})
+		q := new(dns.Msg)
+		q.SetQuestion("example.test.", dns.TypeA)
+		r.Resolve(context.Background(), model.ResolveRequest{Message: q})
+		r.ConfigurationChanged("resource updated", true)
+		r.Resolve(context.Background(), model.ResolveRequest{Message: q})
+		deadline := time.Now().Add(time.Second)
+		for r.Stats()[0].Failures == 0 && time.Now().Before(deadline) {
+			time.Sleep(time.Millisecond)
+		}
+		if r.Stats()[0].Failures != 1 || r.Cache.Stats().Entries != 1 || r.Cache.Stats().StaleEntries != 1 {
+			t.Fatal("failed refresh discarded cached response", r.Cache.Stats())
+		}
+		reply, err := r.Resolve(context.Background(), model.ResolveRequest{Message: q})
+		if err != nil || reply.Rcode != dns.RcodeSuccess || reply.Answer[0].(*dns.A).A.String() != "203.0.113.1" {
+			t.Fatal("failure replaced previous answer")
+		}
+		r.Close()
+	}
+}
+
+func TestOptimisticResponseRefreshCannotResurrectManualFlush(t *testing.T) {
+	entered, release := make(chan struct{}), make(chan struct{})
+	first := true
+	tr := &mocks.Transport{Func: func(ctx context.Context, _ resolver.ResolverEndpoint, q *dns.Msg) (*dns.Msg, error) {
+		if first {
+			first = false
+			return mocks.AddressReply(q, "203.0.113.1"), nil
+		}
+		close(entered)
+		select {
+		case <-release:
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		}
+		return mocks.AddressReply(q, "203.0.113.2"), nil
+	}}
+	r, _ := resolver.NewReal(tr, []resolver.ResolverEndpoint{{Enabled: true, Protocol: "udp", Address: "192.0.2.53:53"}}, false, 10, resolver.OptimisticOptions{Enabled: true})
+	q := new(dns.Msg)
+	q.SetQuestion("example.test.", dns.TypeA)
+	r.Resolve(context.Background(), model.ResolveRequest{Message: q})
+	r.ConfigurationChanged("resource updated", true)
+	r.Resolve(context.Background(), model.ResolveRequest{Message: q})
+	<-entered
+	r.Cache.Flush()
+	close(release)
+	r.Close()
+	if r.Cache.Stats().Entries != 0 {
+		t.Fatal("background response resurrected manually flushed cache")
+	}
+}

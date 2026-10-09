@@ -52,6 +52,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
     let arguments = CommandLine.arguments
     var client: ControllerClient!
     var statusItem: NSStatusItem!
+    var statusMenuOpen = false
+    var menuBrandImage: NSImage?
+    var menuStatusImages: [StatusBarVisualState: NSImage] = [:]
     var window: NSWindow?
     var webView: WKWebView?
     var child: Process?
@@ -141,7 +144,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
         if let button = statusItem.button {
             button.title = ""
             button.imagePosition = .imageOnly
-            button.image = Bundle.main.url(forResource: "MenuIcon", withExtension: "png").flatMap { NSImage(contentsOf: $0) }
+            menuBrandImage = Bundle.main.url(forResource: "MenuIcon", withExtension: "png").flatMap { NSImage(contentsOf: $0) }
+            button.image = menuBrandImage
             button.image?.size = NSSize(width: 18, height: 18)
             button.image?.isTemplate = true
             button.toolTip = "RoutePilot · " + L("正在连接…")
@@ -302,16 +306,42 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
             : L("后台未提供完整的版本和构建编号，请更新后台服务。")
         alert(title, appInfo + "\n" + backendInfo + "\n\n" + L("请将 App 和后台更新到同一发布版本。本机后台可在状态栏菜单选择“更新网络后台服务”；更新 App 不会自动替换旧后台。"))
     }
+    var serviceVisualState: StatusBarVisualState {
+        let runtimeState = status["state"] as? String ?? ""
+        let applying = (status["configuration_application"] as? [String: Any])?["state"] as? String ?? ""
+        if ["pending", "applying"].contains(applying) { return .connecting }
+        if stopping || starting || lastError == "正在连接…" || ["STARTING", "RECOVERING", "STOPPING"].contains(runtimeState) { return .connecting }
+        if !authenticated { return lastError == "需要登录管理服务" ? .login : .offline }
+        if !lastError.isEmpty { return .offline }
+        let down = notificationHealth.contains { ($0["state"] as? String)?.uppercased() == "DOWN" }
+        let intentionalDirect = status["mode"] as? String == "force-direct" && runtimeState == "DIRECT_FALLBACK"
+        if down || applying == "failed" || versionWarning != nil || runtimeState != "HEALTHY" && !intentionalDirect { return .warning }
+        return .healthy
+    }
     func updateToolTip() {
-        statusItem.button?.toolTip = "RoutePilot · " + (lastError.isEmpty ? stateText(status["state"] ?? "—") + " · " + stateText(status["mode"] ?? "auto") : L(lastError))
-        if let versionWarning { statusItem.button?.toolTip? += " · " + L(versionWarning) }
+        let visual = serviceVisualState
+        if menuStatusImages[visual] == nil { menuStatusImages[visual] = visual.image(brand: menuBrandImage) }
+        statusItem.button?.image = menuStatusImages[visual]
+        let summary = "RoutePilot · " + L(visual.label)
+        statusItem.button?.setAccessibilityLabel(summary)
+        statusItem.button?.toolTip = summary + "\n" + (lastError.isEmpty ? stateText(status["state"] ?? "—") + " · " + stateText(status["mode"] ?? "auto") : L(lastError))
+        let down = notificationHealth.filter { ($0["state"] as? String)?.uppercased() == "DOWN" }.compactMap { $0["name"] as? String }
+        if authenticated && !down.isEmpty { statusItem.button?.toolTip? += "\n" + down.map { L($0) }.joined(separator: "、") }
+        if let versionWarning { statusItem.button?.toolTip? += "\n" + L(versionWarning) }
     }
     func userContentController(_ userContentController: WKUserContentController, didReceive message: WKScriptMessage) {
         let origin = message.frameInfo.securityOrigin
         let trusted = message.frameInfo.isMainFrame && origin.protocol == client.base.scheme && origin.host == client.base.host?.trimmingCharacters(in: CharacterSet(charactersIn: "[]")) && origin.port == client.base.port
         if message.name == "routepilotPreferences" {
-            guard trusted, let values = message.body as? [String: Any], let data = try? JSONSerialization.data(withJSONObject: values),
-                  var preferences = try? JSONDecoder().decode(AppPreferences.self, from: data), (1...168).contains(preferences.checkIntervalHours) else { return }
+            guard trusted, let values = message.body as? [String: Any] else { return }
+            func reply(_ ok: Bool) {
+                guard let id = values["_requestID"] as? String, id.count <= 64,
+                      let data = try? JSONSerialization.data(withJSONObject: ["requestID": id, "ok": ok]),
+                      let json = String(data: data, encoding: .utf8) else { return }
+                webView?.evaluateJavaScript("window.dispatchEvent(new CustomEvent('routepilot-preferences-saved',{detail:" + json + "}));", completionHandler: nil)
+            }
+            guard let data = try? JSONSerialization.data(withJSONObject: values),
+                  var preferences = try? JSONDecoder().decode(AppPreferences.self, from: data), (1...168).contains(preferences.checkIntervalHours) else { reply(false); return }
             preferences.automaticInstall = preferences.automaticInstall && preferences.automaticCheck && UpdateAssistant.configured
             let previous = AppPreferences.current
             AppPreferences.current = preferences
@@ -319,6 +349,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
                 UserDefaults.standard.removeObject(forKey: "releaseUpdateLastCheck")
             }
             configurePreferenceSeed(userContentController)
+            reply(true)
             Task {
                 if preferences.desktopNotifications && !previous.desktopNotifications {
                     if !(await DesktopNotifications.shared.authorize()) { alert("通知未授权", "请在 macOS 系统设置 → 通知 → RoutePilot 中允许通知。") }
@@ -406,6 +437,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
         preferences["assistantReady"] = UpdateAssistant.configured
         preferences["assistantSupported"] = true
         preferences["remoteCredentialsSupported"] = true
+        preferences["preferencesSaveAcknowledgement"] = true
         guard let seed = try? JSONSerialization.data(withJSONObject: preferences), let json = String(data: seed, encoding: .utf8) else { return }
         let source = marker + "window.routepilotNativePreferences=" + json + ";window.dispatchEvent(new Event('routepilot-preferences-changed'));"
         controller.addUserScript(WKUserScript(source: source, injectionTime: .atDocumentStart, forMainFrameOnly: true))
@@ -489,57 +521,91 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
         item.target = self; item.isEnabled = enabled
         return item
     }
+    func submenu(_ title: String, items: [NSMenuItem], enabled: Bool = true) -> NSMenuItem {
+        let row = item(title, enabled: enabled)
+        let children = NSMenu(); children.autoenablesItems = false
+        items.forEach { children.addItem($0) }
+        row.submenu = children
+        return row
+    }
     func rebuildMenu() {
+        updateToolTip()
+        // Keep menu items stable while the user is choosing an action.
+        guard !statusMenuOpen else { return }
         let menu = NSMenu(); menu.autoenablesItems = false; menu.delegate = self
-        menu.addItem(item("RoutePilot", enabled: false))
-        menu.addItem(item(L("Controller：{state}", ["state": lastError.isEmpty ? stateText(status["state"] ?? "—") : L(lastError)]), enabled: false))
-        if let versionWarning {
-            menu.addItem(item(versionWarning, enabled: false))
+        let connected = authenticated && lastError.isEmpty
+        let controlsEnabled = connected && !stopping
+        let needsLogin = !authenticated && lastError == "需要登录管理服务"
+        let summary = L(serviceVisualState.label)
+        menu.addItem(item("RoutePilot · " + summary, enabled: false))
+        menu.addItem(item("打开管理窗口", action: #selector(openManagement)))
+
+        var details = [item(L("本机后台：{address}", ["address": client?.base.absoluteString ?? "—"]), enabled: false)]
+        if connected {
+            details.append(item(L("Controller：{state}", ["state": stateText(status["state"] ?? "—")]), enabled: false))
+            let surge = health.first { $0["name"] as? String == "Surge CLI" }?["state"] ?? "—"
+            details.append(item(L("Surge：{state} · Fake-IP：{enabled}", ["state": stateText(surge), "enabled": L((status["fake_ip_enabled"] as? Bool ?? false) ? "启用" : "禁用")]), enabled: false))
+            let peers = bgp["peers"] as? [[String: Any]] ?? []
+            let up = peers.filter { ($0["state"] as? String)?.uppercased() == "ESTABLISHED" }.count
+            details.append(item(L("BGP：{up}/{total} 邻居 · {routes} 路由", ["up": up, "total": peers.count, "routes": bgp["advertised"] ?? 0]), enabled: false))
+            details.append(item(L("路由：{mode} · Fake-IP {fake} / DNS {dns}", ["mode": stateText(bgp["mode"] ?? "bgp"), "fake": stateText(bgp["fake_ip_backend"] ?? "bgp"), "dns": stateText(bgp["dns_backend"] ?? "bgp")]), enabled: false))
+            details.append(item(L("查询：{count} / 分钟", ["count": status["queries_per_minute"] ?? 0]), enabled: false))
+        } else {
+            let error = L(lastError)
+            let row = item(String(error.prefix(90)), enabled: false); row.toolTip = error
+            details.append(row)
         }
-        let surge = health.first { $0["name"] as? String == "Surge CLI" }?["state"] ?? "—"
-        menu.addItem(item(L("Surge：{state} · Fake-IP：{enabled}", ["state": stateText(surge), "enabled": L((status["fake_ip_enabled"] as? Bool ?? false) ? "启用" : "禁用")]), enabled: false))
-        let peers = bgp["peers"] as? [[String: Any]] ?? []
-        let up = peers.filter { ($0["state"] as? String)?.uppercased() == "ESTABLISHED" }.count
-        menu.addItem(item(L("BGP：{up}/{total} 邻居 · {routes} 路由", ["up": up, "total": peers.count, "routes": bgp["advertised"] ?? 0]), enabled: false))
-        menu.addItem(item(L("路由：{mode} · Fake-IP {fake} / DNS {dns}", ["mode": stateText(bgp["mode"] ?? "bgp"), "fake": stateText(bgp["fake_ip_backend"] ?? "bgp"), "dns": stateText(bgp["dns_backend"] ?? "bgp")]), enabled: false))
-        menu.addItem(item(L("查询：{count} / 分钟", ["count": status["queries_per_minute"] ?? 0]), enabled: false))
+        if let versionWarning { details.append(item(versionWarning, enabled: false)) }
+        menu.addItem(submenu("本机服务状态", items: details))
         menu.addItem(.separator())
-        let mode = item("DNS 模式", enabled: authenticated)
-        let modes = NSMenu(); modes.autoenablesItems = false
+
+        var modes: [NSMenuItem] = []
         for (value, label) in [("auto", "自动"), ("force-direct", "强制 DIRECT"), ("force-surge", "强制 SURGE")] {
-            let row = item(label, action: #selector(changeMode(_:)), enabled: authenticated)
+            let row = item(label, action: #selector(changeMode(_:)), enabled: controlsEnabled)
             row.representedObject = value
             row.state = status["mode"] as? String == value ? .on : .off
-            modes.addItem(row)
+            modes.append(row)
         }
-        mode.submenu = modes; menu.addItem(mode)
-        menu.addItem(item("清理 DNS 缓存", action: #selector(flushCache), enabled: authenticated))
-        menu.addItem(item("从 Surge 导入 Hosts…", action: #selector(importHosts), enabled: authenticated))
-        menu.addItem(item(authenticated ? "管理窗口 / 配置本地 DNS…" : "管理窗口 / 登录…", action: #selector(openManagement)))
-        menu.addItem(item("登录状态栏控制…", action: #selector(signIn)))
-        let credentials = item("登录凭证保存方式")
-        let storageMenu = NSMenu(); storageMenu.autoenablesItems = false
-        for storage in CredentialStorage.allCases {
+        menu.addItem(submenu("本机 DNS", items: [
+            submenu("DNS 模式", items: modes, enabled: controlsEnabled),
+            item("清理决策与响应缓存", action: #selector(flushCache), enabled: controlsEnabled),
+            item("从 Surge 导入 Hosts…", action: #selector(importHosts), enabled: controlsEnabled)
+        ], enabled: controlsEnabled))
+
+        let serviceInstalled = FileManager.default.fileExists(atPath: "/Library/LaunchDaemons/com.routepilot.surge-controller.plist")
+        var serviceItems: [NSMenuItem] = []
+        if needsLogin { serviceItems.append(item("登录本机后台…", action: #selector(signIn), enabled: !stopping)); serviceItems.append(.separator()) }
+        serviceItems.append(item(serviceInstalled ? "更新网络后台服务…" : "安装网络后台服务…", action: #selector(installService), enabled: !stopping && !smoke && (serviceInstalled ? child == nil : child != nil)))
+        serviceItems.append(item("重新连接", action: #selector(reconnect), enabled: !stopping))
+        serviceItems.append(item("本机后台连接地址…", action: #selector(changeAddress), enabled: !stopping))
+        serviceItems.append(item("打开服务日志", action: #selector(openLogs)))
+        menu.addItem(submenu("本机后台", items: serviceItems))
+
+        var updates = [item(checkingRelease ? "正在检查软件更新…" : "检查软件更新…", action: #selector(performReleaseUpdate), enabled: !checkingRelease && !stopping)]
+        if let release = availableRelease {
+            updates.append(item(L("在线升级至 {tag}", ["tag": release.tagName]), action: #selector(performReleaseUpdate), enabled: !checkingRelease && !stopping))
+        }
+        if UpdateAssistant.configured {
+            updates.append(item("更新助手已启用", enabled: false))
+            updates.append(item("停用更新助手…", action: #selector(disableUpdateAssistant), enabled: !checkingRelease && !stopping && !smoke))
+        } else {
+            updates.append(item("启用更新助手…", action: #selector(enableUpdateAssistant), enabled: !checkingRelease && !stopping && !smoke))
+        }
+        menu.addItem(submenu("软件更新", items: updates))
+
+        let login = item(SMAppService.mainApp.status == .requiresApproval ? "登录时启动（等待系统授权）" : "登录时启动", action: #selector(toggleLogin), enabled: !smoke)
+        login.state = SMAppService.mainApp.status == .enabled ? .on : SMAppService.mainApp.status == .requiresApproval ? .mixed : .off
+        let stores = CredentialStorage.allCases.map { storage -> NSMenuItem in
             let row = item(storage.title, action: #selector(changeCredentialStorage(_:)))
             row.representedObject = storage.rawValue
             row.state = CredentialVault.storage == storage ? .on : .off
-            storageMenu.addItem(row)
+            return row
         }
-        credentials.submenu = storageMenu
-        menu.addItem(credentials)
+        menu.addItem(submenu("应用偏好", items: [login, submenu("登录凭证保存方式", items: stores)]))
         menu.addItem(.separator())
-        let login = item("登录时启动", action: #selector(toggleLogin))
-        login.state = SMAppService.mainApp.status == .enabled ? .on : .off
-        menu.addItem(login)
-        let serviceInstalled = FileManager.default.fileExists(atPath: "/Library/LaunchDaemons/com.routepilot.surge-controller.plist")
-        menu.addItem(item(serviceInstalled ? "更新网络后台服务…" : "安装网络后台服务…", action: #selector(installService), enabled: (serviceInstalled || authenticated) && !stopping && !smoke))
-        menu.addItem(item("管理服务地址…", action: #selector(changeAddress), enabled: !stopping))
-        menu.addItem(item("打开服务日志", action: #selector(openLogs)))
-        menu.addItem(item("重新连接", action: #selector(reconnect)))
-        let updateTitle = checkingRelease ? L("正在检查软件更新…") : (availableRelease.map { L("在线升级至 {tag}", ["tag": $0.tagName]) } ?? L("检查软件更新…"))
-        menu.addItem(item(updateTitle, action: #selector(performReleaseUpdate), enabled: !checkingRelease && !stopping))
-        menu.addItem(.separator())
-        menu.addItem(item(child == nil ? "退出状态栏 APP（服务继续运行）" : "退出 APP 并停止后台服务", action: #selector(quit)))
+        let quit = item(child == nil ? "退出 RoutePilot" : "退出 RoutePilot（停止临时后台）", action: #selector(quit))
+        quit.toolTip = L(child == nil ? "后台独立运行，不会随 App 退出。" : "同时停止 App 启动的临时后台。")
+        menu.addItem(quit)
         statusItem.menu = menu
     }
     func checkReleaseUpdate(silent: Bool) async {
@@ -666,7 +732,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
             rebuildMenu()
         }
     }
-    func menuWillOpen(_ menu: NSMenu) { Task { await refresh() } }
+    func menuWillOpen(_ menu: NSMenu) { statusMenuOpen = true; Task { await refresh() } }
+    func menuDidClose(_ menu: NSMenu) { statusMenuOpen = false; rebuildMenu() }
     @objc func changeMode(_ sender: NSMenuItem) {
         guard let mode = sender.representedObject as? String else { return }
         Task {
@@ -696,7 +763,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
         rebuildMenu()
         // Do not read/migrate the other store: opting out of Keychain must not
         // cause another Keychain authorization prompt.
-        alert("登录凭证保存方式已修改", L(storage.explanation) + "\n\n" + L("请通过“登录状态栏控制”或管理页面重新登录一次。两种方式的凭证独立保存；切换不会读取或迁移原有凭证。"))
+        alert("登录凭证保存方式已修改", L(storage.explanation) + "\n\n" + L("请通过“本机后台 → 登录本机后台”或管理页面重新登录一次。两种方式的凭证独立保存；切换不会读取或迁移原有凭证。"))
     }
     @objc func signIn() {
         Task {
@@ -821,6 +888,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
         if (error as NSError).code != NSURLErrorCancelled { alert("导出未完成", error.localizedDescription) }
     }
     @objc func toggleLogin() {
+        if SMAppService.mainApp.status == .requiresApproval { SMAppService.openSystemSettingsLoginItems(); return }
         do {
             if SMAppService.mainApp.status == .enabled { try SMAppService.mainApp.unregister() }
             else {

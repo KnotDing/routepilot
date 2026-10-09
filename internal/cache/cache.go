@@ -18,6 +18,7 @@ type entry[K comparable, V any] struct {
 	value      V
 	generation uint64
 	expiry     time.Time
+	stale      bool
 }
 
 // Record preserves the key and absolute expiry, in addition to the cached value.
@@ -25,8 +26,10 @@ type Record[K comparable, V any] struct {
 	Key       K         `json:"key"`
 	Value     V         `json:"value"`
 	ExpiresAt time.Time `json:"expires_at,omitempty"`
+	Stale     bool      `json:"stale,omitempty"`
 }
 type Stats struct {
+	StaleEntries           int       `json:"stale_entries"`
 	Entries                int       `json:"entries"`
 	Generation             uint64    `json:"generation"`
 	Hits                   uint64    `json:"hits"`
@@ -59,6 +62,12 @@ func New[K comparable, V any](capacity int) *Cache[K, V] {
 }
 func (c *Cache[K, V]) Generation() uint64 { return c.generation.Load() }
 func (c *Cache[K, V]) Get(k K) (V, bool) {
+	v, ok, _, _ := c.GetState(k)
+	return v, ok
+}
+
+// GetState reads freshness and the generation together with the value.
+func (c *Cache[K, V]) GetState(k K) (V, bool, bool, uint64) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	if e, ok := c.items[k]; ok {
@@ -66,13 +75,13 @@ func (c *Cache[K, V]) Get(k K) (V, bool) {
 		if v.generation == c.Generation() && validExpiry(c.now(), v.expiry) {
 			c.order.MoveToFront(e)
 			c.hits.Add(1)
-			return v.value, true
+			return v.value, true, v.stale, v.generation
 		}
 		c.remove(e)
 	}
 	c.misses.Add(1)
 	var zero V
-	return zero, false
+	return zero, false, false, c.Generation()
 }
 
 // Put rejects a result evaluated before an invalidation, including an in-flight miss.
@@ -89,7 +98,7 @@ func (c *Cache[K, V]) Put(k K, v V, g uint64, ttl time.Duration) bool {
 	if ttl != Forever {
 		expiry = c.now().Add(ttl)
 	}
-	e := c.order.PushFront(entry[K, V]{k, v, g, expiry})
+	e := c.order.PushFront(entry[K, V]{k, v, g, expiry, false})
 	c.items[k] = e
 	if c.order.Len() > c.capacity {
 		c.remove(c.order.Back())
@@ -97,6 +106,20 @@ func (c *Cache[K, V]) Put(k K, v V, g uint64, ttl time.Duration) bool {
 	}
 	return true
 }
+
+// Delete rejects a removal requested by an older evaluation generation.
+func (c *Cache[K, V]) Delete(k K, generation uint64) bool {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if generation != c.Generation() {
+		return false
+	}
+	if e, ok := c.items[k]; ok {
+		c.remove(e)
+	}
+	return true
+}
+
 func (c *Cache[K, V]) remove(e *list.Element) {
 	delete(c.items, e.Value.(entry[K, V]).key)
 	c.order.Remove(e)
@@ -114,6 +137,25 @@ func (c *Cache[K, V]) FlushReason(reason string) uint64 {
 	c.items = make(map[K]*list.Element)
 	c.order.Init()
 	return c.invalidate(reason)
+}
+
+// MarkStale retains stable decisions for optimistic responses while advancing
+// the generation, so an evaluation started before this update cannot overwrite them.
+func (c *Cache[K, V]) MarkStale(keep func(V) bool) uint64 {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	old := c.Generation()
+	generation := c.generation.Add(1)
+	for _, e := range c.items {
+		v := e.Value.(entry[K, V])
+		if v.generation != old || !validExpiry(c.now(), v.expiry) || !keep(v.value) {
+			c.remove(e)
+		} else {
+			v.generation, v.stale = generation, true
+			e.Value = v
+		}
+	}
+	return generation
 }
 
 // A targeted flush also advances the generation to reject in-flight writes.
@@ -138,15 +180,18 @@ func (c *Cache[K, V]) FlushValuesWhere(match func(K, V) bool, reason string) {
 func (c *Cache[K, V]) Stats() Stats {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	n := 0
+	n, stale := 0, 0
 	now := c.now()
 	for _, e := range c.items {
 		v := e.Value.(entry[K, V])
 		if v.generation == c.Generation() && validExpiry(now, v.expiry) {
 			n++
+			if v.stale {
+				stale++
+			}
 		}
 	}
-	return Stats{Entries: n, Generation: c.Generation(), Hits: c.hits.Load(), Misses: c.misses.Load(), Evictions: c.evictions.Load(), Invalidations: c.invalidations, LastInvalidationAt: c.lastInvalidationAt, LastInvalidationReason: c.lastInvalidationReason}
+	return Stats{Entries: n, StaleEntries: stale, Generation: c.Generation(), Hits: c.hits.Load(), Misses: c.misses.Load(), Evictions: c.evictions.Load(), Invalidations: c.invalidations, LastInvalidationAt: c.lastInvalidationAt, LastInvalidationReason: c.lastInvalidationReason}
 }
 
 // Values exposes a bounded snapshot without affecting LRU order or hit counters.
@@ -164,7 +209,7 @@ func (c *Cache[K, V]) Snapshot() []Record[K, V] {
 	for e := c.order.Back(); e != nil; e = e.Prev() {
 		v := e.Value.(entry[K, V])
 		if v.generation == generation && validExpiry(now, v.expiry) {
-			out = append(out, Record[K, V]{v.key, v.value, v.expiry})
+			out = append(out, Record[K, V]{v.key, v.value, v.expiry, v.stale})
 		}
 	}
 	return out
@@ -191,7 +236,7 @@ func (c *Cache[K, V]) Restore(records []Record[K, V]) int {
 		if _, exists := c.items[r.Key]; exists {
 			continue
 		}
-		e := c.order.PushBack(entry[K, V]{r.Key, r.Value, generation, r.ExpiresAt})
+		e := c.order.PushBack(entry[K, V]{r.Key, r.Value, generation, r.ExpiresAt, r.Stale})
 		c.items[r.Key] = e
 		restored++
 	}

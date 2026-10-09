@@ -19,5 +19,54 @@ async function fetchJSON(url,method,body,selected,extraHeaders={}){
  }finally{pending.delete(controller)}
 }
 export function localRequest(path,method='GET',body){return fetchJSON('/api/v1/'+path,method,body,false)}
-export function request(path,method='GET',body,headers){return fetchJSON('/api/v1/'+(backend?'management/relay/'+encodeURIComponent(backend)+'/':'')+path,method,body,true,headers)}
+const deferredPaths=new Set(['bgp/routes/import-url','dns/hosts/import-surge','routing/verify','test/domain','dns/cache/flush','updates/check']);
+let operationSequence=0;
+export async function request(path,method='GET',body,headers){
+ const revision=generation,base='/api/v1/'+(backend?'management/relay/'+encodeURIComponent(backend)+'/':'');
+ const deferred=deferredPaths.has(path),token=deferred?String(++operationSequence):'';
+ const update=phase=>window.dispatchEvent(new CustomEvent('routepilot-operation',{detail:{token,path,phase}}));
+ if(deferred)update('submitting');
+ try{
+  const value=await fetchJSON(base+path,method,body,true,{...(deferred?{Prefer:'respond-async'}:{}),...headers});
+  if(!deferred||!value.operation)return value;
+  const id=value.operation.id;
+  if(typeof id!=='string'||!id)throw new Error('后台任务编号缺失，请刷新后确认');
+  update('running');
+  const started=Date.now();
+  while(true){
+   if(revision!==generation)throw new DOMException('管理后端已切换','AbortError');
+   const job=await fetchJSON(base+'operations/status?id='+encodeURIComponent(id),'GET',undefined,true);
+   if(job.id!==id)throw new Error('后台任务状态不匹配，请刷新后确认');
+   if(job.state==='succeeded')return job.result;
+   if(job.state==='failed')throw new Error(job.error||'后台任务失败');
+   if(Date.now()-started>5*60*1000)throw new Error('后台任务仍在运行，请稍后查看结果；不要重复提交');
+   await new Promise(resolve=>setTimeout(resolve,1000));
+  }
+ }finally{if(deferred)update('finished')}
+}
 export function pretty(v){return v==null?'—':typeof v==='object'?JSON.stringify(v):String(v)}
+
+// Reconnect independently of the save acknowledgement. Failed activation keeps
+// the current working listener and is reported by ConfigurationApplyNotice.
+export async function reconnectAfterApplication(url){
+ const revision=generation;
+ let applying=false;
+ for(let attempts=0;attempts<300&&revision===generation;attempts++){
+  try{
+   const state=await request('configuration/status');
+   if(state.state==='failed')return;
+   if(state.state==='succeeded'){
+    await new Promise(resolve=>setTimeout(resolve,500));
+    if(revision===generation)location.assign(url);
+    return;
+   }
+   applying=true;
+  }catch(e){
+   if(e.name==='AbortError'||e.status===401||e.status===403)return;
+   // A successfully switched listener closes the old origin. Preflight failure
+   // leaves it serving configuration/status with state=failed.
+   if(applying){await new Promise(resolve=>setTimeout(resolve,1000));if(revision===generation)location.assign(url);return}
+  }
+  await new Promise(resolve=>setTimeout(resolve,1000));
+ }
+}

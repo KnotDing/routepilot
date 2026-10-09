@@ -100,6 +100,8 @@ func (a *Adapter) refreshAlwaysRealIP(ctx context.Context) {
 		if ipv6 {
 			a.ipv6State = "enabled"
 		}
+		// Read availability is runtime state, not a confirmed configuration change.
+		a.ipv6Effective = a.ipv6State
 		a.ipv6ObservedAt = time.Now()
 		a.ipv6ReadError = ""
 	}

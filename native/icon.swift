@@ -7,6 +7,9 @@ func render(_ pixels: Int, background: Bool) throws -> Data {
     NSGraphicsContext.saveGraphicsState()
     NSGraphicsContext.current = context
     let scale = NSAffineTransform(); scale.scale(by: CGFloat(pixels) / 64); scale.concat()
+    if !background {
+        let zoom = NSAffineTransform(); zoom.translateX(by: -11.2, yBy: -11.2); zoom.scale(by: 1.35); zoom.concat()
+    }
     if background {
         let shape = NSBezierPath(roundedRect: NSRect(x: 1, y: 1, width: 62, height: 62), xRadius: 15, yRadius: 15)
         NSGradient(starting: NSColor(calibratedRed: 0.216, green: 0.412, blue: 0.929, alpha: 1), ending: NSColor(calibratedRed: 0.145, green: 0.282, blue: 0.741, alpha: 1))!.draw(in: shape, angle: -45)

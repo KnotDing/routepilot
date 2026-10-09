@@ -65,6 +65,7 @@ type release struct {
 }
 type Manager struct {
 	mu              sync.Mutex
+	checkMu         sync.Mutex
 	ctx             context.Context
 	standardService bool
 	supported       bool
@@ -204,25 +205,31 @@ func (m *Manager) snapshot() Status {
 }
 func (m *Manager) Status() Status { m.mu.Lock(); defer m.mu.Unlock(); return m.snapshot() }
 func (m *Manager) Check(ctx context.Context) (Status, error) {
+	m.checkMu.Lock()
+	defer m.checkMu.Unlock()
 	m.mu.Lock()
-	defer m.mu.Unlock()
 	ctx, cancel := context.WithTimeout(ctx, 15*time.Second)
 	defer cancel()
 	// Reuse a result briefly so dashboard mounts and multiple clients do not flood Gitea.
 	if time.Since(m.checkedAt) < time.Minute {
-		return m.snapshot(), nil
+		value := m.snapshot()
+		m.mu.Unlock()
+		return value, nil
 	}
+	m.mu.Unlock()
 	var r release
 	b, err := download(ctx, origin+"/api/v1/repos/knot/routepilot/releases/latest", 2<<20)
 	if err != nil {
-		return m.snapshot(), err
+		return m.Status(), err
 	}
 	if err = json.Unmarshal(b, &r); err != nil || r.Draft || r.Prerelease {
-		return m.snapshot(), errors.New("Latest release metadata is invalid")
+		return m.Status(), errors.New("Latest release metadata is invalid")
 	}
 	if _, err = versionParts(r.Tag); err != nil {
-		return m.snapshot(), err
+		return m.Status(), err
 	}
+	m.mu.Lock()
+	defer m.mu.Unlock()
 	m.latest = r
 	m.checkedAt = time.Now().UTC()
 	return m.snapshot(), nil

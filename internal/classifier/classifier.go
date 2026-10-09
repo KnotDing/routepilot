@@ -22,6 +22,7 @@ type Config struct {
 	Timeout, DirectTTL, SurgeTTL, UnknownTTL, ErrorTTL time.Duration
 	TrustDirect                                        bool
 	ExpireDecisions                                    bool
+	Optimistic                                         bool
 }
 
 func DefaultConfig() Config {
@@ -47,6 +48,10 @@ type Engine struct {
 	ctx                                     context.Context
 	cancel                                  context.CancelFunc
 	workers                                 sync.WaitGroup
+	refreshMu                               sync.Mutex
+	refreshing                              map[Key]uint64
+	closed                                  bool
+	refreshWorkers                          sync.WaitGroup
 }
 
 func New(parent context.Context, a model.SurgeAdapter, c Config) (*Engine, error) {
@@ -59,14 +64,21 @@ func New(parent context.Context, a model.SurgeAdapter, c Config) (*Engine, error
 		}
 	}
 	ctx, cancel := context.WithCancel(parent)
-	e := &Engine{adapter: a, config: c, Cache: cache.New[Key, model.DecisionResult](c.Capacity), jobs: make(chan job, c.QueueSize), ctx: ctx, cancel: cancel}
+	e := &Engine{adapter: a, config: c, Cache: cache.New[Key, model.DecisionResult](c.Capacity), jobs: make(chan job, c.QueueSize), ctx: ctx, cancel: cancel, refreshing: make(map[Key]uint64)}
 	for i := 0; i < c.Workers; i++ {
 		e.workers.Add(1)
 		go e.worker()
 	}
 	return e, nil
 }
-func (e *Engine) Close() { e.cancel(); e.workers.Wait() }
+func (e *Engine) Close() {
+	e.refreshMu.Lock()
+	e.closed = true
+	e.cancel()
+	e.refreshMu.Unlock()
+	e.refreshWorkers.Wait()
+	e.workers.Wait()
+}
 func (e *Engine) worker() {
 	defer e.workers.Done()
 	for {
@@ -130,13 +142,67 @@ func (e *Engine) Classify(ctx context.Context, q model.DNSQueryContext) (model.D
 	q.Question.Name = domain
 	// Per-client isolation is the safe default for Surge source-address rules.
 	key := Key{domain, q.ClientIP.String(), fmt.Sprint(q.Question.Qtype, "/", q.Question.Qclass)}
-	if d, ok := e.Cache.Get(key); ok {
+	d, ok, stale, gen := e.Cache.GetState(key)
+	if ok && (!stale || e.config.Optimistic) {
+		if stale {
+			e.refresh(q, key, gen)
+		}
 		d.Source = "cache"
 		return d, nil
 	}
-	gen := e.Cache.Generation()
+	ch := e.evaluate(q, key, gen, false)
+	select {
+	case <-ctx.Done():
+		return e.unknown(q, "request canceled"), ctx.Err()
+	case r := <-ch:
+		if r.Err != nil {
+			return e.unknown(q, "evaluation failure"), r.Err
+		}
+		out := r.Val.(outcome)
+		if gen != e.Cache.Generation() {
+			return e.unknown(q, "Surge generation changed during evaluation"), nil
+		}
+		return out.decision, out.err
+	}
+}
+
+// Refresh only queried stale entries, with one task per key and bounded concurrency.
+// Failed or uncertain evaluations retain the old decision and retry on a later hit.
+func (e *Engine) refresh(q model.DNSQueryContext, key Key, gen uint64) {
+	e.refreshMu.Lock()
+	if _, running := e.refreshing[key]; e.closed || running || len(e.refreshing) >= e.config.Workers {
+		e.refreshMu.Unlock()
+		return
+	}
+	e.refreshing[key] = gen
+	e.refreshWorkers.Add(1)
+	e.refreshMu.Unlock()
+	go func() {
+		defer e.refreshWorkers.Done()
+		defer func() { e.refreshMu.Lock(); delete(e.refreshing, key); e.refreshMu.Unlock() }()
+		ch := e.evaluate(q, key, gen, true)
+		select {
+		case <-e.ctx.Done():
+			return
+		case r := <-ch:
+			out, _ := r.Val.(outcome)
+			if r.Err == nil && out.err == nil && out.decision.Decision != model.Unknown {
+				return
+			}
+		}
+		// A short backoff also bounds retries while Surge is unavailable.
+		timer := time.NewTimer(time.Second)
+		defer timer.Stop()
+		select {
+		case <-e.ctx.Done():
+		case <-timer.C:
+		}
+	}()
+}
+
+func (e *Engine) evaluate(q model.DNSQueryContext, key Key, gen uint64, refresh bool) <-chan singleflight.Result {
 	flightKey := fmt.Sprintf("%d|%s|%s|%s", gen, key.Domain, key.ClientGroup, key.QueryClass)
-	ch := e.flight.DoChan(flightKey, func() (any, error) {
+	return e.flight.DoChan(flightKey, func() (any, error) {
 		evaluation, cancel := context.WithTimeout(e.ctx, e.config.Timeout)
 		defer cancel()
 		j := job{evaluation, q, make(chan outcome, 1)}
@@ -169,23 +235,13 @@ func (e *Engine) Classify(ctx context.Context, q model.DNSQueryContext) (model.D
 		} else {
 			out.decision.ExpiresAt = out.decision.CreatedAt.Add(ttl)
 		}
-		e.Cache.Put(key, out.decision, gen, ttl)
+		if !refresh || out.err == nil && out.decision.Decision != model.Unknown {
+			e.Cache.Put(key, out.decision, gen, ttl)
+		}
 		return out, nil
 	})
-	select {
-	case <-ctx.Done():
-		return e.unknown(q, "request canceled"), ctx.Err()
-	case r := <-ch:
-		if r.Err != nil {
-			return e.unknown(q, "evaluation failure"), r.Err
-		}
-		out := r.Val.(outcome)
-		if gen != e.Cache.Generation() {
-			return e.unknown(q, "Surge generation changed during evaluation"), nil
-		}
-		return out.decision, out.err
-	}
 }
+
 func (e *Engine) FlushDomain(domain string) error {
 	d, err := model.NormalizeDomain(domain)
 	if err != nil {

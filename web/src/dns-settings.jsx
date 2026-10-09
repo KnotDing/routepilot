@@ -2,7 +2,7 @@ import React from 'react';
 import {useLocale} from './locale';
 
 const sections=[
- {name:'listeners',title:{'zh-CN':'监听与接收',en:'Listeners and ingress'},fields:['listeners','transparent_listeners','ingress_interfaces','interception_enabled']},
+ {name:'listeners',title:{'zh-CN':'监听与接收',en:'Listeners and ingress'},fields:['interception_enabled','listeners','transparent_listeners','ingress_interfaces']},
  {name:'egress',title:{'zh-CN':'上游网络出口',en:'Upstream network egress'},fields:['egress_interface','source4','source6','gateway4','gateway6','bypass_verified']},
  {name:'forwarding',title:{'zh-CN':'转发参数',en:'Forwarding options'},fields:['aaaa_fallback','timeout_ms','source_port_first','source_port_last','preserve_original']}
 ];

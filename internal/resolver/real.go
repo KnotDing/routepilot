@@ -29,7 +29,22 @@ type EndpointStats struct {
 	LastSuccess time.Time        `json:"last_success"`
 	LastFailure time.Time        `json:"last_failure"`
 }
+type OptimisticOptions struct {
+	Context context.Context
+	Enabled bool
+	Timeout time.Duration
+	Workers int
+}
 type Real struct {
+	optimistic       bool
+	refreshTimeout   time.Duration
+	refreshLimit     int
+	ctx              context.Context
+	cancel           context.CancelFunc
+	refreshMu        sync.Mutex
+	refreshing       map[string]bool
+	closed           bool
+	refreshWorkers   sync.WaitGroup
 	transport        UpstreamTransport
 	endpoints        []ResolverEndpoint
 	PreserveOriginal bool
@@ -40,7 +55,7 @@ type Real struct {
 	now              func() time.Time
 }
 
-func NewReal(t UpstreamTransport, endpoints []ResolverEndpoint, preserve bool, capacity int) (*Real, error) {
+func NewReal(t UpstreamTransport, endpoints []ResolverEndpoint, preserve bool, capacity int, options ...OptimisticOptions) (*Real, error) {
 	if t == nil || capacity < 1 {
 		return nil, errors.New("invalid real resolver configuration")
 	}
@@ -57,6 +72,23 @@ func NewReal(t UpstreamTransport, endpoints []ResolverEndpoint, preserve bool, c
 	if len(r.endpoints) == 0 {
 		return nil, errors.New("at least one enabled resolver is required")
 	}
+	option := OptimisticOptions{Context: context.Background(), Timeout: 2 * time.Second, Workers: 8}
+	if len(options) > 0 {
+		option = options[0]
+	}
+	if option.Context == nil {
+		option.Context = context.Background()
+	}
+	if option.Timeout <= 0 {
+		option.Timeout = 2 * time.Second
+	}
+	if option.Workers < 1 {
+		option.Workers = 8
+	}
+	r.ctx, r.cancel = context.WithCancel(option.Context)
+	r.optimistic, r.refreshTimeout, r.refreshLimit = option.Enabled, option.Timeout, min(option.Workers, 256)
+	r.refreshing = make(map[string]bool)
+
 	return r, nil
 }
 func (r *Real) Resolve(ctx context.Context, req model.ResolveRequest) (*dns.Msg, error) {
@@ -80,6 +112,7 @@ func (r *Real) Resolve(ctx context.Context, req model.ResolveRequest) (*dns.Msg,
 	if opt := q.IsEdns0(); opt != nil && len(opt.Option) > 0 {
 		cacheable = false
 	}
+	gen := r.Cache.Generation()
 	if cacheable {
 		kq := q.Copy()
 		kq.Id = 0
@@ -94,7 +127,12 @@ func (r *Real) Resolve(ctx context.Context, req model.ResolveRequest) (*dns.Msg,
 		}
 		b.Write(raw)
 		key = b.String()
-		if v, ok := r.Cache.Get(key); ok {
+		v, ok, stale, generation := r.Cache.GetState(key)
+		gen = generation
+		if ok && (!stale || r.optimistic) {
+			if stale {
+				r.refresh(req, endpoints, original, key, gen)
+			}
 			if req.Trace != nil {
 				req.Trace.Endpoint = v.Endpoint
 				req.Trace.CacheHit = true
@@ -118,7 +156,11 @@ func (r *Real) Resolve(ctx context.Context, req model.ResolveRequest) (*dns.Msg,
 			return m, nil
 		}
 	}
-	gen := r.Cache.Generation()
+	return r.exchange(ctx, req, endpoints, original, key, cacheable, gen)
+}
+
+func (r *Real) exchange(ctx context.Context, req model.ResolveRequest, endpoints []ResolverEndpoint, original bool, key string, cacheable bool, gen uint64) (*dns.Msg, error) {
+	q := req.Message
 	start := int(r.next.Add(1) % uint64(len(endpoints)))
 	var last error
 	for i := 0; i < len(endpoints); i++ {
@@ -159,6 +201,8 @@ func (r *Real) Resolve(ctx context.Context, req model.ResolveRequest) (*dns.Msg,
 		if cacheable {
 			if ttl := ResponseTTL(reply); ttl > 0 {
 				r.Cache.Put(key, response{Msg: reply.Copy(), Stored: r.now(), Endpoint: ep.Protocol + "://" + ep.Address}, gen, ttl)
+			} else {
+				r.Cache.Delete(key, gen)
 			}
 		}
 		if req.Trace != nil {
@@ -167,6 +211,53 @@ func (r *Real) Resolve(ctx context.Context, req model.ResolveRequest) (*dns.Msg,
 		return reply, nil
 	}
 	return nil, fmt.Errorf("real resolver failed: %w", last)
+}
+
+// Configuration changes can retain valid responses for a background refresh.
+// Response TTLs and query/resolver partitions remain unchanged.
+func (r *Real) ConfigurationChanged(reason string, optimistic bool) {
+	if optimistic {
+		r.Cache.MarkStale(func(response) bool { return true })
+	} else {
+		r.Cache.FlushReason(reason)
+	}
+}
+func (r *Real) Close() {
+	r.refreshMu.Lock()
+	r.closed = true
+	r.cancel()
+	r.refreshMu.Unlock()
+	r.refreshWorkers.Wait()
+}
+func (r *Real) refresh(req model.ResolveRequest, endpoints []ResolverEndpoint, original bool, key string, gen uint64) {
+	r.refreshMu.Lock()
+	if r.closed || r.refreshing[key] || len(r.refreshing) >= r.refreshLimit {
+		r.refreshMu.Unlock()
+		return
+	}
+	r.refreshing[key] = true
+	r.refreshWorkers.Add(1)
+	r.refreshMu.Unlock()
+	req.Message = req.Message.Copy()
+	req.Trace = nil
+	req.RetryDNSFailures = true
+	endpoints = append([]ResolverEndpoint(nil), endpoints...)
+	go func() {
+		defer r.refreshWorkers.Done()
+		defer func() { r.refreshMu.Lock(); delete(r.refreshing, key); r.refreshMu.Unlock() }()
+		ctx, cancel := context.WithTimeout(r.ctx, r.refreshTimeout)
+		_, err := r.exchange(ctx, req, endpoints, original, key, true, gen)
+		cancel()
+		if err == nil {
+			return
+		}
+		timer := time.NewTimer(time.Second)
+		defer timer.Stop()
+		select {
+		case <-r.ctx.Done():
+		case <-timer.C:
+		}
+	}()
 }
 
 // NXDOMAIN and successful empty answers are completed lookups, not failures.

@@ -57,14 +57,14 @@ it('defaults DIRECT conservatism on and saves an explicit opt-out',async()=>{
 it('keeps routing configuration on its dedicated page and preserves it when saving other settings',async()=>{
  const routing={mode:'hybrid',fake_ip_backend:'static',dns_backend:'bgp',static_fake_ip_configured:true};
  const settings={general:{web_listen:'127.0.0.1:1055',name:'Controller'},routing,security:{tls_cert:''}};
- const fetch=vi.fn().mockResolvedValue({ok:true,status:200,json:async()=>({csrf:'new-csrf'})});
+ const fetch=vi.fn(async(url,options)=>({ok:true,status:200,json:async()=>({settings:JSON.parse(options.body)})}));
  vi.stubGlobal('fetch',fetch);
  render(<Settings settings={settings} refresh={()=>{}} notify={()=>{}}/>);
  expect(screen.queryByRole('button',{name:'路由后端',exact:true})).not.toBeInTheDocument();
  expect(screen.queryByLabelText('路由模式')).not.toBeInTheDocument();
  fireEvent.change(screen.getByLabelText('名称'),{target:{value:'Updated'}});
  fireEvent.click(screen.getByRole('button',{name:'保存设置'}));
- await waitFor(()=>expect(fetch).toHaveBeenCalledTimes(2));
+ await waitFor(()=>expect(fetch).toHaveBeenCalledTimes(1));
  const saved=JSON.parse(fetch.mock.calls[0][1].body);
  expect(saved.routing).toEqual(routing);
  expect(saved.general.name).toBe('Updated');

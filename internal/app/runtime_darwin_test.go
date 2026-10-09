@@ -18,7 +18,7 @@ import (
 	"surge-controller/internal/resolver"
 )
 
-func TestFailedDNSApplyReturnsHTTPErrorRestoresDNSAndReleasesPartialListener(t *testing.T) {
+func TestFailedDNSActivationReportsStatusRestoresDNSAndReleasesPartialListener(t *testing.T) {
 	a := fixtureApp(t)
 	reserve, e := net.Listen("tcp", "127.0.0.1:0")
 	if e != nil {
@@ -53,12 +53,16 @@ func TestFailedDNSApplyReturnsHTTPErrorRestoresDNSAndReleasesPartialListener(t *
 	}
 	cookie := session.Result().Cookies()[0]
 	response := apiCall(h, "PUT", "settings", d.Redacted().Settings, cookie, credentials.CSRF)
-	if response.Code != 409 || !strings.Contains(response.Body.String(), "已恢复原配置") {
-		t.Fatal("initialization failure did not return a useful HTTP error", response.Code, response.Body.String())
+	if response.Code != 200 {
+		t.Fatal("configuration save failed", response.Code, response.Body.String())
+	}
+	status := waitConfiguration(t, a, "failed")
+	if !strings.Contains(status.Error, "已恢复原配置") {
+		t.Fatal("activation failure did not explain recovery", status.Error)
 	}
 	persisted, e := a.store.Load(context.Background())
-	if e != nil || !reflect.DeepEqual(a.Configuration(), old) || !reflect.DeepEqual(persisted, old) {
-		t.Fatal("failed apply changed configuration", e)
+	if e != nil || !reflect.DeepEqual(a.activeConfiguration(), old) || !reflect.DeepEqual(persisted.Settings.DNS.Listeners, d.Settings.DNS.Listeners) {
+		t.Fatal("failed activation lost saved configuration or working runtime", e)
 	}
 	query := new(dns.Msg)
 	query.SetQuestion("recovery.test.", dns.TypeA)
@@ -99,7 +103,7 @@ func TestUnprivilegedTransparentApplyKeepsRunningRuntime(t *testing.T) {
 	if e := a.Apply(context.Background(), d); e == nil || !strings.Contains(e.Error(), "安装网络后台服务") {
 		t.Fatal("PF access rejection did not explain how to enable privileges", e)
 	}
-	if a.runtime != rt || !reflect.DeepEqual(a.Configuration(), old) {
+	if a.runtime != rt || !reflect.DeepEqual(a.activeConfiguration(), old) || !a.Configuration().Settings.DNS.InterceptionEnabled {
 		t.Fatal("permission rejection stopped the working runtime")
 	}
 	select {
@@ -133,6 +137,7 @@ func TestRuntimeDNSCannotCreateRoutesAndSurgeFailureFallsBack(t *testing.T) {
 	d.Settings.DNS.SourcePortFirst, d.Settings.DNS.SourcePortLast = 31000, 31031
 	d.Settings.DNS.Upstreams = []resolver.ResolverEndpoint{{Name: "local real", Protocol: "udp", Address: upstream.LocalAddr().String(), Enabled: true}}
 	d.Settings.BGP.Enabled = true
+	d.Settings.BGP.RouterID = "127.0.0.1"
 	d.Settings.BGP.ListenPort = 0
 	d.Settings.Surge.NextHop4 = "127.0.0.1"
 	d.Settings.Health.GraceSeconds = 0
@@ -272,6 +277,7 @@ func TestStaticFakeAndRealDNSWorkWithoutBGPAndSurgeLossKeepsDeclaration(t *testi
 	}
 	d = a.Configuration()
 	d.Settings.BGP.Enabled = true
+	d.Settings.BGP.RouterID = "127.0.0.1"
 	if e = a.Apply(context.Background(), d); e != nil {
 		t.Fatal(e)
 	}

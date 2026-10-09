@@ -207,6 +207,7 @@ func TestLocalDNSCRUDImportHotReloadAndNoBGPRoutes(t *testing.T) {
 	if w.Code != 200 || len(a.Configuration().Hosts) != 2 {
 		t.Fatal("import was not idempotent", w.Body.String())
 	}
+	waitConfiguration(t, a, "succeeded")
 	m := new(dns.Msg)
 	m.SetQuestion("nas.example.test.", dns.TypeA)
 	reply := a.runtime.dispatcher.Dispatch(context.Background(), model.DNSQueryContext{ClientIP: netip.MustParseAddr("192.0.2.100")}, m)
@@ -222,6 +223,7 @@ func TestLocalDNSCRUDImportHotReloadAndNoBGPRoutes(t *testing.T) {
 	if w.Code != 200 {
 		t.Fatal(w.Body.String())
 	}
+	waitConfiguration(t, a, "succeeded")
 	reply = a.runtime.dispatcher.Dispatch(context.Background(), model.DNSQueryContext{}, m)
 	if reply.Answer[0].(*dns.A).A.String() != "192.0.2.1" {
 		t.Fatal("deleted manual host shadowed imported mapping")
