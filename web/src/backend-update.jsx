@@ -27,6 +27,7 @@ export function BackendUpdate({backend,capable,software,onReady}){
   setBusy(true);try{const value=await request('updates/install','POST',{version:update.latest});if(mounted.current){setUpdate(value);setError('')}}catch(e){if(mounted.current&&e.name!=='AbortError')setError(message(e.message))}finally{if(mounted.current)setBusy(false)}
  };
  if(!capable&&!update&&!error)return null;
+ if(update&&!update.available&&!active(update.phase)&&update.phase!=='failed'&&!update.error&&!error)return null;
  return <section className={'notice backend-update '+(update?.phase==='failed'?'error':'')} aria-label={t('远程后台更新')}>
   <strong>{t('远程后台更新')}</strong><p>{t('当前后台：{version}',{version:software?.version||update?.current||'—'})}{update?.latest&&' · '+t('最新发布：{version}',{version:update.latest})}</p>
   {update&&<p role="status">{offline?t('后台暂时离线，正在等待升级完成并重连…'):active(update.phase)||['succeeded','failed'].includes(update.phase)?t(phases[update.phase]):update.available?t('有可用的后台新版本'):t('后台已是最新版本')}</p>}
