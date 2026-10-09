@@ -148,6 +148,8 @@ final class StatusBarIconAnimator {
     private var stopped = false
     private var accessibilityObserver: NSObjectProtocol?
     private var cycleStarted = ProcessInfo.processInfo.systemUptime
+    // A flow packet completes in 1.2 seconds; connection rotation keeps its pace.
+    private var frameInterval: TimeInterval { visual == .healthy ? 0.05 : 0.1 }
 
     init(button: NSStatusBarButton, brand: NSImage?) {
         self.button = button
@@ -204,10 +206,10 @@ final class StatusBarIconAnimator {
             return
         }
         tick()
-        let animation = Timer(timeInterval: 0.1, repeats: true) { [weak self] _ in
+        let animation = Timer(timeInterval: frameInterval, repeats: true) { [weak self] _ in
             Task { @MainActor in self?.tick() }
         }
-        animation.tolerance = 0.03
+        animation.tolerance = frameInterval * 0.3
         // Keep the flow animation running while a menu or modal window is open.
         RunLoop.main.add(animation, forMode: .common)
         RunLoop.main.add(animation, forMode: .modalPanel)
@@ -218,7 +220,7 @@ final class StatusBarIconAnimator {
         guard !stopped, motionEnabled, !frames.isEmpty else { return }
         guard button != nil else { stop(); return }
         let elapsed = ProcessInfo.processInfo.systemUptime - cycleStarted
-        let step = Int(max(0, elapsed) * 10), index = step % frames.count
+        let step = Int(max(0, elapsed) / frameInterval), index = step % frames.count
         let frame: NSImage
         if visual == .healthy {
             let cycle = step / frames.count
