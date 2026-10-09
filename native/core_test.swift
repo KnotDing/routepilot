@@ -11,6 +11,10 @@ struct NativeCoreTests {
         try nativeCheck(!ReleaseUpdater.newer(try nativeRelease("v0.5.2"),current:"0.5.2"), "equal version offered")
         try nativeCheck(!ReleaseUpdater.newer(try nativeRelease("v1.0.0",draft:true),current:"0.5.2"), "draft offered")
         try nativeCheck(!ReleaseUpdater.newer(try nativeRelease("v1.0.0",prerelease:true),current:"0.5.2"), "prerelease offered")
+        try nativeCheck(ReleaseUpdater.needsBackendUpdate(try nativeRelease("v0.5.5"), app:"0.5.5", backend:"0.5.4"), "old local backend not offered unified update")
+        try nativeCheck(!ReleaseUpdater.needsBackendUpdate(try nativeRelease("v0.5.5"), app:"0.5.5", backend:"0.5.5"), "matching service reinstalled")
+        try nativeCheck(!ReleaseUpdater.needsBackendUpdate(try nativeRelease("v0.5.4"), app:"0.5.5", backend:"0.5.3"), "repair downgraded app")
+        try nativeCheck(!ReleaseUpdater.needsBackendUpdate(try nativeRelease("v0.5.5",draft:true), app:"0.5.5", backend:"0.5.4"), "draft repair accepted")
         for address in ["https://gitea.knotding.com/a","https://gitea.knotding.com:443/a"] { try nativeCheck(ReleaseUpdater.trustedDownloadURL(URL(string:address)!), "trusted origin rejected") }
         for address in ["http://gitea.knotding.com/a","https://evil.test/a","https://gitea.knotding.com:8443/a","https://user:pass@gitea.knotding.com/a","https://gitea.knotding.com/a#fragment"] { try nativeCheck(!ReleaseUpdater.trustedDownloadURL(URL(string:address)!), "untrusted origin accepted") }
         let digest=String(repeating:"a",count:64), name="RoutePilot-macos-arm64.zip"

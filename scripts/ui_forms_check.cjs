@@ -16,7 +16,7 @@ const fixture=Function(source.slice(source.indexOf('const settings='),source.ind
    const path=(url.pathname.slice(8)+url.search).replace(/^management\/relay\/preview\//,'');
    let value=fixture(path);
    if(path==='management/backends')value=[{id:'preview',name:'远程预览',url:'http://192.0.2.1:1055'}];
-   if(path==='updates/check')value={current:'0.4.17',latest:'v0.4.18',available:true,supported:true,phase:'idle',release_notes:'## 界面优化\n\n- **Markdown** 渲染更新说明。\n- 紧凑排列开关选项。\n\n查看 [项目发布](https://gitea.knotding.com/knot/routepilot/releases)。\n\n<script>window.untrustedRelease=true</script>\n\n![image](https://example.invalid/image.png)'};
+   if(path==='updates/check')value={complete_application:true,app_current:'0.4.16',current:'0.4.17',latest:'v0.4.18',available:true,supported:true,phase:'idle',release_notes:'## 界面优化\n\n- **Markdown** 渲染更新说明。\n- 紧凑排列开关选项。\n\n查看 [项目发布](https://gitea.knotding.com/knot/routepilot/releases)。\n\n<script>window.untrustedRelease=true</script>\n\n![image](https://example.invalid/image.png)'};
    if(path==='settings')value={...value,cache:{...value.cache,optimistic:false,optimistic_responses:false},notifications:{enabled:true,surge:true,bgp:true,dns:true,controller:true,recovery:true,cooldown_seconds:300,webhook_url:'',webhook_configured:false,errors:[]}};
    if(path==='status'){value.online_update=true;value.software={...value.software,...JSON.parse(fs.readFileSync('internal/buildinfo/release.json'))};}
    if(path==='surge/status'){value.snapshot.ipv6_state='disabled';value.snapshot.always_real_ip_count=61;}
@@ -62,8 +62,8 @@ const fixture=Function(source.slice(source.indexOf('const settings='),source.ind
  await page.setViewportSize({width:1440,height:1000});await go('DNS 概览');
  await page.evaluate(()=>document.documentElement.dataset.theme='dark');await page.screenshot({path:out+'/dns-dark.png',fullPage:true});
  await page.evaluate(()=>{sessionStorage.setItem('routepilot.backend','preview');document.documentElement.dataset.theme='light'});await page.reload();
- await page.getByRole('button',{name:'升级远程后台',exact:true}).click();
- const dialog=page.getByRole('dialog',{name:/远程后台更新/});await dialog.locator('summary').click();
+ await page.getByRole('button',{name:'升级远程应用',exact:true}).click();
+ const dialog=page.getByRole('dialog',{name:/远程软件更新/});await dialog.locator('summary').click();
  await dialog.getByRole('heading',{name:'界面优化',exact:true}).waitFor();
  if(await dialog.locator('li').count()!==2||await dialog.locator('strong').count()!==1)throw Error('Release Markdown structure missing');
  if(await page.evaluate(()=>Boolean(window.untrustedRelease))||await dialog.locator('img,script').count())throw Error('Unsafe release content rendered');

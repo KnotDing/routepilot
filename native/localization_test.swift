@@ -9,7 +9,8 @@ struct LocalizationTests {
         func translated(_ text: String, _ locale: String, _ params: [String: Any] = [:]) -> String {
             NativeText.translate(text, locale: locale, english: english, errors: errors, params: params)
         }
-        precondition(translated("更新网络后台服务…", "en") == "Update network service…")
+        precondition(translated("检查更新", "en") == "Check for updates")
+        precondition(translated("正在检查更新…", "en") == "Checking for updates…")
         precondition(translated("Authorization failed.", "zh-CN") == "管理员授权失败")
         precondition(translated("查询：{count} / 分钟", "en", ["count": 12]) == "Queries: 12 / minute")
         precondition(translated("请求失败（HTTP 503）", "en") == "Request failed (HTTP 503)")

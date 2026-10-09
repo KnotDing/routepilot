@@ -1,11 +1,8 @@
-// Package softwareupdate updates the standard root-owned macOS launchd service.
+// Package softwareupdate updates the complete macOS App and its network service.
 // Clients select a release version, never an executable URL, path or command.
 package softwareupdate
 
 import (
-	"archive/tar"
-	"bytes"
-	"compress/gzip"
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
@@ -40,17 +37,19 @@ const (
 )
 
 type Status struct {
-	Supported    bool      `json:"supported"`
-	Reason       string    `json:"reason,omitempty"`
-	Current      string    `json:"current"`
-	Latest       string    `json:"latest,omitempty"`
-	ReleaseNotes string    `json:"release_notes,omitempty"`
-	Available    bool      `json:"available"`
-	Phase        string    `json:"phase"`
-	Target       string    `json:"target,omitempty"`
-	Error        string    `json:"error,omitempty"`
-	CheckedAt    time.Time `json:"checked_at,omitempty"`
-	UpdatedAt    time.Time `json:"updated_at,omitempty"`
+	Supported           bool      `json:"supported"`
+	Reason              string    `json:"reason,omitempty"`
+	Current             string    `json:"current"`
+	AppCurrent          string    `json:"app_current,omitempty"`
+	CompleteApplication bool      `json:"complete_application"`
+	Latest              string    `json:"latest,omitempty"`
+	ReleaseNotes        string    `json:"release_notes,omitempty"`
+	Available           bool      `json:"available"`
+	Phase               string    `json:"phase"`
+	Target              string    `json:"target,omitempty"`
+	Error               string    `json:"error,omitempty"`
+	CheckedAt           time.Time `json:"checked_at,omitempty"`
+	UpdatedAt           time.Time `json:"updated_at,omitempty"`
 }
 type release struct {
 	Tag        string `json:"tag_name"`
@@ -77,17 +76,18 @@ type Manager struct {
 }
 
 type updateOperations struct {
-	fetch   func(context.Context, string, int64) ([]byte, error)
-	read    func() Status
-	write   func(Status) error
-	pid     func() int
-	prepare func(context.Context, release, func() error) error
+	appVersion func() string
+	fetch      func(context.Context, string, int64) ([]byte, error)
+	read       func() Status
+	write      func(Status) error
+	pid        func() int
+	prepare    func(context.Context, release, func() error) error
 }
 
 func New(ctx context.Context, database string, beforeRestart func() error) *Manager {
 	m := &Manager{ctx: ctx, beforeRestart: beforeRestart, ops: updateOperations{
 		fetch: download, read: readState, write: func(s Status) error { return writeJSON(stateFile, s) },
-		pid: workerPID, prepare: prepare,
+		pid: workerPID, prepare: prepare, appVersion: func() string { return appVersion(ctx) },
 	}}
 	m.standardService = runtime.GOOS == "darwin" && os.Geteuid() == 0 && filepath.Clean(database) == "/var/db/surge-controller/controller.sqlite"
 	m.reason = supportReason(database)
@@ -211,7 +211,11 @@ func (m *Manager) snapshot() Status {
 	s.Supported, s.Reason, s.Current = m.supported, m.reason, buildinfo.Current().Version
 	s.Latest, s.CheckedAt = m.latest.Tag, m.checkedAt
 	s.ReleaseNotes = m.latest.Body
-	s.Available = newer(s.Latest, s.Current)
+	if m.supported {
+		s.AppCurrent = m.ops.appVersion()
+	}
+	s.CompleteApplication = true
+	s.Available = newer(s.Latest, s.Current) || m.supported && applicationUpdateAvailable(s.Latest, s.Current, s.AppCurrent)
 	return s
 }
 func (m *Manager) Status() Status { m.mu.Lock(); defer m.mu.Unlock(); return m.snapshot() }
@@ -258,7 +262,7 @@ func (m *Manager) Start(version string) (Status, error) {
 	if m.running || m.ops.pid() > 0 || active(previous.Phase) && time.Since(previous.UpdatedAt) < 10*time.Minute {
 		return m.snapshot(), errors.New("A backend update is already in progress")
 	}
-	if version != m.latest.Tag || !newer(version, buildinfo.Current().Version) || time.Since(m.checkedAt) > 10*time.Minute {
+	if version != m.latest.Tag || !applicationUpdateAvailable(version, buildinfo.Current().Version, m.ops.appVersion()) || time.Since(m.checkedAt) > 10*time.Minute {
 		return m.snapshot(), errors.New("Check the latest release again before updating")
 	}
 	s := Status{Phase: "downloading", Target: version, UpdatedAt: time.Now().UTC()}
@@ -325,8 +329,8 @@ func downloadWithTransport(ctx context.Context, address string, limit int64, tra
 	return b, nil
 }
 func prepare(ctx context.Context, r release, beforeRestart func() error) error {
-	asset := "surge-controller-macos-arm64.tar.gz"
-	urls, err := releaseAssets(r, asset)
+	name := "RoutePilot-macos-arm64.zip"
+	urls, err := releaseAssets(r, name)
 	if err != nil {
 		return err
 	}
@@ -334,18 +338,69 @@ func prepare(ctx context.Context, r release, beforeRestart func() error) error {
 	if err != nil {
 		return err
 	}
-	expected, err := packageChecksum(sums, asset)
+	expected, err := packageChecksum(sums, name)
 	if err != nil {
 		return err
 	}
-	archive, err := download(ctx, urls[asset], 256<<20)
+	archive, err := download(ctx, urls[name], 256<<20)
 	if err != nil {
 		return err
 	}
-	if err = verifyChecksum(archive, expected); err != nil {
-		return errors.New("Backend package SHA-256 verification failed")
+	if err := verifyChecksum(archive, expected); err != nil {
+		return err
 	}
-	return stageBackend(ctx, r, archive, beforeRestart)
+	// Preparation runs asynchronously. Hand off sessions only after downloading,
+	// so a slow release server does not consume their short restart grace period.
+	if err := os.MkdirAll(stagingDir, 0700); err != nil {
+		return err
+	}
+	if err := privateOwned(stagingDir, true); err != nil {
+		return err
+	}
+	if err := os.Chmod(stagingDir, 0700); err != nil {
+		return err
+	}
+	if workerPID() > 0 {
+		return errors.New("A backend update is already in progress")
+	}
+	_ = command(ctx, "/bin/launchctl", "bootout", "system/com.routepilot.update-worker")
+	archiveFile := filepath.Join(stagingDir, "application.zip")
+	_ = os.Remove(archiveFile)
+	file, err := os.OpenFile(archiveFile, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0600)
+	if err != nil {
+		return err
+	}
+	_, err = file.Write(archive)
+	if err == nil {
+		err = file.Sync()
+	}
+	closeErr := file.Close()
+	if err == nil {
+		err = closeErr
+	}
+	if err != nil {
+		return err
+	}
+	if err := copyExecutable(serviceBin, filepath.Join(stagingDir, "worker")); err != nil {
+		return err
+	}
+	if err := writeJSON(filepath.Join(stagingDir, "job.json"), workerJob{Target: r.Tag, PreviousPID: os.Getpid()}); err != nil {
+		return err
+	}
+	plist := `<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd"><plist version="1.0"><dict><key>Label</key><string>com.routepilot.update-worker</string><key>ProgramArguments</key><array><string>` + stagingDir + `/worker</string><string>update-worker</string></array><key>UserName</key><string>root</string><key>RunAtLoad</key><true/><key>ProcessType</key><string>Background</string><key>StandardOutPath</key><string>/var/log/surge-controller/update.log</string><key>StandardErrorPath</key><string>/var/log/surge-controller/update.log</string><key>Umask</key><integer>63</integer></dict></plist>`
+	if err := os.WriteFile(workerPlist, []byte(plist), 0600); err != nil {
+		return err
+	}
+	if beforeRestart == nil {
+		return errors.New("Update session handoff is unavailable")
+	}
+	if err := beforeRestart(); err != nil {
+		return err
+	}
+	if err := command(ctx, "/bin/launchctl", "bootstrap", "system", workerPlist); err != nil {
+		return errors.New("Could not start the backend update helper")
+	}
+	return nil
 }
 
 func releaseAssets(r release, asset string) (map[string]string, error) {
@@ -394,121 +449,6 @@ func verifyChecksum(contents []byte, expected string) error {
 	return nil
 }
 
-func stageBackend(ctx context.Context, r release, archive []byte, beforeRestart func() error) error {
-	// Each updater stage is root-owned and never accepts uploaded executable bytes.
-	if err := os.MkdirAll(stagingDir, 0700); err != nil {
-		return err
-	}
-	if err := privateOwned(stagingDir, true); err != nil {
-		return err
-	}
-	if err := os.Chmod(stagingDir, 0700); err != nil {
-		return err
-	}
-	// Remove a previous completed helper job before staging its successor.
-	if workerPID() > 0 {
-		return errors.New("A backend update is already in progress")
-	}
-	_ = command(ctx, "/bin/launchctl", "bootout", "system/com.routepilot.update-worker")
-	next := filepath.Join(stagingDir, "next")
-	f, err := os.OpenFile(next, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0700)
-	if errors.Is(err, os.ErrExist) {
-		if e := os.Remove(next); e != nil {
-			return e
-		}
-		f, err = os.OpenFile(next, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0700)
-	}
-	if err != nil {
-		return err
-	}
-	err = extract(archive, f)
-	if err == nil {
-		err = f.Sync()
-	}
-	closeErr := f.Close()
-	if err == nil {
-		err = closeErr
-	}
-	if err != nil {
-		return err
-	}
-	s := Status{Phase: "validating", Target: r.Tag, UpdatedAt: time.Now().UTC()}
-	if err = writeJSON(stateFile, s); err != nil {
-		return err
-	}
-	if err = validateBinary(ctx, next, r.Tag); err != nil {
-		return err
-	}
-	if err = copyExecutable(serviceBin, filepath.Join(stagingDir, "worker")); err != nil {
-		return err
-	}
-	contents, err := os.ReadFile(next)
-	if err != nil {
-		return err
-	}
-	nextHash := sha256.Sum256(contents)
-	if err = writeJSON(filepath.Join(stagingDir, "job.json"), workerJob{Target: r.Tag, SHA256: hex.EncodeToString(nextHash[:]), PreviousPID: os.Getpid()}); err != nil {
-		return err
-	}
-	plist := `<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd"><plist version="1.0"><dict><key>Label</key><string>com.routepilot.update-worker</string><key>ProgramArguments</key><array><string>` + stagingDir + `/worker</string><string>update-worker</string></array><key>UserName</key><string>root</string><key>RunAtLoad</key><true/><key>ProcessType</key><string>Background</string><key>StandardOutPath</key><string>/var/log/surge-controller/update.log</string><key>StandardErrorPath</key><string>/var/log/surge-controller/update.log</string><key>Umask</key><integer>63</integer></dict></plist>`
-	if err = os.WriteFile(workerPlist, []byte(plist), 0600); err != nil {
-		return err
-	}
-	s.Phase = "restarting"
-	s.UpdatedAt = time.Now().UTC()
-	if err = writeJSON(stateFile, s); err != nil {
-		return err
-	}
-	if beforeRestart == nil {
-		return errors.New("Update session handoff is unavailable")
-	}
-	if err = beforeRestart(); err != nil {
-		return err
-	}
-	if err = command(ctx, "/bin/launchctl", "bootstrap", "system", workerPlist); err != nil {
-		return errors.New("Could not start the backend update helper")
-	}
-	return nil
-}
-func extract(archive []byte, out io.Writer) error {
-	z, err := gzip.NewReader(bytes.NewReader(archive))
-	if err != nil {
-		return errors.New("Invalid backend archive")
-	}
-	defer z.Close()
-	decompressed := &io.LimitedReader{R: z, N: (512 << 20) + 1}
-	t := tar.NewReader(decompressed)
-	found := false
-	for {
-		header, err := t.Next()
-		if err == io.EOF {
-			break
-		}
-		if err != nil {
-			return errors.New("Invalid backend archive")
-		}
-		// No archive paths are unpacked. Only the single expected regular file is copied.
-		if strings.TrimPrefix(header.Name, "./") != "bin/surge-controller" {
-			continue
-		}
-		if found || header.Typeflag != tar.TypeReg || header.Size <= 0 || header.Size > 200<<20 {
-			return errors.New("Invalid backend executable in archive")
-		}
-		if _, err = io.CopyN(out, t, header.Size); err != nil {
-			return errors.New("Incomplete backend executable")
-		}
-		found = true
-	}
-	if !found {
-		return errors.New("Backend executable is missing from archive")
-	}
-	// tar EOF does not verify the gzip footer. Finish reading to reject truncated
-	// streams, checksum corruption and oversized trailing decompressed content.
-	if _, err := io.Copy(io.Discard, decompressed); err != nil || decompressed.N <= 0 {
-		return errors.New("Invalid backend archive")
-	}
-	return nil
-}
 func copyExecutable(from, to string) error {
 	_ = os.Remove(to)
 	src, err := os.Open(from)

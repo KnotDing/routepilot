@@ -1,9 +1,7 @@
 package softwareupdate
 
 import (
-	"archive/tar"
 	"bytes"
-	"compress/gzip"
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
@@ -167,85 +165,6 @@ func TestReleaseDownloadTrustLimitsAndCancellation(t *testing.T) {
 	}
 }
 
-type archiveEntry struct {
-	name     string
-	kind     byte
-	contents string
-	size     int64
-}
-
-func archiveFixture(t testing.TB, entries ...archiveEntry) []byte {
-	t.Helper()
-	var out bytes.Buffer
-	z := gzip.NewWriter(&out)
-	tw := tar.NewWriter(z)
-	for _, entry := range entries {
-		size := int64(len(entry.contents))
-		if entry.kind != tar.TypeReg {
-			size = 0
-		}
-		if entry.size > 0 {
-			size = entry.size
-		}
-		if err := tw.WriteHeader(&tar.Header{Name: entry.name, Typeflag: entry.kind, Size: size, Mode: 0755, Linkname: "outside"}); err != nil {
-			t.Fatal(err)
-		}
-		if entry.contents != "" {
-			if _, err := tw.Write([]byte(entry.contents)); err != nil {
-				t.Fatal(err)
-			}
-		}
-	}
-	_ = tw.Close()
-	_ = z.Close()
-	return out.Bytes()
-}
-func TestArchiveExtractionRejectsUnsafeOrCorruptPackages(t *testing.T) {
-	executable := archiveEntry{name: "bin/surge-controller", kind: tar.TypeReg, contents: "executable"}
-	good := archiveFixture(t, archiveEntry{name: "../../outside", kind: tar.TypeReg, contents: "never unpacked"}, executable)
-	var out bytes.Buffer
-	if err := extract(good, &out); err != nil || out.String() != "executable" {
-		t.Fatal(out.String(), err)
-	}
-	alias := executable
-	alias.name = "./bin/surge-controller"
-	if err := extract(archiveFixture(t, alias), io.Discard); err != nil {
-		t.Fatal(err)
-	}
-	corruption := append([]byte{}, good...)
-	corruption[len(corruption)-8] ^= 1
-	empty := executable
-	empty.contents = ""
-	symlink := executable
-	symlink.kind = tar.TypeSymlink
-	symlink.contents = ""
-	hardlink := symlink
-	hardlink.kind = tar.TypeLink
-	directory := symlink
-	directory.kind = tar.TypeDir
-	huge := empty
-	huge.size = (200 << 20) + 1
-	traversal := executable
-	traversal.name = "x/../bin/surge-controller"
-	for _, tc := range []struct {
-		name string
-		data []byte
-	}{{"invalid gzip", []byte("not gzip")}, {"missing", archiveFixture(t)}, {"duplicate", archiveFixture(t, executable, executable)}, {"empty", archiveFixture(t, empty)}, {"symlink", archiveFixture(t, symlink)}, {"hardlink", archiveFixture(t, hardlink)}, {"directory", archiveFixture(t, directory)}, {"oversized", archiveFixture(t, huge)}, {"path alias", archiveFixture(t, traversal)}, {"truncated gzip", good[:len(good)-4]}, {"bad gzip checksum", corruption}} {
-		t.Run(tc.name, func(t *testing.T) {
-			if err := extract(tc.data, io.Discard); err == nil {
-				t.Fatal("accepted invalid archive")
-			}
-		})
-	}
-	if err := extract(good, errorWriter{}); err == nil {
-		t.Fatal("ignored write failure")
-	}
-}
-
-type errorWriter struct{}
-
-func (errorWriter) Write([]byte) (int, error) { return 0, errors.New("disk full") }
-
 func TestAtomicStateAndExecutableCopy(t *testing.T) {
 	dir := t.TempDir()
 	file := filepath.Join(dir, "state.json")
@@ -314,6 +233,7 @@ func isolatedManager(t *testing.T) *managerFixture {
 	m.ops.read = func() Status { f.mu.Lock(); defer f.mu.Unlock(); return f.state }
 	m.ops.write = func(s Status) error { f.mu.Lock(); defer f.mu.Unlock(); f.state = s; return nil }
 	m.ops.pid = func() int { return 0 }
+	m.ops.appVersion = func() string { return buildinfo.Current().Version }
 	m.ops.prepare = func(context.Context, release, func() error) error { return errors.New("fixture preparation failed") }
 	f.manager = m
 	return f

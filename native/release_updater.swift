@@ -76,6 +76,11 @@ enum ReleaseUpdater {
         return false
     }
 
+    static func needsBackendUpdate(_ release: GiteaRelease, app: String, backend: String) -> Bool {
+        guard stableVersion(release.tagName) == stableVersion(app), stableVersion(app) != nil else { return false }
+        return newer(release, current: backend)
+    }
+
     static func trustedDownloadURL(_ url: URL) -> Bool {
         url.scheme == "https" && url.host == host && (url.port == nil || url.port == 443)
             && url.user == nil && url.password == nil && url.fragment == nil

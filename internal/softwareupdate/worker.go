@@ -2,8 +2,6 @@ package softwareupdate
 
 import (
 	"context"
-	"crypto/sha256"
-	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"os"
@@ -16,7 +14,6 @@ import (
 
 type workerJob struct {
 	Target      string `json:"target"`
-	SHA256      string `json:"sha256"`
 	PreviousPID int    `json:"previous_pid"`
 }
 type ready struct {
@@ -47,7 +44,7 @@ func RunWorker() (result error) {
 	if workerPID() != os.Getpid() {
 		return errors.New("Backend update helper must be launched by its dedicated system job")
 	}
-	s := Status{Phase: "restarting", Target: readState().Target, UpdatedAt: time.Now().UTC()}
+	s := Status{Phase: "downloading", Target: readState().Target, UpdatedAt: time.Now().UTC()}
 	defer func() {
 		if result != nil {
 			s.Phase = "failed"
@@ -58,16 +55,12 @@ func RunWorker() (result error) {
 		}
 		s.UpdatedAt = time.Now().UTC()
 		_ = writeJSON(stateFile, s)
+		_ = os.Remove(filepath.Join(stagingDir, "application.zip"))
 		_ = os.Remove(workerPlist)
 		_ = os.Remove("/var/db/surge-controller/software-update-sessions.json")
 	}()
-	unlock, err := lockInstall()
-	if err != nil {
-		return err
-	}
-	defer unlock()
 
-	for _, file := range []string{filepath.Join(stagingDir, "job.json"), filepath.Join(stagingDir, "next"), serviceBin, servicePlist} {
+	for _, file := range []string{filepath.Join(stagingDir, "job.json"), serviceBin, servicePlist} {
 		if err := privateOwned(file, false); err != nil {
 			return err
 		}
@@ -77,38 +70,28 @@ func RunWorker() (result error) {
 		return err
 	}
 	var job workerJob
-	if json.Unmarshal(b, &job) != nil || job.PreviousPID <= 1 || !newer(job.Target, buildinfo.Current().Version) {
-		return errors.New("Invalid backend update job")
+	if json.Unmarshal(b, &job) != nil || job.PreviousPID <= 1 {
+		return errors.New("Invalid application update job")
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 8*time.Minute)
+	defer cancel()
+	if !applicationUpdateAvailable(job.Target, buildinfo.Current().Version, appVersion(ctx)) {
+		return errors.New("Invalid application update job")
 	}
 	s.Target = job.Target
-	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Minute)
-	defer cancel()
-	next := filepath.Join(stagingDir, "next")
-	b, err = os.ReadFile(next)
+	// The job never supplies asset URLs. Refetch the fixed official tag metadata.
+	b, err = download(ctx, origin+"/api/v1/repos/knot/routepilot/releases/tags/"+job.Target, 2<<20)
 	if err != nil {
 		return err
 	}
-	sum := sha256.Sum256(b)
-	if hex.EncodeToString(sum[:]) != job.SHA256 {
-		return errors.New("Staged backend checksum changed")
+	var r release
+	if json.Unmarshal(b, &r) != nil || r.Tag != job.Target || r.Draft || r.Prerelease {
+		return errors.New("Release metadata does not match the application update")
 	}
-	if err = validateBinary(ctx, next, job.Target); err != nil {
-		return err
-	}
-	// Give the accepted API response time to reach the client before stopping DNS.
 	if err = pause(ctx, 2*time.Second); err != nil {
 		return err
 	}
-	return activateBackend(ctx, job.Target, job.PreviousPID, backendActivation{
-		executable: serviceBin, next: next, previous: filepath.Join(stagingDir, "previous"), directory: serviceDir,
-		pid: servicePID, wait: waitProcess, ready: waitReady,
-		stop: func(ctx context.Context) error {
-			return command(ctx, "/bin/launchctl", "bootout", "system", servicePlist)
-		},
-		start: func(ctx context.Context) error {
-			return command(ctx, "/bin/launchctl", "bootstrap", "system", servicePlist)
-		},
-	})
+	return installRemoteApplication(ctx, r, job.PreviousPID)
 }
 
 // The fixed-path worker validates ownership, signatures and the job before this

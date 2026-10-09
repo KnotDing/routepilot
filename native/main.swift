@@ -305,7 +305,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
         let backendInfo = complete
             ? L("后台：{version}（构建 {build}）", ["version": backendVersion, "build": backendBuild])
             : L("后台未提供完整的版本和构建编号，请更新后台服务。")
-        alert(title, appInfo + "\n" + backendInfo + "\n\n" + L("请将 App 和后台更新到同一发布版本。本机后台可在状态栏菜单选择“更新网络后台服务”；更新 App 不会自动替换旧后台。"))
+        alert(title, appInfo + "\n" + backendInfo + "\n\n" + L("请将 App 和后台更新到同一发布版本。在“设置 → 软件更新”中在线升级，会同步更新 App 和已安装的本机网络后台。"))
     }
     var serviceVisualState: StatusBarVisualState {
         let runtimeState = status["state"] as? String ?? ""
@@ -579,23 +579,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
         let serviceInstalled = FileManager.default.fileExists(atPath: "/Library/LaunchDaemons/com.routepilot.surge-controller.plist")
         var serviceItems: [NSMenuItem] = []
         if needsLogin { serviceItems.append(item("登录本机后台…", action: #selector(signIn), enabled: !stopping)); serviceItems.append(.separator()) }
-        serviceItems.append(item(serviceInstalled ? "更新网络后台服务…" : "安装网络后台服务…", action: #selector(installService), enabled: !stopping && !smoke && (serviceInstalled ? child == nil : child != nil)))
+        if !serviceInstalled { serviceItems.append(item("安装网络后台服务…", action: #selector(installService), enabled: !stopping && !smoke && child != nil)) }
         serviceItems.append(item("重新连接", action: #selector(reconnect), enabled: !stopping))
-        serviceItems.append(item("本机后台连接地址…", action: #selector(changeAddress), enabled: !stopping))
         serviceItems.append(item("打开服务日志", action: #selector(openLogs)))
         menu.addItem(submenu("本机后台", items: serviceItems))
 
-        var updates = [item(checkingRelease ? "正在检查软件更新…" : "检查软件更新…", action: #selector(performReleaseUpdate), enabled: !checkingRelease && !stopping)]
-        if let release = availableRelease {
-            updates.append(item(L("在线升级至 {tag}", ["tag": release.tagName]), action: #selector(performReleaseUpdate), enabled: !checkingRelease && !stopping))
-        }
-        if UpdateAssistant.configured {
-            updates.append(item("更新助手已启用", enabled: false))
-            updates.append(item("停用更新助手…", action: #selector(disableUpdateAssistant), enabled: !checkingRelease && !stopping && !smoke))
-        } else {
-            updates.append(item("启用更新助手…", action: #selector(enableUpdateAssistant), enabled: !checkingRelease && !stopping && !smoke))
-        }
-        menu.addItem(submenu("软件更新", items: updates))
+        menu.addItem(item(checkingRelease ? "正在检查更新…" : "检查更新", action: #selector(performReleaseUpdate), enabled: !checkingRelease && !stopping))
 
         let login = item(SMAppService.mainApp.status == .requiresApproval ? "登录时启动（等待系统授权）" : "登录时启动", action: #selector(toggleLogin), enabled: !smoke)
         login.state = SMAppService.mainApp.status == .enabled ? .on : SMAppService.mainApp.status == .requiresApproval ? .mixed : .off
@@ -624,7 +613,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
         do {
             let latest = try await ReleaseUpdater.latest()
             UserDefaults.standard.set(Date(), forKey: "releaseUpdateLastCheck")
-            availableRelease = ReleaseUpdater.newer(latest) ? latest : nil
+            let appVersion = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? ""
+            let backendVersion = (status["software"] as? [String: Any])?["version"] as? String ?? ""
+            let repairLocalService = child == nil && FileManager.default.fileExists(atPath: "/Library/LaunchDaemons/com.routepilot.surge-controller.plist") && ReleaseUpdater.needsBackendUpdate(latest, app: appVersion, backend: backendVersion)
+            availableRelease = ReleaseUpdater.newer(latest) || repairLocalService ? latest : nil
             guard let release = availableRelease else {
                 if !silent { alert("RoutePilot 已是最新版本", "当前版本：\(Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "未知")") }
                 return
@@ -907,17 +899,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
             rebuildMenu()
         } catch { alert("登录启动未修改", error.localizedDescription) }
     }
-    @objc func changeAddress() {
-        let dialog = NSAlert(); dialog.messageText = L("本机管理服务地址")
-        dialog.addButton(withTitle: L("保存")); dialog.addButton(withTitle: L("取消"))
-        let input = NSTextField(frame: NSRect(x: 0, y: 0, width: 340, height: 24)); input.stringValue = client.base.absoluteString
-        dialog.accessoryView = input; NSApp.activate(ignoringOtherApps: true)
-        guard dialog.runModal() == .alertFirstButtonReturn else { return }
-        guard let url = validURL(input.stringValue) else { alert("地址无效", "请输入本机 loopback HTTP/HTTPS 地址。"); return }
-        UserDefaults.standard.set(url.absoluteString, forKey: "backendURL")
-        client = ControllerClient(url); window?.close(); window = nil; webView = nil
-        reconnect()
-    }
     @objc func reconnect() { bootFailures = 0; nextBoot = .distantPast; Task { await refresh() } }
     @objc func openLogs() {
         let url = child == nil && FileManager.default.fileExists(atPath: "/var/log/surge-controller") ? URL(fileURLWithPath: "/var/log/surge-controller") : dataDirectory
@@ -925,7 +906,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
     }
     func shellQuote(_ value: String) -> String { "'" + value.replacingOccurrences(of: "'", with: "'\\''") + "'" }
     @objc func installService() {
-        guard !FileManager.default.fileExists(atPath: "/Library/LaunchDaemons/com.routepilot.surge-controller.plist") else { updateService(); return }
+        guard !FileManager.default.fileExists(atPath: "/Library/LaunchDaemons/com.routepilot.surge-controller.plist") else { return }
         guard child != nil else { alert("当前连接其他进程", "请先停止当前手动启动的 Controller，再通过 APP 启动并安装网络服务。"); return }
         let dialog = NSAlert(); dialog.messageText = L("安装网络后台服务")
         dialog.informativeText = L("透明 DNS/PF 需要管理员权限。将停止 APP 子进程，把当前数据库及密钥迁移到 /var/db/surge-controller，安装 launchd 服务。Surge 和网关配置由你自行切换。")
@@ -961,31 +942,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
             }
             reconnect()
         }
-    }
-    func updateService() {
-        guard child == nil else { alert("网络服务未更新", "APP 仍拥有用户后台进程，请先重新连接已安装的网络服务。"); return }
-        let dialog = NSAlert(); dialog.messageText = L("更新网络后台服务")
-        dialog.informativeText = L("将通过 macOS 管理员授权替换后台程序，短暂停止 DNS 服务并释放自己的 PF 规则。数据库、密钥和配置保留；启动后恢复已配置的透明拦截。")
-        dialog.addButton(withTitle: L("更新")); dialog.addButton(withTitle: L("取消"))
-        NSApp.activate(ignoringOtherApps: true)
-        guard dialog.runModal() == .alertFirstButtonReturn else { return }
-        stopping = true
-        do {
-            let stage = try InstallerStage.prepare(service: Bundle.main.resourceURL!.appendingPathComponent("Service"), data: nil)
-            defer { stage.remove() }
-            let command = "/bin/sh " + shellQuote(stage.service.appendingPathComponent("scripts/update_macos.sh").path)
-            let escaped = command.replacingOccurrences(of: "\\", with: "\\\\").replacingOccurrences(of: "\"", with: "\\\"")
-            var failure: NSDictionary?
-            let result = NSAppleScript(source: "do shell script \"\(escaped)\" with administrator privileges")?.executeAndReturnError(&failure)
-            if result == nil { alert("网络服务未更新", failure?[NSAppleScript.errorMessage] as? String ?? "更新失败，原配置已保留。") }
-            else {
-                client = ControllerClient(client.base)
-                window?.close(); window = nil; webView = nil
-                alert("网络服务已更新", "后台程序已更新；原配置保留。")
-            }
-        } catch { alert("网络服务未更新", error.localizedDescription) }
-        stopping = false
-        reconnect()
     }
     func stopChild() async -> Bool {
         guard let process = child else { return true }
