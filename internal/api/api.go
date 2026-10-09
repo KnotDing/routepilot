@@ -571,6 +571,13 @@ func removeIDs[T any](items []T, ids []string, idOf func(T) string) ([]T, int, e
 	return keep, len(ids), nil
 }
 func mergeSecrets(d, old *config.Document) error {
+	if d.Settings.Notifications.ClearWebhook {
+		d.Settings.Notifications.WebhookURL = ""
+	} else if d.Settings.Notifications.WebhookURL == "" {
+		d.Settings.Notifications.WebhookURL = old.Settings.Notifications.WebhookURL
+	}
+	d.Settings.Notifications.ClearWebhook = false
+	d.Settings.Notifications.WebhookConfigured = false
 	if d.Settings.Security.PasswordHash != "" {
 		return errors.New("password hash cannot be supplied through the API")
 	}

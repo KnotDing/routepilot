@@ -97,6 +97,18 @@ type Logging struct {
 	LogDomains      bool   `json:"log_domains"`
 	EventRetention  int    `json:"event_retention"`
 }
+type Notifications struct {
+	Enabled           bool   `json:"enabled"`
+	Surge             bool   `json:"surge"`
+	BGP               bool   `json:"bgp"`
+	DNS               bool   `json:"dns"`
+	Controller        bool   `json:"controller"`
+	Recovery          bool   `json:"recovery"`
+	CooldownSeconds   int    `json:"cooldown_seconds"`
+	WebhookURL        string `json:"webhook_url,omitempty"`
+	WebhookConfigured bool   `json:"webhook_configured"`
+	ClearWebhook      bool   `json:"clear_webhook,omitempty"`
+}
 type Security struct {
 	Authentication     bool     `json:"authentication"`
 	Username           string   `json:"username"`
@@ -136,16 +148,17 @@ func BackendURL(raw string) (*url.URL, error) {
 }
 
 type Settings struct {
-	RemoteBackends []Backend `json:"remote_backends"`
-	Routing        Routing   `json:"routing"`
-	General        General   `json:"general"`
-	DNS            DNS       `json:"dns"`
-	Surge          Surge     `json:"surge"`
-	BGP            BGP       `json:"bgp"`
-	Cache          Cache     `json:"cache"`
-	Health         Health    `json:"health"`
-	Logging        Logging   `json:"logging"`
-	Security       Security  `json:"security"`
+	RemoteBackends []Backend     `json:"remote_backends"`
+	Routing        Routing       `json:"routing"`
+	General        General       `json:"general"`
+	DNS            DNS           `json:"dns"`
+	Surge          Surge         `json:"surge"`
+	BGP            BGP           `json:"bgp"`
+	Cache          Cache         `json:"cache"`
+	Health         Health        `json:"health"`
+	Logging        Logging       `json:"logging"`
+	Notifications  Notifications `json:"notifications"`
+	Security       Security      `json:"security"`
 }
 type Peer struct {
 	ID               string `json:"id"`
@@ -286,7 +299,8 @@ func Default() Document {
 		BGP:     BGP{LocalASN: 64512, ListenPort: 179, RouteLimit: 128, HoldSeconds: 30, KeepaliveSeconds: 10},
 		Cache:   Cache{Capacity: 10000, ResponseCapacity: 10000, Workers: 8, Queue: 256, TimeoutMS: 500, DirectTTLSeconds: 300, SurgeTTLSeconds: 300, UnknownTTLSeconds: 10, ErrorTTLSeconds: 1, InvalidateDirectOnSelectionChange: true, InvalidateRejectOnSelectionChange: true},
 		Health:  Health{1000, 3, 3, 60, 3, "example.com"}, Logging: Logging{"info", true, 1000, true, 2000},
-		Security: Security{Username: "admin", SessionMinutes: 60, AllowedNetworks: []string{"127.0.0.0/8", "::1/128"}},
+		Notifications: Notifications{Surge: true, BGP: true, DNS: true, Controller: true, CooldownSeconds: 300},
+		Security:      Security{Username: "admin", SessionMinutes: 60, AllowedNetworks: []string{"127.0.0.0/8", "::1/128"}},
 	}, Peers: []Peer{}, Routes: []Route{}, RouteFeeds: []RouteFeed{}, Interception: []Interception{}, Overrides: []Override{}}
 }
 
@@ -321,6 +335,15 @@ func Community(s string) (uint32, error) {
 }
 func (d Document) Validate() error {
 	s := d.Settings
+	if s.Notifications.CooldownSeconds < 0 || s.Notifications.CooldownSeconds > 86400 {
+		return errors.New("notification cooldown must be between 0 and 86400 seconds")
+	}
+	if raw := s.Notifications.WebhookURL; raw != "" {
+		u, err := url.Parse(raw)
+		if err != nil || len(raw) > 4096 || u.Hostname() == "" || (u.Scheme != "https" && u.Scheme != "http") || u.User != nil || u.Fragment != "" || u.Opaque != "" {
+			return errors.New("notification webhook must be an HTTP(S) URL without user info or fragment")
+		}
+	}
 	if len(s.RemoteBackends) > 32 {
 		return errors.New("maximum 32 remote backends")
 	}
@@ -662,6 +685,9 @@ func isLoopback(s string) bool {
 	return s == "localhost" || e == nil && a.IsLoopback()
 }
 func (d Document) Redacted() Document {
+	d.Settings.Notifications.WebhookConfigured = d.Settings.Notifications.WebhookURL != ""
+	d.Settings.Notifications.WebhookURL = ""
+	d.Settings.Notifications.ClearWebhook = false
 	d.Settings.Surge.TokenConfigured = d.Settings.Surge.APIToken != ""
 	d.Settings.Surge.APIToken = ""
 	d.Settings.Security.PasswordConfigured = d.Settings.Security.PasswordHash != ""

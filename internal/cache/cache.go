@@ -19,6 +19,13 @@ type entry[K comparable, V any] struct {
 	generation uint64
 	expiry     time.Time
 }
+
+// Record preserves the key and absolute expiry, in addition to the cached value.
+type Record[K comparable, V any] struct {
+	Key       K         `json:"key"`
+	Value     V         `json:"value"`
+	ExpiresAt time.Time `json:"expires_at,omitempty"`
+}
 type Stats struct {
 	Entries                int       `json:"entries"`
 	Generation             uint64    `json:"generation"`
@@ -146,6 +153,49 @@ func (c *Cache[K, V]) Stats() Stats {
 func (c *Cache[K, V]) Values(limit int) []V {
 	values, _ := c.Page(0, limit, nil)
 	return values
+}
+
+// Snapshot returns valid entries from least to most recently used.
+func (c *Cache[K, V]) Snapshot() []Record[K, V] {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	out := make([]Record[K, V], 0, c.order.Len())
+	now, generation := c.now(), c.Generation()
+	for e := c.order.Back(); e != nil; e = e.Prev() {
+		v := e.Value.(entry[K, V])
+		if v.generation == generation && validExpiry(now, v.expiry) {
+			out = append(out, Record[K, V]{v.key, v.value, v.expiry})
+		}
+	}
+	return out
+}
+
+// Restore keeps original deadlines and LRU priority. Fresh entries already in
+// this process take precedence; capacity reduction drops the oldest records.
+func (c *Cache[K, V]) Restore(records []Record[K, V]) int {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	now, generation := c.now(), c.Generation()
+	for _, e := range c.items {
+		v := e.Value.(entry[K, V])
+		if v.generation != generation || !validExpiry(now, v.expiry) {
+			c.remove(e)
+		}
+	}
+	restored := 0
+	for i := len(records) - 1; i >= 0 && c.order.Len() < c.capacity; i-- {
+		r := records[i]
+		if !validExpiry(now, r.ExpiresAt) {
+			continue
+		}
+		if _, exists := c.items[r.Key]; exists {
+			continue
+		}
+		e := c.order.PushBack(entry[K, V]{r.Key, r.Value, generation, r.ExpiresAt})
+		c.items[r.Key] = e
+		restored++
+	}
+	return restored
 }
 func (c *Cache[K, V]) Page(offset, limit int, match func(V) bool) ([]V, int) {
 	c.mu.Lock()

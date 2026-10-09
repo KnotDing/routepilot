@@ -107,7 +107,7 @@ func (s *Store) migrate() error {
 	if e = tx.QueryRow("SELECT max(version) FROM schema_migrations").Scan(&max); e != nil {
 		return e
 	}
-	if max.Valid && max.Int64 > 3 {
+	if max.Valid && max.Int64 > 4 {
 		return errors.New("database schema is newer than this application")
 	}
 	for _, table := range []string{"settings", "bgp_peers", "bgp_routes", "bgp_route_feeds", "dns_interception_routes", "overrides", "local_dns_hosts"} {
@@ -121,6 +121,9 @@ func (s *Store) migrate() error {
 	if _, e = tx.Exec("CREATE TABLE IF NOT EXISTS statistics(id TEXT PRIMARY KEY, document BLOB NOT NULL)"); e != nil {
 		return e
 	}
+	if _, e = tx.Exec("CREATE TABLE IF NOT EXISTS decision_cache(id TEXT PRIMARY KEY, document BLOB NOT NULL)"); e != nil {
+		return e
+	}
 	if _, e = tx.Exec("INSERT OR IGNORE INTO schema_migrations VALUES(1,?)", time.Now().UTC().Format(time.RFC3339Nano)); e != nil {
 		return e
 	}
@@ -130,7 +133,27 @@ func (s *Store) migrate() error {
 	if _, e = tx.Exec("INSERT OR IGNORE INTO schema_migrations VALUES(3,?)", time.Now().UTC().Format(time.RFC3339Nano)); e != nil {
 		return e
 	}
+	if _, e = tx.Exec("INSERT OR IGNORE INTO schema_migrations VALUES(4,?)", time.Now().UTC().Format(time.RFC3339Nano)); e != nil {
+		return e
+	}
 	return tx.Commit()
+}
+
+func (s *Store) LoadDecisionCache(ctx context.Context, value any) error {
+	var raw []byte
+	err := s.DB.QueryRowContext(ctx, "SELECT document FROM decision_cache WHERE id='current'").Scan(&raw)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	return json.Unmarshal(raw, value)
+}
+
+func (s *Store) SaveDecisionCache(ctx context.Context, raw []byte) error {
+	_, err := s.DB.ExecContext(ctx, "INSERT INTO decision_cache(id,document) VALUES('current',?) ON CONFLICT(id) DO UPDATE SET document=excluded.document", raw)
+	return err
 }
 
 func (s *Store) LoadStatistics(ctx context.Context, id string, value any) error {
@@ -179,6 +202,13 @@ func (s *Store) crypt(value string, encrypt bool) (string, error) {
 func (s *Store) Save(ctx context.Context, d config.Document) error {
 	if e := d.Validate(); e != nil {
 		return e
+	}
+	if d.Settings.Notifications.WebhookURL != "" {
+		v, err := s.crypt(d.Settings.Notifications.WebhookURL, true)
+		if err != nil {
+			return err
+		}
+		d.Settings.Notifications.WebhookURL = v
 	}
 	if d.Settings.Surge.APIToken != "" {
 		v, e := s.crypt(d.Settings.Surge.APIToken, true)
@@ -239,6 +269,12 @@ func (s *Store) Load(ctx context.Context) (config.Document, error) {
 	}
 	if e = json.Unmarshal(b, &d.Settings); e != nil {
 		return d, e
+	}
+	if d.Settings.Notifications.WebhookURL != "" {
+		d.Settings.Notifications.WebhookURL, e = s.crypt(d.Settings.Notifications.WebhookURL, false)
+		if e != nil {
+			return d, e
+		}
 	}
 	if d.Settings.Surge.APIToken != "" {
 		d.Settings.Surge.APIToken, e = s.crypt(d.Settings.Surge.APIToken, false)

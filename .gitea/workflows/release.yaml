@@ -69,12 +69,17 @@ jobs:
           TAG="${GITHUB_REF_NAME}"
           BUILD_NUMBER="${GITHUB_RUN_NUMBER}"
           : "${GITEA_TOKEN:?Gitea Actions token is unavailable}"
+          notes_file=".gitea/release-notes/${TAG}.md"
+          if [ ! -f "$notes_file" ]; then
+            notes_file=$(mktemp)
+            printf 'Automatically built by Gitea Actions.\n\nSee SHA256SUMS to verify downloaded assets.\n' > "$notes_file"
+          fi
           release=$(curl --fail --silent --show-error \
             -H "Authorization: token ${GITEA_TOKEN}" \
             -H 'Content-Type: application/json' \
             -X POST "${GITHUB_API_URL}/repos/${GITHUB_REPOSITORY}/releases" \
-            --data "$(jq -n --arg tag "$TAG" --arg build "$BUILD_NUMBER" \
-              '{tag_name:$tag,name:("RoutePilot " + $tag),body:("Automatically built by Gitea Actions. Build " + $build + ".\n\nSee SHA256SUMS to verify downloaded assets."),draft:false,prerelease:false}')")
+            --data "$(jq -n --arg tag "$TAG" --arg build "$BUILD_NUMBER" --rawfile notes "$notes_file" \
+              '{tag_name:$tag,name:("RoutePilot " + $tag),body:($notes + "\n\nGitea Actions Build " + $build + "."),draft:false,prerelease:false}')")
           release_id=$(printf '%s' "$release" | jq -er '.id')
           for asset in artifacts/RoutePilot-macos-arm64.dmg artifacts/RoutePilot-macos-arm64.zip artifacts/surge-controller-macos-arm64.tar.gz artifacts/SHA256SUMS; do
             name=${asset##*/}

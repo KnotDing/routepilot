@@ -267,5 +267,9 @@
   "one or more selected rows no longer exist": "部分所选表项已不存在，请刷新后重试",
   "unsupported bulk delete resource": "此类表项不支持批量删除",
   "TLS certificate and key must both be configured or both be empty": "TLS 证书和私钥必须同时配置或同时留空",
-  "无法连接远程后端，请检查地址和网络；使用 HTTPS 时请检查 TLS 证书": "无法连接远程后端，请检查地址和网络；若使用 HTTPS，请检查 TLS 证书"
+  "无法连接远程后端，请检查地址和网络；使用 HTTPS 时请检查 TLS 证书": "无法连接远程后端，请检查地址和网络；若使用 HTTPS，请检查 TLS 证书",
+  "notification cooldown must be between 0 and 86400 seconds": "通知重复提醒间隔必须在 0 到 86400 秒之间",
+  "notification webhook must be an HTTP(S) URL without user info or fragment": "通知 Webhook 必须使用 HTTP(S) 地址，且不能包含用户名、密码或片段",
+  "Service notification delivered by webhook": "服务通知已通过 Webhook 推送",
+  "Service notification webhook failed (HTTP {code})": "服务通知 Webhook 推送失败（HTTP {code}）"
 }

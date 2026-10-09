@@ -49,7 +49,7 @@ enum ReleaseUpdater {
         return false
     }
 
-    static func verifiedApp(from release: GiteaRelease) async throws -> URL {
+    static func downloadPackage(from release: GiteaRelease) async throws -> URL {
         #if arch(arm64)
         let archiveName = "RoutePilot-macos-arm64.zip"
         #else
@@ -64,18 +64,33 @@ enum ReleaseUpdater {
               let expected = checksumText.split(whereSeparator: \.isNewline).compactMap({ line -> String? in
                   let columns = line.split(whereSeparator: \.isWhitespace)
                   return columns.count == 2 && String(columns[1]) == archiveName ? String(columns[0]).lowercased() : nil
-              }).first, expected.count == 64 else {
+              }).first, expected.count == 64, expected.allSatisfy({ "0123456789abcdef".contains($0) }) else {
             throw AppFailure(message: "Release 校验文件中没有本机安装包的 SHA-256")
         }
+        let cache = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0].appendingPathComponent("RoutePilot/Updates", isDirectory: true)
+        try FileManager.default.createDirectory(at: cache, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
+        try FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: cache.path)
+        let cachedArchive = cache.appendingPathComponent(expected + ".zip")
+        if let size = try? cachedArchive.resourceValues(forKeys: [.fileSizeKey]).fileSize, size <= 1024 * 1024 * 1024,
+           let cached = try? Data(contentsOf: cachedArchive),
+           SHA256.hash(data: cached).map({ String(format: "%02x", $0) }).joined() == expected { return cachedArchive }
         let archiveData = try await download(archive.browserDownloadURL, maximumBytes: 1024 * 1024 * 1024)
         let actual = SHA256.hash(data: archiveData).map { String(format: "%02x", $0) }.joined()
         guard actual == expected else { throw AppFailure(message: "安装包 SHA-256 校验失败，未执行升级") }
 
+        try archiveData.write(to: cachedArchive, options: .atomic)
+        try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: cachedArchive.path)
+        for old in (try? FileManager.default.contentsOfDirectory(at: cache, includingPropertiesForKeys: nil)) ?? [] where old.pathExtension == "zip" && old != cachedArchive {
+            try? FileManager.default.removeItem(at: old)
+        }
+        return cachedArchive
+    }
+
+    static func verifiedApp(from release: GiteaRelease) async throws -> URL {
+        let archiveURL = try await downloadPackage(from: release)
         let directory = FileManager.default.temporaryDirectory.appendingPathComponent("RoutePilot-update-\(UUID().uuidString)", isDirectory: true)
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: false, attributes: [.posixPermissions: 0o700])
         do {
-            let archiveURL = directory.appendingPathComponent(archiveName)
-            try archiveData.write(to: archiveURL, options: .atomic)
             let process = Process()
             process.executableURL = URL(fileURLWithPath: "/usr/bin/ditto")
             process.arguments = ["-x", "-k", archiveURL.path, directory.path]

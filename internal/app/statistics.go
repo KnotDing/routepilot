@@ -29,14 +29,16 @@ func (a *App) persistStatistics(ctx context.Context, last dnsserver.CounterSnaps
 			return
 		case <-ticker.C:
 			snapshot := a.dnsCounters.Snapshot()
-			if snapshot == last {
-				continue
+			if snapshot != last {
+				if err := a.saveDNSStatistics(snapshot); err != nil {
+					slog.Error("DNS statistics persistence failed", "error", err)
+				} else {
+					last = snapshot
+				}
 			}
-			if err := a.saveDNSStatistics(snapshot); err != nil {
-				slog.Error("DNS statistics persistence failed", "error", err)
-				continue
+			if err := a.saveDecisionCache(); err != nil {
+				slog.Error("Decision cache persistence failed", "error", err)
 			}
-			last = snapshot
 		}
 	}
 }

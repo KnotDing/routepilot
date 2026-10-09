@@ -14,7 +14,7 @@ UDP uses a fixed worker pool and a bounded queue. TCP uses bounded simultaneous
 connections with sequential, correctly framed queries and read/write deadlines.
 Overload does not spawn unbounded workers or processes. The Surge evaluator has
 its own worker pool, queue, singleflight and deadlines. Histories and caches are
-bounded; management query history is configurable, bounded and kept only in memory. No per-query service log or SQL event is emitted. An explicitly requested, mode-0600 diagnostic journal is the only on-disk query trace.
+bounded; management query history is configurable, bounded and kept only in memory. No per-query service log or SQL event is emitted. The persisted decision cache contains domain/client keys and classification results, not a chronological query history. An explicitly requested, mode-0600 diagnostic journal is the only on-disk query trace.
 
 ## Policy evidence and deliberately conservative DIRECT
 
@@ -50,7 +50,7 @@ eviction by default; UNKNOWN and errors retain short retry TTLs. Failed reads ke
 the last confirmed revision unless `invalidate_on_read_failure` is enabled; recovery
 of the unchanged revision does not flush again. Group-selection invalidation of
 DIRECT and REJECT is independently configurable. `expire_decisions` restores timed
-expiry for stable classifications. Real DNS response TTLs and health gating are unchanged.
+expiry for stable classifications. Stable classifications are snapshotted to private SQLite every five seconds and on clean shutdown, including per-client keys, original absolute deadlines and LRU order. Restart restoration first confirms the saved Surge revision and local classification settings; changed revisions discard entries, and changed group selections filter DIRECT/REJECT according to the existing settings. Unconfirmed startup entries are retained on disk but never served. Manual flushes update SQLite before reporting success, including pending startup entries. UNKNOWN and evaluation errors are not restored; cache hit/miss counters remain per-process. Abrupt termination can lose the latest unsaved entries. Real DNS response TTLs and health gating are unchanged.
 Cached classification has bounded
 polling coherence, not atomic synchronization with an external mutable Surge
 process. A race-free instant policy-change guarantee needs a Surge-provided

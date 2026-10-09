@@ -2,7 +2,6 @@ import AppKit
 import WebKit
 import ServiceManagement
 import Darwin
-import Security
 
 struct AppFailure: LocalizedError {
     let message: String
@@ -12,44 +11,6 @@ struct AppFailure: LocalizedError {
         self.statusCode = statusCode
     }
     var errorDescription: String? { message }
-}
-
-struct LoginCredential: Codable {
-    let username: String
-    let password: String
-}
-
-enum CredentialVault {
-    private static let service = Bundle.main.bundleIdentifier ?? "com.routepilot.app"
-    private static let account = "controller-login"
-    private static var query: [String: Any] {
-        [kSecClass as String: kSecClassGenericPassword, kSecAttrService as String: service, kSecAttrAccount as String: account]
-    }
-    static func load() -> LoginCredential? {
-        var request = query
-        request[kSecReturnData as String] = true
-        request[kSecMatchLimit as String] = kSecMatchLimitOne
-        var item: CFTypeRef?
-        guard SecItemCopyMatching(request as CFDictionary, &item) == errSecSuccess,
-              let data = item as? Data else { return nil }
-        return try? JSONDecoder().decode(LoginCredential.self, from: data)
-    }
-    static func save(username: String, password: String) throws {
-        let data = try JSONEncoder().encode(LoginCredential(username: username, password: password))
-        let attributes: [String: Any] = [kSecValueData as String: data, kSecAttrAccessible as String: kSecAttrAccessibleWhenUnlockedThisDeviceOnly]
-        let result = SecItemUpdate(query as CFDictionary, attributes as CFDictionary)
-        if result == errSecItemNotFound {
-            var request = query
-            attributes.forEach { request[$0.key] = $0.value }
-            let addResult = SecItemAdd(request as CFDictionary, nil)
-            guard addResult == errSecSuccess else { throw AppFailure(message: "钥匙串无法保存登录凭证") }
-        } else if result != errSecSuccess {
-            throw AppFailure(message: "钥匙串无法保存登录凭证")
-        }
-    }
-    static func delete() {
-        SecItemDelete(query as CFDictionary)
-    }
 }
 
 final class ControllerClient {
@@ -111,6 +72,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
     var bgp: [String: Any] = [:]
     var availableRelease: GiteaRelease?
     var checkingRelease = false
+	let serviceNotifications = ServiceNotifications()
+	var notificationSettings: [String: Any] = [:]
+    var notificationHealth: [[String: Any]] = []
+	var backendFailures = 0
+    var remoteNotificationWatch: RemoteNotificationWatch?
+    var remoteNotificationGeneration = 0
+    var refreshingRemoteNotifications = false
     var lastError = "正在连接…"
     var versionWarning: String?
     var lastVersionWarningSignature: String?
@@ -162,26 +130,30 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
     }
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.accessory)
+        DesktopNotifications.shared.prepare()
         installApplicationMenu()
         if let icon = Bundle.main.url(forResource: "AppIcon", withExtension: "icns") { NSApp.applicationIconImage = NSImage(contentsOf: icon) }
         let stored = argument("--backend-url") ?? UserDefaults.standard.string(forKey: "backendURL") ?? "http://127.0.0.1:1055"
         guard let url = validURL(stored) else { alert("管理地址无效", "仅支持本机 loopback HTTP/HTTPS 地址。"); NSApp.terminate(nil); return }
         client = ControllerClient(url)
         dataDirectory = argument("--data-directory").map { URL(fileURLWithPath: $0) } ?? FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0].appendingPathComponent("RoutePilot")
-        statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
+        statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
         if let button = statusItem.button {
+            button.title = ""
+            button.imagePosition = .imageOnly
             button.image = Bundle.main.url(forResource: "MenuIcon", withExtension: "png").flatMap { NSImage(contentsOf: $0) }
-            button.image?.size = NSSize(width: 20, height: 20)
+            button.image?.size = NSSize(width: 18, height: 18)
             button.image?.isTemplate = true
             button.toolTip = "RoutePilot · " + L("正在连接…")
         }
         rebuildMenu()
         timer = Timer.scheduledTimer(withTimeInterval: 3, repeats: true) { [weak self] _ in
             Task { @MainActor in await self?.refresh() }
+            Task { @MainActor in await self?.refreshRemoteNotifications() }
         }
         Task { await refresh() }
         Task { await checkReleaseUpdate(silent: true) }
-        releaseTimer = Timer.scheduledTimer(withTimeInterval: 12 * 60 * 60, repeats: true) { [weak self] _ in
+        releaseTimer = Timer.scheduledTimer(withTimeInterval: 60 * 60, repeats: true) { [weak self] _ in
             Task { @MainActor in await self?.checkReleaseUpdate(silent: true) }
         }
         if smoke {
@@ -251,6 +223,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
                 }
             }
             authenticated = false; status = [:]; lastError = connectionError; versionWarning = nil
+            backendFailures += 1
+            if backendFailures >= 3 {
+                serviceNotifications.observe(scope: client.base.absoluteString, name: L("本地服务"), health: notificationHealth + [["name": "Management connection", "state": "DOWN"]], settings: notificationSettings)
+            }
             if child == nil && !starting && bootFailures < 5 && Date() >= nextBoot && client.base.scheme == "http" && (smoke || !FileManager.default.fileExists(atPath: "/Library/LaunchDaemons/com.routepilot.surge-controller.plist")) {
                 startBackend()
             }
@@ -260,12 +236,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
     }
     func refreshFromBackend() async throws {
         authenticated = try await client.establish()
-        if !authenticated, let credential = CredentialVault.load() {
+        let credentialStorage = CredentialVault.storage
+        if !authenticated, let credential = CredentialVault.load(from: credentialStorage) {
             do {
                 _ = try await client.call("login", method: "POST", body: ["username": credential.username, "password": credential.password])
                 authenticated = try await client.establish()
             } catch let failure as AppFailure where failure.statusCode == 401 {
-                CredentialVault.delete()
+                CredentialVault.delete(from: credentialStorage)
                 throw failure
             }
         }
@@ -273,6 +250,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
             status = try await client.call("status") as? [String: Any] ?? [:]
             health = try await client.call("health") as? [[String: Any]] ?? []
             bgp = try await client.call("bgp/status") as? [String: Any] ?? [:]
+            let settings = try await client.call("settings") as? [String: Any] ?? [:]
+            notificationSettings = settings["notifications"] as? [String: Any] ?? [:]
+            backendFailures = 0
+            var activeHealth = health
+            let peerAddresses = Set((bgp["peers"] as? [[String: Any]] ?? []).compactMap { $0["address"] as? String })
+            activeHealth.removeAll { component in
+                guard let name = component["name"] as? String, name.hasPrefix("BGP peer ") else { return false }
+                return !peerAddresses.contains(String(name.dropFirst("BGP peer ".count)))
+            }
+            notificationHealth = activeHealth
+            activeHealth.append(["name": "Management connection", "state": "UP"])
+            serviceNotifications.observe(scope: client.base.absoluteString, name: status["name"] as? String ?? L("本地服务"), health: activeHealth, settings: notificationSettings)
             lastError = ""
             checkBackendVersion()
             if smoke && !smokeStarted {
@@ -319,6 +308,57 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
     }
     func userContentController(_ userContentController: WKUserContentController, didReceive message: WKScriptMessage) {
         let origin = message.frameInfo.securityOrigin
+        let trusted = message.frameInfo.isMainFrame && origin.protocol == client.base.scheme && origin.host == client.base.host?.trimmingCharacters(in: CharacterSet(charactersIn: "[]")) && origin.port == client.base.port
+        if message.name == "routepilotPreferences" {
+            guard trusted, let values = message.body as? [String: Any], let data = try? JSONSerialization.data(withJSONObject: values),
+                  let preferences = try? JSONDecoder().decode(AppPreferences.self, from: data), (1...168).contains(preferences.checkIntervalHours) else { return }
+            let previous = AppPreferences.current
+            AppPreferences.current = preferences
+            if preferences.automaticCheck && (!previous.automaticCheck || preferences.automaticDownload != previous.automaticDownload || preferences.updatePrompts != previous.updatePrompts) {
+                UserDefaults.standard.removeObject(forKey: "releaseUpdateLastCheck")
+            }
+            configurePreferenceSeed(userContentController)
+            Task {
+                if preferences.desktopNotifications && !previous.desktopNotifications {
+                    if !(await DesktopNotifications.shared.authorize()) { alert("通知未授权", "请在 macOS 系统设置 → 通知 → RoutePilot 中允许通知。") }
+                    serviceNotifications.reset()
+                }
+                await checkReleaseUpdate(silent: true)
+            }
+            return
+        }
+        if message.name == "routepilotUpdateAction" {
+            guard trusted, let action = message.body as? String else { return }
+            if action == "check" { Task { await checkReleaseUpdate(silent: false) } }
+            else if action == "install" { performReleaseUpdate() }
+            return
+        }
+        if message.name == "routepilotServiceHealth" {
+            guard trusted, let values = message.body as? [String: Any] else { return }
+            if values["clear"] as? Bool == true { remoteNotificationGeneration += 1; remoteNotificationWatch = nil; return }
+            guard let scope = values["scope"] as? String, scope.count <= 512,
+                  let name = values["name"] as? String, name.count <= 100,
+                  let health = values["health"] as? [[String: Any]], let settings = values["settings"] as? [String: Any] else { return }
+            serviceNotifications.observe(scope: scope, name: name, health: health, settings: settings)
+            if let id = values["backendID"] as? String, !id.isEmpty, id.count <= 64, id.allSatisfy({ $0.isASCII && ($0.isLetter || $0.isNumber || $0 == "_" || $0 == "-") }), let webView {
+                if let watch = remoteNotificationWatch, watch.id == id && watch.scope == scope {
+                    watch.settings = settings; watch.health = health.filter { $0["name"] as? String != "Management connection" }
+                } else {
+                    let base = client.base
+                    remoteNotificationGeneration += 1
+                    let generation = remoteNotificationGeneration
+                    webView.configuration.websiteDataStore.httpCookieStore.getAllCookies { [weak self] cookies in
+                        Task { @MainActor in
+                            guard let self, self.client.base == base, self.remoteNotificationGeneration == generation,
+                                  let cookie = cookies.first(where: { $0.name == "controller_session" && $0.domain.trimmingCharacters(in: CharacterSet(charactersIn: ".[]")) == base.host?.trimmingCharacters(in: CharacterSet(charactersIn: "[]")) }) else { return }
+                            self.remoteNotificationWatch = RemoteNotificationWatch(id: id, scope: scope, name: name, base: base, cookie: cookie, settings: settings)
+                            self.remoteNotificationWatch?.health = health.filter { $0["name"] as? String != "Management connection" }
+                        }
+                    }
+                }
+            }
+            return
+        }
         if message.name == "routepilotCredentials" {
             let host = client.base.host?.trimmingCharacters(in: CharacterSet(charactersIn: "[]"))
             guard message.frameInfo.isMainFrame, origin.protocol == client.base.scheme,
@@ -348,6 +388,45 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
         scripts.forEach { controller.addUserScript($0) }
         let source = marker + "if(!localStorage.getItem('routepilot.locale'))localStorage.setItem('routepilot.locale','\(NativeText.locale)');"
         controller.addUserScript(WKUserScript(source: source, injectionTime: .atDocumentStart, forMainFrameOnly: true))
+    }
+    func configurePreferenceSeed(_ controller: WKUserContentController) {
+        let marker = "/* RoutePilot preferences */"
+        let scripts = controller.userScripts.filter { !$0.source.hasPrefix(marker) }
+        controller.removeAllUserScripts()
+        scripts.forEach { controller.addUserScript($0) }
+        guard let data = try? JSONEncoder().encode(AppPreferences.current), let json = String(data: data, encoding: .utf8) else { return }
+        controller.addUserScript(WKUserScript(source: marker + "window.routepilotNativePreferences=" + json + ";", injectionTime: .atDocumentStart, forMainFrameOnly: true))
+    }
+    func refreshRemoteNotifications() async {
+        guard !refreshingRemoteNotifications, !quitting, !stopping, AppPreferences.current.desktopNotifications,
+              let watch = remoteNotificationWatch else { return }
+        if window?.isVisible == true && window?.isMiniaturized != true { return }
+        refreshingRemoteNotifications = true
+        defer { refreshingRemoteNotifications = false }
+        let path = "management/relay/" + watch.id + "/"
+        do {
+            let health = try await watch.client.call(path + "health") as? [[String: Any]] ?? []
+            let settings = try await watch.client.call(path + "settings") as? [String: Any] ?? [:]
+            let peers = try await watch.client.call(path + "bgp/peers") as? [[String: Any]] ?? []
+            guard remoteNotificationWatch === watch else { return }
+            let routing = settings["routing"] as? [String: Any] ?? [:]
+            let mode = routing["mode"] as? String ?? "bgp"
+            let usesBGP = mode == "bgp" || mode == "hybrid" && (routing["fake_ip_backend"] as? String == "bgp" || routing["dns_backend"] as? String == "bgp")
+            let bgpEnabled = usesBGP && (settings["bgp"] as? [String: Any])?["enabled"] as? Bool == true
+            let active = Set(peers.filter { bgpEnabled && $0["enabled"] as? Bool == true }.compactMap { ($0["address"] as? String).map { "BGP peer " + $0 } })
+            watch.health = health.filter { !($0["name"] as? String ?? "").hasPrefix("BGP peer ") || active.contains($0["name"] as? String ?? "") }
+            watch.settings = settings["notifications"] as? [String: Any] ?? [:]
+            watch.failures = 0
+            serviceNotifications.observe(scope: watch.scope, name: watch.name, health: watch.health + [["name": "Management connection", "state": "UP"]], settings: watch.settings)
+        } catch let failure as AppFailure where failure.statusCode == 401 || failure.statusCode == 403 || failure.statusCode == 404 {
+            if remoteNotificationWatch === watch { remoteNotificationWatch = nil }
+        } catch {
+            guard remoteNotificationWatch === watch else { return }
+            watch.failures += 1
+            if watch.failures >= 3 {
+                serviceNotifications.observe(scope: watch.scope, name: watch.name, health: watch.health + [["name": "Management connection", "state": "DOWN"]], settings: watch.settings)
+            }
+        }
     }
     func startBackend() {
         guard child == nil, !starting, !quitting else { return }
@@ -423,7 +502,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
         menu.addItem(item("清理 DNS 缓存", action: #selector(flushCache), enabled: authenticated))
         menu.addItem(item("从 Surge 导入 Hosts…", action: #selector(importHosts), enabled: authenticated))
         menu.addItem(item(authenticated ? "管理窗口 / 配置本地 DNS…" : "管理窗口 / 登录…", action: #selector(openManagement)))
-        menu.addItem(item("登录状态栏控制…", action: #selector(signIn), enabled: !authenticated))
+        menu.addItem(item("登录状态栏控制…", action: #selector(signIn)))
+        let credentials = item("登录凭证保存方式")
+        let storageMenu = NSMenu(); storageMenu.autoenablesItems = false
+        for storage in CredentialStorage.allCases {
+            let row = item(storage.title, action: #selector(changeCredentialStorage(_:)))
+            row.representedObject = storage.rawValue
+            row.state = CredentialVault.storage == storage ? .on : .off
+            storageMenu.addItem(row)
+        }
+        credentials.submenu = storageMenu
+        menu.addItem(credentials)
         menu.addItem(.separator())
         let login = item("登录时启动", action: #selector(toggleLogin))
         login.state = SMAppService.mainApp.status == .enabled ? .on : .off
@@ -441,8 +530,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
     }
     func checkReleaseUpdate(silent: Bool) async {
         if checkingRelease { return }
+        let preferences = AppPreferences.current
+        if silent && !preferences.automaticCheck { return }
         let lastCheck = UserDefaults.standard.object(forKey: "releaseUpdateLastCheck") as? Date ?? .distantPast
-        if silent && Date().timeIntervalSince(lastCheck) < 12 * 60 * 60 { return }
+        if silent && Date().timeIntervalSince(lastCheck) < Double(preferences.checkIntervalHours * 3600) { return }
         checkingRelease = true
         rebuildMenu()
         defer { checkingRelease = false; rebuildMenu() }
@@ -450,12 +541,23 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
             let latest = try await ReleaseUpdater.latest()
             UserDefaults.standard.set(Date(), forKey: "releaseUpdateLastCheck")
             availableRelease = ReleaseUpdater.newer(latest) ? latest : nil
+            if let release = availableRelease {
+                if silent && preferences.automaticDownload {
+                    do { _ = try await ReleaseUpdater.downloadPackage(from: release) }
+                    catch { if preferences.updatePrompts { alert("自动下载更新失败", error.localizedDescription) } }
+                }
+                if !silent || preferences.updatePrompts && UserDefaults.standard.string(forKey: "releaseUpdateLastNotifiedTag") != release.tagName {
+                    UserDefaults.standard.set(release.tagName, forKey: "releaseUpdateLastNotifiedTag")
+                    alert("发现 RoutePilot 新版本", L("可更新至 {tag}。请在菜单栏选择在线升级；安装前会再次确认。", ["tag": release.tagName]))
+                }
+            }
             if !silent && availableRelease == nil { alert("RoutePilot 已是最新版本", "当前版本：\(Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "未知")") }
         } catch {
             if !silent { alert("检查更新失败", error.localizedDescription) }
         }
     }
     @objc func performReleaseUpdate() {
+        guard !stopping, !checkingRelease else { return }
         Task {
             if availableRelease == nil { await checkReleaseUpdate(silent: false) }
             guard let release = availableRelease else { return }
@@ -513,14 +615,24 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
             } catch { alert("Hosts 导入失败", error.localizedDescription) }
         }
     }
+    @objc func changeCredentialStorage(_ sender: NSMenuItem) {
+        guard let value = sender.representedObject as? String,
+              let storage = CredentialStorage(rawValue: value), storage != CredentialVault.storage else { return }
+        CredentialVault.storage = storage
+        rebuildMenu()
+        // Do not read/migrate the other store: opting out of Keychain must not
+        // cause another Keychain authorization prompt.
+        alert("登录凭证保存方式已修改", L(storage.explanation) + "\n\n" + L("请通过“登录状态栏控制”或管理页面重新登录一次。两种方式的凭证独立保存；切换不会读取或迁移原有凭证。"))
+    }
     @objc func signIn() {
         Task {
             do {
                 _ = try await client.establish()
-                let dialog = NSAlert(); dialog.messageText = L("登录 Controller"); dialog.informativeText = L("登录成功后，凭证将安全保存在 macOS 钥匙串中。")
+                let credentialStorage = CredentialVault.storage
+                let dialog = NSAlert(); dialog.messageText = L("登录 Controller"); dialog.informativeText = L(credentialStorage.explanation)
                 dialog.addButton(withTitle: L("登录")); dialog.addButton(withTitle: L("取消"))
                 let fields = NSView(frame: NSRect(x: 0, y: 0, width: 300, height: 66))
-                let saved = CredentialVault.load()
+                let saved = CredentialVault.load(from: credentialStorage)
                 let username = NSTextField(frame: NSRect(x: 0, y: 38, width: 300, height: 24)); username.stringValue = saved?.username ?? "admin"
                 let password = NSSecureTextField(frame: NSRect(x: 0, y: 4, width: 300, height: 24)); password.placeholderString = L("密码"); password.stringValue = saved?.password ?? ""
                 fields.addSubview(username); fields.addSubview(password); dialog.accessoryView = fields
@@ -528,7 +640,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
                 guard dialog.runModal() == .alertFirstButtonReturn else { return }
                 defer { password.stringValue = "" }
                 _ = try await client.call("login", method: "POST", body: ["username": username.stringValue, "password": password.stringValue])
-                do { try CredentialVault.save(username: username.stringValue, password: password.stringValue) }
+                do { try CredentialVault.save(username: username.stringValue, password: password.stringValue, to: credentialStorage) }
                 catch { alert("登录成功，但凭证未保存", error.localizedDescription) }
                 await refresh()
             } catch { alert("登录失败", error.localizedDescription) }
@@ -544,7 +656,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
             configuration.websiteDataStore = .nonPersistent()
             configuration.userContentController.add(self, name: "routepilotLocale")
             configuration.userContentController.add(self, name: "routepilotCredentials")
+            configuration.userContentController.add(self, name: "routepilotPreferences")
+            configuration.userContentController.add(self, name: "routepilotServiceHealth")
+            configuration.userContentController.add(self, name: "routepilotUpdateAction")
             configureLanguageSeed(configuration.userContentController)
+            configurePreferenceSeed(configuration.userContentController)
             let view = WKWebView(frame: .zero, configuration: configuration)
             view.navigationDelegate = self
             let panel = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 1150, height: 780), styleMask: [.titled, .closable, .miniaturizable, .resizable], backing: .buffered, defer: false)
@@ -719,7 +835,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
             self.quitting = false
             NSApp.reply(toApplicationShouldTerminate: false)
             self.alert("服务仍在停止", "为等待 DNS/BGP/PF 清理，APP 保持运行。可查看服务日志后重试退出。")
-            self.timer = Timer.scheduledTimer(withTimeInterval: 3, repeats: true) { [weak self] _ in Task { @MainActor in await self?.refresh() } }
+            self.timer = Timer.scheduledTimer(withTimeInterval: 3, repeats: true) { [weak self] _ in
+                Task { @MainActor in await self?.refresh() }
+                Task { @MainActor in await self?.refreshRemoteNotifications() }
+            }
         }
         return .terminateLater
     }

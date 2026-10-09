@@ -26,6 +26,7 @@ import (
 	"surge-controller/internal/events"
 	"surge-controller/internal/localdns"
 	"surge-controller/internal/model"
+	"surge-controller/internal/notifications"
 	"surge-controller/internal/remote"
 	"surge-controller/internal/resolver"
 	"surge-controller/internal/routing"
@@ -99,6 +100,10 @@ func (p *policy) Classify(ctx context.Context, q model.DNSQueryContext) (model.D
 }
 
 type Runtime struct {
+	decisionMu                                       sync.Mutex
+	decisionRevision                                 decisionRevision
+	decisionScope                                    string
+	pendingDecisions                                 *decisionCacheSnapshot
 	routingMu                                        sync.RWMutex
 	routingWake                                      chan struct{}
 	hosts                                            *localdns.Resolver
@@ -130,26 +135,31 @@ type Runtime struct {
 	latencySum                                       atomic.Uint64
 }
 type App struct {
-	dnsCounters    dnsserver.Counters
-	statsCancel    context.CancelFunc
-	statsDone      chan struct{}
-	ruleTests      chan struct{}
-	lockFile       *os.File
-	eventRetention atomic.Int64
-	logLevel       slog.LevelVar
-	mu             sync.RWMutex
-	transition     sync.Mutex
-	config         config.Document
-	runtime        *Runtime
-	store          *database.Store
-	bus            *events.Bus
-	security       *security.Manager
-	remote         *remote.Manager
-	control        *api.API
-	ctx            context.Context
-	dir            string
-	webChanged     chan struct{}
-	closing        atomic.Bool
+	notifications      *notifications.Manager
+	notificationCancel context.CancelFunc
+	notificationDone   chan struct{}
+	cachePersistMu     sync.Mutex
+	savedCacheDigest   [32]byte
+	dnsCounters        dnsserver.Counters
+	statsCancel        context.CancelFunc
+	statsDone          chan struct{}
+	ruleTests          chan struct{}
+	lockFile           *os.File
+	eventRetention     atomic.Int64
+	logLevel           slog.LevelVar
+	mu                 sync.RWMutex
+	transition         sync.Mutex
+	config             config.Document
+	runtime            *Runtime
+	store              *database.Store
+	bus                *events.Bus
+	security           *security.Manager
+	remote             *remote.Manager
+	control            *api.API
+	ctx                context.Context
+	dir                string
+	webChanged         chan struct{}
+	closing            atomic.Bool
 }
 
 const managementRecoveryAddress = "127.0.0.1:1055"
@@ -195,10 +205,23 @@ func Open(ctx context.Context, path string) (*App, error) {
 	a.remote = remote.New(func() []config.Backend { return a.Configuration().Settings.RemoteBackends })
 	a.eventRetention.Store(int64(d.Settings.Logging.EventRetention))
 	a.setLogging(d.Settings.Logging.Level)
+	notificationCtx, notificationCancel := context.WithCancel(ctx)
+	a.notificationCancel = notificationCancel
+	a.notificationDone = make(chan struct{})
+	a.notifications = notifications.New(a.event)
+	go func() { defer close(a.notificationDone); a.notifications.Run(notificationCtx) }()
 	a.control = &api.API{Service: a, Store: a.store, Bus: a.bus}
 	go a.control.RunRouteFeedScheduler(ctx)
-	rt, e := a.build(d)
+	var savedDecisions decisionCacheSnapshot
+	if err := store.LoadDecisionCache(ctx, &savedDecisions); err != nil {
+		// Cache corruption must not prevent management or fallback DNS startup.
+		slog.Warn("Saved decision cache could not be loaded; starting empty", "error", err)
+		savedDecisions = decisionCacheSnapshot{}
+	}
+	rt, e := a.build(d, &savedDecisions)
 	if e != nil {
+		a.notificationCancel()
+		<-a.notificationDone
 		store.Close()
 		return nil, e
 	}
@@ -233,7 +256,7 @@ func (a *App) Configuration() config.Document {
 	defer a.mu.RUnlock()
 	return a.config.Clone()
 }
-func (a *App) build(d config.Document) (rt *Runtime, err error) {
+func (a *App) build(d config.Document, saved ...*decisionCacheSnapshot) (rt *Runtime, err error) {
 	if err = d.Validate(); err != nil {
 		return nil, err
 	}
@@ -281,6 +304,11 @@ func (a *App) build(d config.Document) (rt *Runtime, err error) {
 	}
 	rt.policy = &policy{engine: rt.engine, realIPDomains: rt.adapter}
 	rt.policy.update(s.General.Mode, d.Overrides)
+	rt.decisionScope = decisionCacheScope(d)
+	if len(saved) > 0 && saved[0] != nil && saved[0].Version == 1 && saved[0].Scope == rt.decisionScope && saved[0].Digest != "" {
+		copy := *saved[0]
+		rt.pendingDecisions = &copy
+	}
 	rt.hosts = localdns.New(d.Hosts)
 	maxFakeTTL := uint32(s.Health.GraceSeconds)
 	rt.dispatcher = &dnsserver.Dispatcher{SharedCounters: &a.dnsCounters, Local: rt.hosts, RealIPDomains: rt.adapter, FakeTTLMax: &maxFakeTTL, Classifier: rt.policy, Surge: &observedSurge{SurgeAdapter: rt.adapter, rt: rt}, Gate: rt.machine, FakeIssuer: rt.machine, History: dnsserver.NewHistory(s.Logging.HistoryCapacity, s.Logging.QueryHistory && s.Logging.LogDomains)}
@@ -443,7 +471,6 @@ func (a *App) monitor(ctx context.Context, rt *Runtime) {
 	interval := time.Duration(s.Health.IntervalMS) * time.Millisecond
 	ticker := time.NewTicker(interval)
 	defer ticker.Stop()
-	revision := decisionRevision{}
 	previousState := ""
 	rateAt := time.Now()
 	lastPeers := ""
@@ -463,22 +490,17 @@ func (a *App) monitor(ctx context.Context, rt *Runtime) {
 		}
 		run("Surge CLI", func() bool {
 			snapshot, e := rt.adapter.Refresh(probeCtx)
-			reason, selection := revision.observe(snapshot.Digest, snapshot.SelectionDigest, e, s.Cache)
+			reason, restored := rt.observeDecisionRevision(snapshot, e)
 			if reason != "" {
-				if selection {
-					rt.engine.Cache.FlushValuesWhere(func(_ classifier.Key, value model.DecisionResult) bool {
-						return value.Decision == model.Direct && s.Cache.InvalidateDirectOnSelectionChange || value.Decision == model.Reject && s.Cache.InvalidateRejectOnSelectionChange
-					}, reason)
-				} else {
-					rt.engine.Cache.FlushReason(reason)
-					if rt.real != nil {
-						rt.real.Cache.FlushReason(reason)
-					}
-					for _, upstream := range rt.policyResolvers {
-						upstream.Cache.FlushReason(reason)
-					}
-				}
 				a.event("INFO", "cache_invalidation", reason)
+			}
+			if restored > 0 {
+				a.event("INFO", "cache_restore", fmt.Sprintf("已恢复 %d 条持久化决策缓存", restored))
+			}
+			if reason != "" || restored > 0 {
+				if err := a.saveDecisionCache(); err != nil {
+					slog.Error("Decision cache persistence failed", "error", err)
+				}
 			}
 			return e == nil
 		})
@@ -630,6 +652,24 @@ func (a *App) monitor(ctx context.Context, rt *Runtime) {
 			rt.queryRate.Store(current - previous)
 			rateAt = time.Now()
 		}
+		if a.notifications != nil && ctx.Err() == nil {
+			document := a.Configuration()
+			values := rt.health.Values()
+			activePeers := map[string]bool{}
+			for _, peer := range document.Peers {
+				if peer.Enabled {
+					activePeers["BGP peer "+peer.Address] = true
+				}
+			}
+			filtered := values[:0]
+			for _, value := range values {
+				if strings.HasPrefix(value.Name, "BGP peer ") && (!document.Settings.Routing.UsesBGP() || !document.Settings.BGP.Enabled || !activePeers[value.Name]) {
+					continue
+				}
+				filtered = append(filtered, value)
+			}
+			a.notifications.Observe(document.Settings.General.Name, document.Settings.Notifications, filtered)
+		}
 		select {
 		case <-ctx.Done():
 			return
@@ -728,6 +768,8 @@ func (a *App) Apply(ctx context.Context, d config.Document) error {
 	newRuntime.Settings.General = config.General{}
 	oldRuntime.Settings.Security = config.Security{}
 	newRuntime.Settings.Security = config.Security{}
+	oldRuntime.Settings.Notifications = config.Notifications{}
+	newRuntime.Settings.Notifications = config.Notifications{}
 	oldRuntime.Settings.Logging.Level = ""
 	newRuntime.Settings.Logging.Level = ""
 	oldRuntime.Settings.Logging.EventRetention = 0
@@ -851,11 +893,23 @@ func (a *App) Apply(ctx context.Context, d config.Document) error {
 		}
 		a.mu.Lock()
 		a.config = d
-		if !reflect.DeepEqual(old.Hosts, d.Hosts) {
+		hostsChanged := !reflect.DeepEqual(old.Hosts, d.Hosts)
+		policyChanged := old.Settings.General.Mode != d.Settings.General.Mode || !reflect.DeepEqual(old.Overrides, d.Overrides)
+		if hostsChanged || policyChanged {
+			a.runtime.decisionMu.Lock()
+			a.runtime.pendingDecisions = nil
+			a.runtime.decisionScope = decisionCacheScope(d)
+		}
+		if hostsChanged {
 			a.runtime.hosts.Update(d.Hosts)
 		}
-		if old.Settings.General.Mode != d.Settings.General.Mode || !reflect.DeepEqual(old.Overrides, d.Overrides) {
+		if policyChanged {
 			a.runtime.policy.update(d.Settings.General.Mode, d.Overrides)
+		} else if hostsChanged {
+			a.runtime.engine.Cache.FlushReason("本地 DNS 条目已更新")
+		}
+		if hostsChanged || policyChanged {
+			a.runtime.decisionMu.Unlock()
 		}
 		if old.Settings.General.Mode != d.Settings.General.Mode {
 			a.runtime.machine.SetMode(d.Settings.General.Mode)
@@ -867,6 +921,9 @@ func (a *App) Apply(ctx context.Context, d config.Document) error {
 	}
 	a.eventRetention.Store(int64(d.Settings.Logging.EventRetention))
 	a.setLogging(d.Settings.Logging.Level)
+	if err := a.saveDecisionCache(); err != nil {
+		slog.Error("Configuration applied, but decision cache persistence failed", "error", err)
+	}
 	a.event("INFO", "configuration", "Configuration applied")
 	if webChange {
 		select {
@@ -917,27 +974,59 @@ func (a *App) CacheView(ctx context.Context, offset, limit int, domain, decision
 	return a.cacheViewLocked(a.runtime, offset, limit, domain, decision), nil
 }
 func (a *App) cacheViewLocked(rt *Runtime, offset, limit int, domain, decision string) any {
+	rt.decisionMu.Lock()
+	pending := rt.pendingDecisions != nil
+	rt.decisionMu.Unlock()
 	rows, total := rt.engine.Cache.Page(offset, limit, func(d model.DecisionResult) bool {
 		return (domain == "" || strings.Contains(d.Domain, strings.ToLower(domain))) && (decision == "" || string(d.Decision) == decision)
 	})
-	return map[string]any{"stats": rt.engine.Cache.Stats(), "entries": rows, "total": total, "offset": offset, "limit": limit, "capacity": rt.settings.Settings.Cache.Capacity, "ttl": rt.settings.Settings.Cache}
+	return map[string]any{"stats": rt.engine.Cache.Stats(), "entries": rows, "total": total, "offset": offset, "limit": limit, "capacity": rt.settings.Settings.Cache.Capacity, "ttl": rt.settings.Settings.Cache, "restoration_pending": pending}
 }
 func (a *App) Flush(ctx context.Context, domain string) error {
-	a.mu.RLock()
-	defer a.mu.RUnlock()
-	rt := a.runtime
-	if domain == "" {
-		rt.engine.Cache.FlushReason("用户手动清理全部决策缓存")
-	} else {
-		if e := rt.engine.FlushDomain(domain); e != nil {
-			return e
+	a.transition.Lock()
+	defer a.transition.Unlock()
+	if a.closing.Load() {
+		return errors.New("Controller is stopping")
+	}
+	if domain != "" {
+		var err error
+		domain, err = model.NormalizeDomain(domain)
+		if err != nil {
+			return err
 		}
 	}
+	a.mu.RLock()
+	rt := a.runtime
+	rt.decisionMu.Lock()
+	if domain == "" {
+		rt.engine.Cache.FlushReason("用户手动清理全部决策缓存")
+		rt.pendingDecisions = nil
+	} else {
+		if e := rt.engine.FlushDomain(domain); e != nil {
+			rt.decisionMu.Unlock()
+			a.mu.RUnlock()
+			return e
+		}
+		if pending := rt.pendingDecisions; pending != nil {
+			kept := make([]decisionRecord, 0, len(pending.Entries))
+			for _, record := range pending.Entries {
+				if record.Key.Domain != domain {
+					kept = append(kept, record)
+				}
+			}
+			pending.Entries = kept
+		}
+	}
+	rt.decisionMu.Unlock()
 	if rt.real != nil {
 		rt.real.Cache.Flush()
 	}
 	for _, upstream := range rt.policyResolvers {
 		upstream.Cache.Flush()
+	}
+	a.mu.RUnlock()
+	if err := a.saveDecisionCache(); err != nil {
+		return err
 	}
 	a.event("INFO", "cache_flush", "DNS caches invalidated")
 	return nil
@@ -1145,12 +1234,17 @@ func (a *App) Close() error {
 		<-a.statsDone
 		statsErr = a.saveDNSStatistics(a.dnsCounters.Snapshot())
 	}
+	cacheErr := a.saveDecisionCache()
+	if a.notificationCancel != nil {
+		a.notificationCancel()
+		<-a.notificationDone
+	}
 	if runtimeErr != nil {
 		a.event("CRITICAL", "shutdown_cleanup", "Controller stopped; managed route/PF cleanup requires inspection")
 	} else {
 		a.event("INFO", "shutdown", "Controller stopped; managed routing resources released; external static routes unchanged")
 	}
-	e := errors.Join(runtimeErr, statsErr, a.store.Close())
+	e := errors.Join(runtimeErr, statsErr, cacheErr, a.store.Close())
 	if a.lockFile != nil {
 		_ = syscall.Flock(int(a.lockFile.Fd()), syscall.LOCK_UN)
 		_ = a.lockFile.Close()
