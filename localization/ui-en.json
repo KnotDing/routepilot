@@ -720,5 +720,10 @@
   "正在连接或处理…": "Connecting or working…",
   "后台独立运行，不会随 App 退出。": "The backend runs independently and does not quit with the app.",
   "同时停止 App 启动的临时后台。": "Also stops the temporary backend started by the app.",
-  "查看路由发布、配置状态与本机连通性诊断": "View route publication, configuration state and local connectivity diagnostics"
+  "查看路由发布、配置状态与本机连通性诊断": "View route publication, configuration state and local connectivity diagnostics",
+  "路由": "Routing",
+  "路由方式": "Routing method",
+  "Fake-IP 路由方式": "Fake-IP routing method",
+  "DNS 拦截路由方式": "DNS interception method",
+  "BGP 未启用。DNS 分流继续运行；外部静态路由状态请在“路由”查看。": "BGP is disabled. DNS classification remains active. View external static routes on the Routing page."
 }

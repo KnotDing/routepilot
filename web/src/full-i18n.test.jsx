@@ -28,7 +28,7 @@ function noUntranslatedText(){const texts=[];const walker=document.createTreeWal
 afterEach(()=>{cleanup();localStorage.clear();sessionStorage.clear();selectBackend('');vi.unstubAllGlobals();document.documentElement.lang='zh-CN'});
 it('localizes every page, settings category, editor and query detail through the global preference',async()=>{
  localStorage.setItem('routepilot.locale','en');vi.stubGlobal('EventSource',class{addEventListener(){}close(){}});vi.stubGlobal('fetch',vi.fn(async url=>({ok:true,status:200,json:async()=>fixture(String(url).replace('/api/v1/',''))})));render(<App/>);await screen.findByRole('heading',{level:1,name:'Dashboard'});await screen.findByText('DNS and routing');
- const pages=['DNS overview','Query history','Decision cache','DNS interception','Local DNS','Domain overrides','Rule test','Routing backend','BGP overview','BGP neighbors','Manual routes','Health status','Events','Settings'];
+ const pages=['DNS overview','Query history','Decision cache','DNS interception','Local DNS','Domain overrides','Rule test','Routing','BGP overview','BGP neighbors','Manual routes','Health status','Events','Settings'];
  for(const [index,page] of pages.entries()){
   fireEvent.click(screen.getByRole('navigation').querySelectorAll('button')[index+1]);await screen.findByRole('heading',{level:1,name:page});await waitFor(noUntranslatedText);
   if(['DNS interception','Local DNS','Domain overrides','BGP neighbors','Manual routes'].includes(page)){fireEvent.click(screen.getByRole('button',{name:'＋ Add'}));noUntranslatedText();fireEvent.click(screen.getByRole('button',{name:'Close'}))}
@@ -38,7 +38,7 @@ it('localizes every page, settings category, editor and query detail through the
   if(page==='BGP neighbors'){fireEvent.click(screen.getByRole('button',{name:'Preview FRR configuration'}));await screen.findByText(/Mac's reachable address/);noUntranslatedText()}
   if(page==='Settings')for(let category=1;category<=12;category++){fireEvent.click(document.querySelector('.tabs button:nth-child('+category+')'));noUntranslatedText()}
  }
- fireEvent.click(screen.getByRole('button',{name:'Local service · Switch'}));await screen.findByRole('dialog',{name:'Manage backends'});noUntranslatedText();fireEvent.click(screen.getByRole('button',{name:'Add remote backend'}));noUntranslatedText();expect(screen.getAllByLabelText(/页面语言|Page language/)).toHaveLength(1);
+ fireEvent.click(screen.getByRole('button',{name:'Local service · Switch'}));await screen.findByRole('dialog',{name:'Manage backends'});noUntranslatedText();fireEvent.click(screen.getByRole('button',{name:'Add remote backend'}));noUntranslatedText();expect(screen.queryAllByLabelText(/页面语言|Page language/)).toHaveLength(0);
 });
 it('formats diagnostics without changing domain names, policy values, or DNS records',()=>{expect(translate('第 {line} 行：{reason}',{line:12,reason:'example.com'},'en')).toBe('Line 12: example.com');expect(message('Surge 有效配置或外部资源已确认更新','en')).toMatch(/changed/);expect(message('Surge evaluation reported context or resolution limitations','zh-CN')).toBe('Surge 求值存在连接上下文或解析限制');expect(message('example.com. 60 IN A 192.0.2.10','zh-CN')).toBe('example.com. 60 IN A 192.0.2.10')});
 it('uses localized diagnostic templates for nested resolver failures',()=>{
@@ -61,4 +61,32 @@ it('shows never for unset health times and rounds monitoring latency to integer 
  expect(within(rows[2]).getByRole('cell',{name:'2',exact:true})).toBeInTheDocument();
  expect(screen.queryByText('0001-01-01T00:00:00Z')).not.toBeInTheDocument();
  expect(screen.queryByText('1.49')).not.toBeInTheDocument();
+});
+
+
+it('keeps language in settings and global controls in the sidebar',async()=>{
+ let mode='auto';
+ const fetch=vi.fn(async(url,options)=>{
+  const path=String(url).replace('/api/v1/','');
+  if(path==='mode'&&options.method==='PUT')mode=JSON.parse(options.body).mode;
+  const value=path==='status'?{...fixture(path),mode}:fixture(path);
+  return {ok:true,status:200,json:async()=>value};
+ });
+ vi.stubGlobal('fetch',fetch);vi.stubGlobal('EventSource',class{addEventListener(){}close(){}});
+ render(<App/>);await screen.findByRole('heading',{level:1,name:'仪表盘'});await screen.findByText('DNS 与路由');
+ const sidebar=document.querySelector('.desktop-sidebar'),topbar=document.querySelector('.topbar');
+ expect(topbar.querySelectorAll('select,button')).toHaveLength(0);
+ expect(screen.queryAllByLabelText(/页面语言|Page language/)).toHaveLength(0);
+ expect(document.querySelector('.connection-banner')).toBeNull();
+ expect(within(sidebar.querySelector('.aside-foot')).getByRole('button',{name:'退出',exact:true})).toBeInTheDocument();
+ expect(within(sidebar.querySelector('.aside-foot')).getByRole('button',{name:'本地服务 · 切换',exact:true})).toBeInTheDocument();
+ const selection=within(sidebar).getByRole('combobox',{name:'全局模式'});
+ expect(selection.closest('.nav-heading')).toHaveTextContent('总览');
+ fireEvent.change(selection,{target:{value:'force-direct'}});
+ await waitFor(()=>expect(selection).toHaveValue('force-direct'));
+ expect(fetch.mock.calls.some(([url,options])=>String(url).endsWith('/mode')&&options.method==='PUT'&&JSON.parse(options.body).mode==='force-direct')).toBe(true);
+ fireEvent.click(within(sidebar).getByRole('button',{name:'设置',exact:true}));
+ expect(screen.getAllByLabelText(/页面语言|Page language/)).toHaveLength(1);
+ fireEvent.click(screen.getByRole('button',{name:'DNS',exact:true}));
+ expect(screen.queryAllByLabelText(/页面语言|Page language/)).toHaveLength(0);
 });

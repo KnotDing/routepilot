@@ -13,7 +13,9 @@ export function DNSSettingsFields({entries,renderField}){
   {sections.map(section=>{
    const fields=section.fields.filter(name=>values.has(name));
    if(!fields.length)return null;
-   return <section className={`form-section dns-${section.name}`} key={section.name}><h3>{section.title[locale]||section.title['zh-CN']}</h3><div className="form-grid">{fields.map(name=>renderField([name,values.get(name)]))}</div></section>;
+   const switches=fields.filter(name=>typeof values.get(name)==='boolean');
+   const inputs=fields.filter(name=>typeof values.get(name)!=='boolean');
+   return <section className={`form-section dns-${section.name}`} key={section.name}><header className="form-section-header"><h3>{section.title[locale]||section.title['zh-CN']}</h3><div className="option-grid">{switches.map(name=>renderField([name,values.get(name)]))}</div></header><div className="form-grid">{inputs.map(name=>renderField([name,values.get(name)]))}</div></section>;
   })}
   {entries.filter(([name])=>!known.has(name)).map(entry=><div className="form-grid" key={entry[0]}>{renderField(entry)}</div>)}
  </div>;

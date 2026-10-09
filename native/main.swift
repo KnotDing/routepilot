@@ -54,7 +54,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
     var statusItem: NSStatusItem!
     var statusMenuOpen = false
     var menuBrandImage: NSImage?
-    var menuStatusImages: [StatusBarVisualState: NSImage] = [:]
+    var statusIconAnimator: StatusBarIconAnimator?
     var window: NSWindow?
     var webView: WKWebView?
     var child: Process?
@@ -149,6 +149,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
             button.image?.size = NSSize(width: 18, height: 18)
             button.image?.isTemplate = true
             button.toolTip = "RoutePilot · " + L("正在连接…")
+            statusIconAnimator = StatusBarIconAnimator(button: button, brand: menuBrandImage)
         }
         rebuildMenu()
         timer = Timer.scheduledTimer(withTimeInterval: 3, repeats: true) { [weak self] _ in
@@ -320,8 +321,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
     }
     func updateToolTip() {
         let visual = serviceVisualState
-        if menuStatusImages[visual] == nil { menuStatusImages[visual] = visual.image(brand: menuBrandImage) }
-        statusItem.button?.image = menuStatusImages[visual]
+        statusIconAnimator?.setState(visual)
         let summary = "RoutePilot · " + L(visual.label)
         statusItem.button?.setAccessibilityLabel(summary)
         statusItem.button?.toolTip = summary + "\n" + (lastError.isEmpty ? stateText(status["state"] ?? "—") + " · " + stateText(status["mode"] ?? "auto") : L(lastError))
@@ -987,6 +987,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
         }
         return !process.isRunning
     }
+    func applicationWillTerminate(_ notification: Notification) { statusIconAnimator?.stop() }
     @objc func quit() { NSApp.terminate(nil) }
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
         timer?.invalidate()

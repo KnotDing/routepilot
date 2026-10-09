@@ -28,14 +28,14 @@ it('opens an existing local DNS entry for wildcard editing',()=>{
 
 it('exposes static confirmations and independent hybrid backends',()=>{
  const settings={routing:{mode:'static',fake_ip_backend:'static',dns_backend:'static',static_fake_ip_configured:false,static_dns_interception:false,static_dns_configured:false}};
- render(<Settings settings={settings} refresh={()=>{}} notify={()=>{}}/>);fireEvent.click(screen.getByRole('button',{name:'路由后端',exact:true}));
+ render(<Settings settings={settings} refresh={()=>{}} notify={()=>{}}/>);fireEvent.click(screen.getByRole('button',{name:'路由',exact:true}));
  expect(screen.getByLabelText('Fake-IP 路由已在网关配置')).not.toBeChecked();
  fireEvent.click(screen.getByLabelText('启用静态 DNS 拦截'));
  expect(screen.getByLabelText('DNS 拦截路由已在网关配置')).not.toBeChecked();
  fireEvent.change(screen.getByLabelText('路由模式'),{target:{value:'hybrid'}});
- expect(screen.getByLabelText('Fake-IP 路由后端')).toHaveValue('static');
- fireEvent.change(screen.getByLabelText('DNS 拦截路由后端'),{target:{value:'bgp'}});
- expect(screen.getByLabelText('DNS 拦截路由后端')).toHaveValue('bgp');
+ expect(screen.getByLabelText('Fake-IP 路由方式')).toHaveValue('static');
+ fireEvent.change(screen.getByLabelText('DNS 拦截路由方式'),{target:{value:'bgp'}});
+ expect(screen.getByLabelText('DNS 拦截路由方式')).toHaveValue('bgp');
 });
 
 it('defaults DIRECT conservatism on and saves an explicit opt-out',async()=>{
@@ -60,7 +60,7 @@ it('keeps routing configuration in settings and preserves it when saving other c
  const fetch=vi.fn(async(url,options)=>({ok:true,status:200,json:async()=>({settings:JSON.parse(options.body)})}));
  vi.stubGlobal('fetch',fetch);
  render(<Settings settings={settings} refresh={()=>{}} notify={()=>{}}/>);
- expect(screen.getByRole('button',{name:'路由后端',exact:true})).toBeInTheDocument();
+ expect(screen.getByRole('button',{name:'路由',exact:true})).toBeInTheDocument();
  expect(screen.queryByLabelText('路由模式')).not.toBeInTheDocument();
  fireEvent.change(screen.getByLabelText('名称'),{target:{value:'Updated'}});
  fireEvent.click(screen.getByRole('button',{name:'保存设置'}));
@@ -93,7 +93,7 @@ it('exposes independent long-lived cache invalidation settings',()=>{
 
 it('translates all cache settings and shares language with the routing page',()=>{
  localStorage.setItem('routepilot.locale','en');
- render(<><LanguageSelector/><Settings settings={{cache:{expire_decisions:false,invalidate_on_read_failure:false,invalidate_direct_on_selection_change:true,invalidate_reject_on_selection_change:true,capacity:10000,unknown_ttl_seconds:10,error_ttl_seconds:1}}} refresh={()=>{}} notify={()=>{}}/></>);fireEvent.click(screen.getByRole('button',{name:'Cache'}));
+ render(<><Settings settings={{cache:{expire_decisions:false,invalidate_on_read_failure:false,invalidate_direct_on_selection_change:true,invalidate_reject_on_selection_change:true,capacity:10000,unknown_ttl_seconds:10,error_ttl_seconds:1}}} refresh={()=>{}} notify={()=>{}}/></>);fireEvent.click(screen.getByRole('button',{name:'Cache'}));
  expect(screen.getByText('Cache settings')).toBeInTheDocument();expect(screen.getByLabelText('Expire stable decisions by TTL')).not.toBeChecked();expect(screen.getByLabelText('Invalidate on config read failure')).not.toBeChecked();expect(screen.getByLabelText('Invalidate DIRECT on selection change')).toBeChecked();expect(screen.getByLabelText('Invalidate REJECT on selection change')).toBeChecked();expect(screen.getByRole('button',{name:'Save settings'})).toBeInTheDocument();
- fireEvent.change(screen.getByLabelText(/页面语言|Page language/),{target:{value:'zh-CN'}});expect(screen.getByLabelText('按 TTL 定时过期稳定决策')).toBeInTheDocument();
+ fireEvent.click(screen.getByRole('button',{name:'General',exact:true}));fireEvent.change(screen.getByLabelText(/页面语言|Page language/),{target:{value:'zh-CN'}});fireEvent.click(screen.getByRole('button',{name:'缓存',exact:true}));expect(screen.getByLabelText('按 TTL 定时过期稳定决策')).toBeInTheDocument();
 });

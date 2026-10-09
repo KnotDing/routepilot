@@ -9,11 +9,11 @@ afterEach(()=>{cleanup();localStorage.clear();vi.unstubAllGlobals();document.doc
 
 it('uses one global preference across pages and backends without saving settings or losing edits',()=>{
  const fetch=vi.fn(),nativeLocale=vi.fn();vi.stubGlobal('fetch',fetch);vi.stubGlobal('webkit',{messageHandlers:{routepilotLocale:{postMessage:nativeLocale}}});
- render(<><LanguageSelector/><Settings settings={{general:{name:'Controller'},cache:{expire_decisions:false}}} refresh={()=>{}} notify={()=>{}}/><RoutingPanel settings={{routing:{mode:'static'},dns:{interception_enabled:false}}} snapshot={{routes:[]}} refresh={()=>{}} notify={()=>{}}/><About status={{software:{version:'1.0',build:'1',os:'linux',arch:'amd64'}}}/></>);
+ render(<><Settings settings={{general:{name:'Controller'},cache:{expire_decisions:false}}} refresh={()=>{}} notify={()=>{}}/><RoutingPanel settings={{routing:{mode:'static'},dns:{interception_enabled:false}}} snapshot={{routes:[]}} refresh={()=>{}} notify={()=>{}}/><About status={{software:{version:'1.0',build:'1',os:'linux',arch:'amd64'}}}/></>);
  expect(screen.getAllByLabelText(/页面语言|Page language/)).toHaveLength(1);
  fireEvent.change(screen.getByLabelText('名称'),{target:{value:'Unsaved'}});
  fireEvent.change(screen.getByLabelText(/页面语言|Page language/),{target:{value:'en'}});
- expect(screen.getByRole('button',{name:'Routing backend',exact:true})).toBeInTheDocument();expect(screen.getByText('Current backend')).toBeInTheDocument();expect(screen.getByLabelText('Name')).toHaveValue('Unsaved');expect(fetch).not.toHaveBeenCalled();expect(nativeLocale).toHaveBeenCalledExactlyOnceWith('en');
+ expect(screen.getByRole('button',{name:'Routing',exact:true})).toBeInTheDocument();expect(screen.getByText('Current backend')).toBeInTheDocument();expect(screen.getByLabelText('Name')).toHaveValue('Unsaved');expect(fetch).not.toHaveBeenCalled();expect(nativeLocale).toHaveBeenCalledExactlyOnceWith('en');
  expect(localStorage.getItem('routepilot.locale')).toBe('en');expect(document.documentElement.lang).toBe('en');
  cleanup();
  render(<><LanguageSelector/><About backend={{name:'Remote',url:'https://192.0.2.1:1055'}} status={{}}/></>);

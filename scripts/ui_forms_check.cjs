@@ -41,8 +41,8 @@ const fixture=Function(source.slice(source.indexOf('const settings='),source.ind
   const overflow=await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth+1);
   if(overflow)throw Error(name+' overflows the viewport');
  }
- const pages=['仪表盘','DNS 概览','查询记录','决策缓存','DNS 拦截','本地 DNS','域名覆盖','规则测试','路由后端','BGP 概览','BGP 邻居','手动路由','健康状态','事件','设置'];
- const categories=['通用','DNS','Surge','路由后端','BGP','缓存','健康','日志与隐私','安全','软件更新','通知','关于'];
+ const pages=['仪表盘','DNS 概览','查询记录','决策缓存','DNS 拦截','本地 DNS','域名覆盖','规则测试','路由','BGP 概览','BGP 邻居','手动路由','健康状态','事件','设置'];
+ const categories=['通用','DNS','Surge','路由','BGP','缓存','健康','日志与隐私','安全','软件更新','通知','关于'];
  for(const width of [1440,1120,390]){
   await page.setViewportSize({width,height:1000});
   for(const label of pages){await go(label);await check(width+' '+label);}
@@ -51,7 +51,7 @@ const fixture=Function(source.slice(source.indexOf('const settings='),source.ind
   await go('设置');await page.locator('.tabs').getByRole('button',{name:'DNS',exact:true}).click();await page.screenshot({path:out+'/dns-settings-'+width+'.png',fullPage:true});
   await page.locator('.tabs').getByRole('button',{name:'缓存',exact:true}).click();await page.screenshot({path:out+'/cache-settings-'+width+'.png',fullPage:true});
   if(width>1000){const boxes=await page.locator('.option-grid > .check').evaluateAll(items=>items.map(el=>el.getBoundingClientRect().y));if(new Set(boxes).size===boxes.length)throw Error('Cache switches did not share rows');}
-  await page.locator('.tabs').getByRole('button',{name:'路由后端',exact:true}).click();await page.screenshot({path:out+'/routing-settings-'+width+'.png',fullPage:true});
+  await page.locator('.tabs').getByRole('button',{name:'路由',exact:true}).click();await page.screenshot({path:out+'/routing-settings-'+width+'.png',fullPage:true});
   await page.locator('.tabs').getByRole('button',{name:'安全',exact:true}).click();await page.getByLabel('启用管理认证',{exact:true}).uncheck();await page.getByLabel('启用管理认证',{exact:true}).check();
   if(!(await page.getByLabel('新密码（至少 12 字节）',{exact:true}).getAttribute('required')!==null))throw Error('Initial password requirement did not update');
   await page.screenshot({path:out+'/security-'+width+'.png',fullPage:true});
