@@ -28,7 +28,7 @@ it('opens an existing local DNS entry for wildcard editing',()=>{
 
 it('exposes static confirmations and independent hybrid backends',()=>{
  const settings={routing:{mode:'static',fake_ip_backend:'static',dns_backend:'static',static_fake_ip_configured:false,static_dns_interception:false,static_dns_configured:false}};
- render(<RoutingPanel settings={settings} snapshot={{routes:[]}} refresh={()=>{}} notify={()=>{}}/>);
+ render(<Settings settings={settings} refresh={()=>{}} notify={()=>{}}/>);fireEvent.click(screen.getByRole('button',{name:'路由后端',exact:true}));
  expect(screen.getByLabelText('Fake-IP 路由已在网关配置')).not.toBeChecked();
  fireEvent.click(screen.getByLabelText('启用静态 DNS 拦截'));
  expect(screen.getByLabelText('DNS 拦截路由已在网关配置')).not.toBeChecked();
@@ -54,13 +54,13 @@ it('defaults DIRECT conservatism on and saves an explicit opt-out',async()=>{
  expect(screen.getByText(/未来连接仍可能命中不同策略/)).toBeInTheDocument();
 });
 
-it('keeps routing configuration on its dedicated page and preserves it when saving other settings',async()=>{
+it('keeps routing configuration in settings and preserves it when saving other categories',async()=>{
  const routing={mode:'hybrid',fake_ip_backend:'static',dns_backend:'bgp',static_fake_ip_configured:true};
  const settings={general:{web_listen:'127.0.0.1:1055',name:'Controller'},routing,security:{tls_cert:''}};
  const fetch=vi.fn(async(url,options)=>({ok:true,status:200,json:async()=>({settings:JSON.parse(options.body)})}));
  vi.stubGlobal('fetch',fetch);
  render(<Settings settings={settings} refresh={()=>{}} notify={()=>{}}/>);
- expect(screen.queryByRole('button',{name:'路由后端',exact:true})).not.toBeInTheDocument();
+ expect(screen.getByRole('button',{name:'路由后端',exact:true})).toBeInTheDocument();
  expect(screen.queryByLabelText('路由模式')).not.toBeInTheDocument();
  fireEvent.change(screen.getByLabelText('名称'),{target:{value:'Updated'}});
  fireEvent.click(screen.getByRole('button',{name:'保存设置'}));

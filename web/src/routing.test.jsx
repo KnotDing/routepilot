@@ -9,7 +9,7 @@ it('localizes route controls and external state without exposing verbose backend
  expect(screen.queryByText('VERY LONG RAW GUIDE')).not.toBeInTheDocument();expect(screen.queryByText('VERY LONG RAW LIMITATION')).not.toBeInTheDocument();
  expect(screen.getByText('未知（外部）')).toBeInTheDocument();expect(document.querySelector('.routing-probe')).not.toHaveAttribute('open');
  fireEvent.change(screen.getByLabelText(/页面语言|Page language/),{target:{value:'en'}});
- expect(screen.getByLabelText('Routing mode')).toHaveValue('static');expect(screen.getByText('Unknown (external)')).toBeInTheDocument();expect(screen.getByLabelText('Fake-IP routes configured on the gateway')).toBeChecked();
+ expect(screen.queryByLabelText('Routing mode')).not.toBeInTheDocument();expect(screen.getByText('Unknown (external)')).toBeInTheDocument();expect(screen.queryByLabelText('Fake-IP routes configured on the gateway')).not.toBeInTheDocument();
  expect(screen.queryByText('operator-confirmed')).not.toBeInTheDocument();expect(localStorage.getItem('routepilot.locale')).toBe('en');
 });
 it('shows route publication state separately from optional local TCP diagnostics',()=>{

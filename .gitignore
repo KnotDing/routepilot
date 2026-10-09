@@ -6,3 +6,5 @@
 /artifacts/
 node_modules/
 __pycache__/
+
+/web/dist-native/

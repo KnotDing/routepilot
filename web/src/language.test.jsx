@@ -13,7 +13,7 @@ it('uses one global preference across pages and backends without saving settings
  expect(screen.getAllByLabelText(/页面语言|Page language/)).toHaveLength(1);
  fireEvent.change(screen.getByLabelText('名称'),{target:{value:'Unsaved'}});
  fireEvent.change(screen.getByLabelText(/页面语言|Page language/),{target:{value:'en'}});
- expect(screen.getByLabelText('Routing mode')).toBeInTheDocument();expect(screen.getByText('Current backend')).toBeInTheDocument();expect(screen.getByLabelText('Name')).toHaveValue('Unsaved');expect(fetch).not.toHaveBeenCalled();expect(nativeLocale).toHaveBeenCalledExactlyOnceWith('en');
+ expect(screen.getByRole('button',{name:'Routing backend',exact:true})).toBeInTheDocument();expect(screen.getByText('Current backend')).toBeInTheDocument();expect(screen.getByLabelText('Name')).toHaveValue('Unsaved');expect(fetch).not.toHaveBeenCalled();expect(nativeLocale).toHaveBeenCalledExactlyOnceWith('en');
  expect(localStorage.getItem('routepilot.locale')).toBe('en');expect(document.documentElement.lang).toBe('en');
  cleanup();
  render(<><LanguageSelector/><About backend={{name:'Remote',url:'https://192.0.2.1:1055'}} status={{}}/></>);

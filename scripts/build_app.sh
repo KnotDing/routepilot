@@ -24,6 +24,7 @@ fi
 cp bin/surge-controller "$app_dir/Contents/Resources/Service/bin/"
 cp scripts/install_macos.sh scripts/uninstall_macos.sh scripts/update_macos.sh scripts/upgrade_app_macos.sh "$app_dir/Contents/Resources/Service/scripts/"
 cp launchd/com.routepilot.surge-controller.plist "$app_dir/Contents/Resources/Service/launchd/"
+cp -R web/dist-native "$app_dir/Contents/Resources/ReleaseNotes"
 cp README.md "$app_dir/Contents/Resources/README.md"
 cp localization/*.json "$app_dir/Contents/Resources/"
 cp internal/config/notification-events.json "$app_dir/Contents/Resources/"

@@ -1,4 +1,5 @@
-import React,{useEffect,useRef,useState} from 'react';
+import React,{useEffect,useRef,useState,lazy,Suspense} from 'react';
+const ReleaseNotes=lazy(()=>import('./release-notes').then(module=>({default:module.ReleaseNotes})));
 import {request} from './client';
 import {useT,message} from './i18n';
 
@@ -30,7 +31,7 @@ export function BackendUpdate({backend,capable,software,onReady}){
   const keys=e=>{
    if(e.key==='Escape'){e.preventDefault();setConfirmation(null)}
    if(e.key==='Tab'){
-    const items=[...modal.current.querySelectorAll('button,summary')].filter(el=>!el.disabled),first=items[0],last=items.at(-1);
+    const items=[...modal.current.querySelectorAll('button,summary,a[href]')].filter(el=>!el.disabled&&(!el.closest('details')||el.tagName==='SUMMARY'||el.closest('details').open)),first=items[0],last=items.at(-1);
     if(e.shiftKey&&document.activeElement===first){e.preventDefault();last?.focus()}
     else if(!e.shiftKey&&document.activeElement===last){e.preventDefault();first?.focus()}
    }
@@ -53,6 +54,6 @@ export function BackendUpdate({backend,capable,software,onReady}){
   {update?.reason&&<p>{message(update.reason)}</p>}{update?.error&&<p role="alert">{message(update.error)}</p>}{error&&<p role="alert">{error}</p>}
   <div className="toolbar"><button type="button" disabled={busy||active(update?.phase)} onClick={()=>check()}>{t(busy?'处理中…':'检查后台更新')}</button>{update?.supported&&update.available&&<button type="button" className="primary" disabled={busy||active(update.phase)} onClick={()=>setConfirmation({version:update.latest,notes:update.release_notes})}>{t('升级远程后台')}</button>}</div>
   <p>{t('由远端从项目 Release 下载并校验安装包，升级后自动重启服务；首次需在远端安装支持在线升级的后台。')}</p>
- </section>{confirmation&&<div className="modal" role="dialog" aria-modal="true" aria-labelledby="backend-update-title" ref={modal}><section className="update-dialog"><header><h2 id="backend-update-title">{t('远程后台更新')} · {confirmation.version}</h2><button type="button" onClick={()=>setConfirmation(null)}>{t('关闭')}</button></header><p>{t('将远程后台 {name} 更新至 {version}。DNS 和 BGP 会短暂中断，配置与数据库保留。是否继续？',{name:backend.name,version:confirmation.version})}</p><details><summary>{t('更新说明')}</summary><div className="release-notes">{confirmation.notes||t('此版本未提供更新说明。')}</div></details><footer><button type="button" onClick={skip}>{t('跳过该版本')}</button><button type="button" data-later onClick={()=>setConfirmation(null)}>{t('稍后升级')}</button><button type="button" className="primary" onClick={()=>install(confirmation.version)}>{t('立即升级')}</button></footer></section></div>}</>;
+ </section>{confirmation&&<div className="modal" role="dialog" aria-modal="true" aria-labelledby="backend-update-title" ref={modal}><section className="update-dialog"><header><h2 id="backend-update-title">{t('远程后台更新')} · {confirmation.version}</h2><button type="button" onClick={()=>setConfirmation(null)}>{t('关闭')}</button></header><p>{t('将远程后台 {name} 更新至 {version}。DNS 和 BGP 会短暂中断，配置与数据库保留。是否继续？',{name:backend.name,version:confirmation.version})}</p><details><summary>{t('更新说明')}</summary><div className="release-notes"><Suspense fallback={<p role="status">{t('处理中…')}</p>}><ReleaseNotes>{confirmation.notes||t('此版本未提供更新说明。')}</ReleaseNotes></Suspense></div></details><footer><button type="button" onClick={skip}>{t('跳过该版本')}</button><button type="button" data-later onClick={()=>setConfirmation(null)}>{t('稍后升级')}</button><button type="button" className="primary" onClick={()=>install(confirmation.version)}>{t('立即升级')}</button></footer></section></div>}</>;
 
 }

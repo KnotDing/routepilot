@@ -43,7 +43,7 @@ RoutePilot 是一款 macOS 状态栏应用，搭配 DNS 控制器和内置 GoBGP
 | ① DNS 出口 | 在「设置 → DNS」填写实际物理出口接口、已分配的 IPv4 / IPv6 源地址、网关和真实上游池。上游填写字面 IP 与端口，DoT 另填证书名称，DoH 填 HTTPS URL。 |
 | ② Surge | 核对 CLI、Fake-IP DNS、Fake-IP 网段和各地址族下一跳。后台以 root 运行时，CLI 会降权到桌面用户，也可指定 Surge 所属用户。 |
 | ③ 防止回流 | 在网关配置高优先级源策略，让 Controller 上游流量走不含拦截路由的 WAN 路径。固定本机出口接口不能替代网关策略；验证后再确认绕行。 |
-| ④ 路由后端 | 选择 BGP、Static 或 Hybrid。BGP 配置全局 ASN、Router ID 和邻居；邻居可复用全局值。Fake-IP 下一跳是 Surge，DNS 拦截下一跳是 Controller。 |
+| ④ 设置 → 路由后端 | 选择 BGP、Static 或 Hybrid。BGP 配置全局 ASN、Router ID 和邻居；邻居可复用全局值。Fake-IP 下一跳是 Surge，DNS 拦截下一跳是 Controller。 |
 | ⑤ 透明拦截 | 添加解析器前缀，填写实际接收接口与具体监听地址（建议端口 1054）。需要 PF 权限，根规则必须可到达 `com.apple/*`；应用仅管理自身锚点。 |
 | ⑥ 切换流量 | 正式切换前关闭 Surge 的全量 `hijack-dns = *:53`，保留原有 `dns-server`。客户端请求必须先经过正常网关；仅更改上游 DNS 无法改变已被 Surge 抢先接收的包路径。 |
 | ⑦ 核对网关 | BGP 邻居达到 ESTABLISHED、路由进入 Adj-RIB-Out 并经过稳定等待后，再核对网关 RIB / FIB 和实际包路径。Static 则需在网关手动安装并确认。 |

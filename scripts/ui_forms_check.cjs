@@ -13,11 +13,12 @@ const fixture=Function(source.slice(source.indexOf('const settings='),source.ind
   const url=new URL(route.request().url());
   if(url.pathname==='/api/v1/events/stream')return route.fulfill({contentType:'text/event-stream',body:': fixture\n\n'});
   if(url.pathname.startsWith('/api/v1/')){
-   const path=url.pathname.slice(8)+url.search;
+   const path=(url.pathname.slice(8)+url.search).replace(/^management\/relay\/preview\//,'');
    let value=fixture(path);
-   if(path==='management/backends')value=[];
+   if(path==='management/backends')value=[{id:'preview',name:'远程预览',url:'http://192.0.2.1:1055'}];
+   if(path==='updates/check')value={current:'0.4.17',latest:'v0.4.18',available:true,supported:true,phase:'idle',release_notes:'## 界面优化\n\n- **Markdown** 渲染更新说明。\n- 紧凑排列开关选项。\n\n查看 [项目发布](https://gitea.knotding.com/knot/routepilot/releases)。\n\n<script>window.untrustedRelease=true</script>\n\n![image](https://example.invalid/image.png)'};
    if(path==='settings')value={...value,cache:{...value.cache,optimistic:false,optimistic_responses:false},notifications:{enabled:true,surge:true,bgp:true,dns:true,controller:true,recovery:true,cooldown_seconds:300,webhook_url:'',webhook_configured:false,errors:[]}};
-   if(path==='status'){value.software={...value.software,...JSON.parse(fs.readFileSync('internal/buildinfo/release.json'))};}
+   if(path==='status'){value.online_update=true;value.software={...value.software,...JSON.parse(fs.readFileSync('internal/buildinfo/release.json'))};}
    if(path==='surge/status'){value.snapshot.ipv6_state='disabled';value.snapshot.always_real_ip_count=61;}
    return route.fulfill({contentType:'application/json',body:JSON.stringify(value)});
   }
@@ -41,13 +42,16 @@ const fixture=Function(source.slice(source.indexOf('const settings='),source.ind
   if(overflow)throw Error(name+' overflows the viewport');
  }
  const pages=['仪表盘','DNS 概览','查询记录','决策缓存','DNS 拦截','本地 DNS','域名覆盖','规则测试','路由后端','BGP 概览','BGP 邻居','手动路由','健康状态','事件','设置'];
- const categories=['通用','DNS','Surge','BGP','缓存','健康','日志与隐私','安全','软件更新','通知','关于'];
+ const categories=['通用','DNS','Surge','路由后端','BGP','缓存','健康','日志与隐私','安全','软件更新','通知','关于'];
  for(const width of [1440,1120,390]){
   await page.setViewportSize({width,height:1000});
   for(const label of pages){await go(label);await check(width+' '+label);}
   for(const label of categories){await page.locator('.tabs').getByRole('button',{name:label,exact:true}).click();await check(width+' '+label);}
   await go('DNS 概览');await page.screenshot({path:out+'/dns-'+width+'.png',fullPage:true});
   await go('设置');await page.locator('.tabs').getByRole('button',{name:'DNS',exact:true}).click();await page.screenshot({path:out+'/dns-settings-'+width+'.png',fullPage:true});
+  await page.locator('.tabs').getByRole('button',{name:'缓存',exact:true}).click();await page.screenshot({path:out+'/cache-settings-'+width+'.png',fullPage:true});
+  if(width>1000){const boxes=await page.locator('.option-grid > .check').evaluateAll(items=>items.map(el=>el.getBoundingClientRect().y));if(new Set(boxes).size===boxes.length)throw Error('Cache switches did not share rows');}
+  await page.locator('.tabs').getByRole('button',{name:'路由后端',exact:true}).click();await page.screenshot({path:out+'/routing-settings-'+width+'.png',fullPage:true});
   await page.locator('.tabs').getByRole('button',{name:'安全',exact:true}).click();await page.getByLabel('启用管理认证',{exact:true}).uncheck();await page.getByLabel('启用管理认证',{exact:true}).check();
   if(!(await page.getByLabel('新密码（至少 12 字节）',{exact:true}).getAttribute('required')!==null))throw Error('Initial password requirement did not update');
   await page.screenshot({path:out+'/security-'+width+'.png',fullPage:true});
@@ -57,6 +61,19 @@ const fixture=Function(source.slice(source.indexOf('const settings='),source.ind
  }
  await page.setViewportSize({width:1440,height:1000});await go('DNS 概览');
  await page.evaluate(()=>document.documentElement.dataset.theme='dark');await page.screenshot({path:out+'/dns-dark.png',fullPage:true});
+ await page.evaluate(()=>{sessionStorage.setItem('routepilot.backend','preview');document.documentElement.dataset.theme='light'});await page.reload();
+ await page.getByRole('button',{name:'升级远程后台',exact:true}).click();
+ const dialog=page.getByRole('dialog',{name:/远程后台更新/});await dialog.locator('summary').click();
+ await dialog.getByRole('heading',{name:'界面优化',exact:true}).waitFor();
+ if(await dialog.locator('li').count()!==2||await dialog.locator('strong').count()!==1)throw Error('Release Markdown structure missing');
+ if(await page.evaluate(()=>Boolean(window.untrustedRelease))||await dialog.locator('img,script').count())throw Error('Unsafe release content rendered');
+ for(const width of [1440,390]){
+  await page.setViewportSize({width,height:1000});await check('update dialog '+width);
+  const rows=await dialog.locator('footer button').evaluateAll(items=>items.map(el=>el.getBoundingClientRect().y));if(new Set(rows).size!==1)throw Error('Update buttons are not horizontal');
+  await page.screenshot({path:out+'/update-web-'+width+'.png',fullPage:true});
+ }
+ await page.setViewportSize({width:1440,height:1000});await page.evaluate(()=>document.documentElement.dataset.theme='dark');await page.screenshot({path:out+'/update-web-dark.png',fullPage:true});
+ await dialog.getByRole('button',{name:'稍后升级',exact:true}).click();await page.getByRole('dialog').waitFor({state:'hidden'});
  if(errors.length)throw Error(errors.join('\n'));
  fs.writeFileSync(out+'/verification.json',JSON.stringify({passed:true,widths:[1440,1120,390],pages:pages.length,categories:categories.length,errors},null,2));
  console.log(JSON.stringify({passed:true,pages:pages.length,categories:categories.length,widths:[1440,1120,390],screenshots:out}));
