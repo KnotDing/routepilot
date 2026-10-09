@@ -29,7 +29,7 @@ func (a *App) observeSurgeRecovery(ctx context.Context, rt *Runtime, s config.Su
 		checks["Surge API"] = raw["Surge API"]
 	}
 	if s.DNS {
-		checks["Surge Fake-IP DNS"] = raw["Surge Fake-IP DNS"]
+		checks["Surge DNS"] = raw["Surge DNS"]
 	}
 	for _, target := range appendTargets(s) {
 		checks[target.name] = raw[target.name]

@@ -3,6 +3,7 @@ package surge
 import (
 	"context"
 	"errors"
+	"github.com/miekg/dns"
 	"reflect"
 	"surge-controller/internal/config"
 	"testing"
@@ -115,5 +116,25 @@ func TestRecoveryCLIUsesIndependentTimeout(t *testing.T) {
 	copy := recoveryRunner(cli, 15*time.Second).(*CLI)
 	if copy == cli || copy.Timeout != 15*time.Second || cli.Timeout != 500*time.Millisecond || copy.UserName != "fixture" {
 		t.Fatal("recovery changed live classification settings")
+	}
+}
+
+func TestSurgeDNSAvailabilityDoesNotRequireFakeIP(t *testing.T) {
+	real := &dns.Msg{MsgHdr: dns.MsgHdr{Rcode: dns.RcodeSuccess}, Answer: []dns.RR{&dns.A{Hdr: dns.RR_Header{Name: "example.test.", Rrtype: dns.TypeA, Class: dns.ClassINET}, A: []byte{192, 0, 2, 1}}}}
+	if !DNSAvailable(real, nil) {
+		t.Fatal("real-IP reply falsely triggered recovery")
+	}
+	for _, code := range []int{dns.RcodeSuccess, dns.RcodeNameError} {
+		if !DNSAvailable(&dns.Msg{MsgHdr: dns.MsgHdr{Rcode: code}}, nil) {
+			t.Fatal("valid DNS reply rejected", code)
+		}
+	}
+	for _, code := range []int{dns.RcodeServerFailure, dns.RcodeRefused, dns.RcodeFormatError} {
+		if DNSAvailable(&dns.Msg{MsgHdr: dns.MsgHdr{Rcode: code}}, nil) {
+			t.Fatal("DNS failure accepted", code)
+		}
+	}
+	if DNSAvailable(nil, nil) || DNSAvailable(real, errors.New("timeout")) {
+		t.Fatal("missing or timed-out response accepted")
 	}
 }

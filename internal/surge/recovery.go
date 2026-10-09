@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"github.com/miekg/dns"
 	"reflect"
 	"sort"
 	"strings"
@@ -139,4 +140,10 @@ func recoveryRunner(runner Runner, timeout time.Duration) Runner {
 		return &copy
 	}
 	return runner
+}
+
+// Resolver availability is distinct from suitability for Fake-IP routing. A
+// valid real-IP, NODATA or NXDOMAIN response must never cause a restart.
+func DNSAvailable(reply *dns.Msg, err error) bool {
+	return err == nil && reply != nil && (reply.Rcode == dns.RcodeSuccess || reply.Rcode == dns.RcodeNameError)
 }

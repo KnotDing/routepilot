@@ -537,6 +537,8 @@ func (a *App) monitor(ctx context.Context, rt *Runtime) {
 			latency time.Duration
 		}
 		results := make(chan probe, 21)
+		var surgeDNSAvailable atomic.Bool
+		var surgeDNSLatency time.Duration
 		var wg sync.WaitGroup
 		run := func(name string, fn func() bool) {
 			wg.Add(1)
@@ -562,6 +564,7 @@ func (a *App) monitor(ctx context.Context, rt *Runtime) {
 			q := new(dns.Msg)
 			q.SetQuestion(dns.Fqdn(s.Health.ProbeDomain), dns.TypeA)
 			r, e := rt.adapter.ResolveFakeIP(probeCtx, q)
+			surgeDNSAvailable.Store(surge.DNSAvailable(r, e))
 			if e != nil || r == nil || r.Rcode != dns.RcodeSuccess {
 				return false
 			}
@@ -622,10 +625,19 @@ func (a *App) monitor(ctx context.Context, rt *Runtime) {
 		up := map[string]bool{}
 		rawChecks := map[string]bool{}
 		for p := range results {
+			if p.name == "Surge Fake-IP DNS" {
+				surgeDNSLatency = p.latency
+			}
 			rawChecks[p.name] = p.ok
 			up[p.name] = rt.health.Observe(p.name, p.ok, p.latency, "component probe failed")
 		}
 		cancel()
+		rawChecks["Surge DNS"] = surgeDNSAvailable.Load()
+		if restart.Enabled && restart.DNS {
+			rt.health.Observe("Surge DNS", surgeDNSAvailable.Load(), surgeDNSLatency, "Surge DNS resolver unavailable")
+		} else {
+			rt.health.Remove("Surge DNS")
+		}
 		a.observeSurgeRecovery(ctx, rt, restart, rawChecks)
 		for _, component := range rt.health.Values() {
 			if strings.HasPrefix(component.Name, "Surge group ") || strings.HasPrefix(component.Name, "Surge node ") {

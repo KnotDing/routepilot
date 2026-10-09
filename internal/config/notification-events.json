@@ -103,5 +103,12 @@
     "prefix": true,
     "group": "surge",
     "title": "Surge 节点不可用"
+  },
+  {
+    "id": "surge_dns_availability",
+    "name": "Surge DNS",
+    "prefix": false,
+    "group": "surge",
+    "title": "Surge DNS 无响应或返回错误"
   }
 ]

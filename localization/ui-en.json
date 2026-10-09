@@ -802,5 +802,6 @@
   "探测耗时（毫秒）": "Probe duration (milliseconds)",
   "保存状态栏设置": "Save status bar settings",
   "Surge 策略组不可用": "Surge policy group unavailable",
-  "Surge 节点不可用": "Surge node unavailable"
+  "Surge 节点不可用": "Surge node unavailable",
+  "Surge DNS 无响应或返回错误": "Surge DNS timeout or error response"
 }
