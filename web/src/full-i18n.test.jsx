@@ -16,7 +16,7 @@ function fixture(path){
  if(path==='routing/status')return {mode:'hybrid',routes:[{prefix:'198.18.0.0/16',kind:'fake-ip',backend:'static',next_hop:'192.0.2.2',route_state:'external-unconfirmed',installed:null,verified:false}]};
  if(path==='bgp/peers')return [peer];
  if(path==='dns/queries')return [record];
- if(path.startsWith('dns/cache'))return {entries:[],stats:{entries:1,hits:1,misses:0},total:0};
+ if(path.startsWith('dns/cache'))return {entries:[],response_stats:{entries:2,stale_entries:1,hits:7,misses:3,evictions:1,capacity:10000},stats:{entries:1,hits:1,misses:0},total:0};
  if(path==='surge/status')return {snapshot:{profile:'Default',mode:'rule',always_real_ip:['*.example.net'],always_real_ip_count:1,always_real_ip_observed_at:'2026-10-08T00:00:00Z'}};
  if(path==='test/domain')return {match:{rule:'DOMAIN,example.com,Proxy',final:'Proxy'},decision:record.result};
  if(path==='events')return [{at:'2026-10-08T00:00:00Z',severity:'info',message:'Surge 有效配置或外部资源已确认更新'}];
@@ -32,7 +32,7 @@ it('localizes every page, settings category, editor and query detail through the
  for(const [index,page] of pages.entries()){
   fireEvent.click(screen.getByRole('navigation').querySelectorAll('button')[index+1]);await screen.findByRole('heading',{level:1,name:page});await waitFor(noUntranslatedText);
   if(['DNS interception','Local DNS','Domain overrides','BGP neighbors','Manual routes'].includes(page)){fireEvent.click(screen.getByRole('button',{name:'＋ Add'}));noUntranslatedText();fireEvent.click(screen.getByRole('button',{name:'Close'}))}
-  if(page==='Query history'){fireEvent.click(screen.getByRole('cell',{name:'example.com.'}));noUntranslatedText();fireEvent.click(screen.getByRole('button',{name:'Close'}))}
+  if(page==='Query history'){for(const label of ['Valid entries','DNS response cache capacity','Cache hits','Cache misses','Capacity evictions','Responses awaiting refresh'])expect(screen.getByText(label)).toBeInTheDocument();expect(screen.getByText('7')).toBeInTheDocument();fireEvent.click(screen.getByRole('cell',{name:'example.com.'}));noUntranslatedText();fireEvent.click(screen.getByRole('button',{name:'Close'}))}
   if(page==='Rule test'){fireEvent.click(screen.getByRole('button',{name:'Test rules'}));await screen.findByText('Raw evaluation result');noUntranslatedText()}
   if(page==='Local DNS'){fireEvent.click(screen.getByRole('button',{name:'Import from Surge'}));await screen.findByText('Imported 1 / skipped 1');noUntranslatedText()}
   if(page==='BGP neighbors'){fireEvent.click(screen.getByRole('button',{name:'Preview FRR configuration'}));await screen.findByText(/Mac's reachable address/);noUntranslatedText()}

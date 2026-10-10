@@ -85,15 +85,25 @@ it('combines configured neighbors and live BGP status into one editable table',(
 it('exposes independent long-lived cache invalidation settings',()=>{
  render(<Settings settings={{cache:{expire_decisions:false,invalidate_on_read_failure:false,invalidate_direct_on_selection_change:true,invalidate_reject_on_selection_change:false,unknown_ttl_seconds:10,error_ttl_seconds:1}}} refresh={()=>{}} notify={()=>{}}/>);
  fireEvent.click(screen.getByRole('button',{name:'缓存'}));
- expect(screen.getByLabelText('按 TTL 定时过期稳定决策')).not.toBeChecked();
- expect(screen.getByLabelText('Surge 配置读取失败时失效旧决策')).not.toBeChecked();
- expect(screen.getByLabelText('策略组选择变化时失效 DIRECT')).toBeChecked();
- expect(screen.getByLabelText('策略组选择变化时失效 REJECT')).not.toBeChecked();
+ expect(screen.getByLabelText('决策 TTL 过期')).not.toBeChecked();
+ expect(screen.getByLabelText('读取失败时失效')).not.toBeChecked();
+ expect(screen.getByLabelText('DIRECT 选择变化时失效')).toBeChecked();
+ expect(screen.getByLabelText('REJECT 选择变化时失效')).not.toBeChecked();
+});
+
+it('keeps cache option labels concise and shows explanations on hover',()=>{
+ render(<Settings settings={{cache:{optimistic:false,optimistic_responses:false,optimistic_idle_refresh:true,optimistic_response_idle_refresh:true,expire_decisions:false,invalidate_on_read_failure:false,invalidate_direct_on_selection_change:true,invalidate_reject_on_selection_change:false}}} refresh={()=>{}} notify={()=>{}}/>);
+ fireEvent.click(screen.getByRole('button',{name:'缓存'}));
+ const decision=screen.getByLabelText('乐观决策缓存'),query=screen.getByLabelText('乐观查询缓存');
+ expect(decision.closest('label')).toHaveAttribute('title','确认配置或资源更新后保留旧决策，并在命中或空闲时刷新。');
+ expect(query.closest('label')).toHaveAttribute('title','乐观查询缓存已开启：过期响应仍可立即返回，后台刷新成功后替换；响应会持久化并在重启后恢复。');
+ expect(screen.getByLabelText('决策缓存空闲刷新').closest('label')).toHaveAttribute('title',expect.stringContaining('关闭不影响命中时的按需刷新'));
+ expect(screen.queryByText(/先响应旧决策|再在后台刷新|关闭后仍会在缓存命中时按需刷新/)).not.toBeInTheDocument();
 });
 
 it('translates all cache settings and shares language with the routing page',()=>{
  localStorage.setItem('routepilot.locale','en');
  render(<><Settings settings={{cache:{expire_decisions:false,invalidate_on_read_failure:false,invalidate_direct_on_selection_change:true,invalidate_reject_on_selection_change:true,capacity:10000,unknown_ttl_seconds:10,error_ttl_seconds:1}}} refresh={()=>{}} notify={()=>{}}/></>);fireEvent.click(screen.getByRole('button',{name:'Cache'}));
- expect(screen.getByText('Cache settings')).toBeInTheDocument();expect(screen.getByLabelText('Expire stable decisions by TTL')).not.toBeChecked();expect(screen.getByLabelText('Invalidate on config read failure')).not.toBeChecked();expect(screen.getByLabelText('Invalidate DIRECT on selection change')).toBeChecked();expect(screen.getByLabelText('Invalidate REJECT on selection change')).toBeChecked();expect(screen.getByRole('button',{name:'Save settings'})).toBeInTheDocument();
- fireEvent.click(screen.getByRole('button',{name:'General',exact:true}));fireEvent.change(screen.getByLabelText(/页面语言|Page language/),{target:{value:'zh-CN'}});fireEvent.click(screen.getByRole('button',{name:'缓存',exact:true}));expect(screen.getByLabelText('按 TTL 定时过期稳定决策')).toBeInTheDocument();
+ expect(screen.getByText('Cache settings')).toBeInTheDocument();expect(screen.getByLabelText('Expire decisions by TTL')).not.toBeChecked();expect(screen.getByLabelText('Invalidate on read failure')).not.toBeChecked();expect(screen.getByLabelText('Invalidate DIRECT on selection change')).toBeChecked();expect(screen.getByLabelText('Invalidate REJECT on selection change')).toBeChecked();expect(screen.getByRole('button',{name:'Save settings'})).toBeInTheDocument();
+ fireEvent.click(screen.getByRole('button',{name:'General',exact:true}));fireEvent.change(screen.getByLabelText(/页面语言|Page language/),{target:{value:'zh-CN'}});fireEvent.click(screen.getByRole('button',{name:'缓存',exact:true}));expect(screen.getByLabelText('决策 TTL 过期')).toBeInTheDocument();
 });

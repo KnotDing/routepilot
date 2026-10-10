@@ -5,14 +5,30 @@ const messages={
   optimistic_idle_refresh_hint:'关闭后仍会在缓存命中时按需刷新，只停止空闲时自动刷新。',
   optimistic_response_idle_refresh_hint:'关闭后仍会在缓存命中时按需查询上游，只停止空闲时自动刷新。',
   optimisticHelpSummary:'乐观缓存已开启：确认配置变化后保留旧决策；命中时立即返回并按需刷新。空闲自动刷新由独立开关控制，开启时会在至少 1 秒无 DNS 请求且求值队列空闲后逐条刷新；失败或 UNKNOWN 时保留旧值并重试。',
-  language:'页面语言',settingsTitle:'缓存设置',optimistic:'乐观决策缓存：先响应旧决策，再在后台刷新',optimistic_responses:'乐观响应缓存：先返回旧响应，再在后台刷新',optimisticResponsesHelp:'乐观响应缓存已开启：TTL 到期后仍保留上游响应，命中时先返回旧响应，再在后台查询上游；成功后替换，失败时保留旧响应并稍后重试。确认 Surge 配置或外部资源更新后也会按需刷新。响应缓存每 5 秒保存，正常退出前保存最终值；重启后恢复包括已过期的响应，命中时后台刷新。过期响应返回 30 秒 TTL，不修改缓存原始过期时间；手动清理、容量淘汰或查询配置变化仍会移除缓存。关闭并应用此选项时，仅清理已过期响应，保留 TTL 内的响应和原始过期时间；关闭后不做响应缓存持久化。',refreshPending:'待刷新决策',responsePending:'待刷新响应',optimisticHelp:'乐观缓存已开启：确认 Surge 配置或外部资源更新后保留旧决策；下次命中时立即响应并在后台刷新；空闲时也会自动刷新待刷新决策，成功后替换。至少 1 秒没有 DNS 请求且求值队列空闲时，每次刷新一条、每秒最多启动 4 条；新请求优先，取消空闲刷新。刷新失败或无法确认决策时保留旧值并稍后重试。',expire_decisions:'按 TTL 定时过期稳定决策',invalidate_on_read_failure:'Surge 配置读取失败时失效旧决策',invalidate_direct_on_selection_change:'策略组选择变化时失效 DIRECT',invalidate_reject_on_selection_change:'策略组选择变化时失效 REJECT',capacity:'决策缓存容量',response_capacity:'响应缓存容量',workers:'规则求值工作线程',queue:'求值队列容量',timeout_ms:'超时（毫秒）',direct_ttl_seconds:'DIRECT 缓存 TTL（秒）',surge_ttl_seconds:'SURGE / REJECT 缓存 TTL（秒）',unknown_ttl_seconds:'UNKNOWN TTL（秒）',error_ttl_seconds:'错误 TTL（秒）',
+  language:'页面语言',settingsTitle:'缓存设置',optimistic:'乐观决策缓存',optimistic_tooltip:'确认配置或资源更新后保留旧决策，并在命中或空闲时刷新。',optimistic_responses:'乐观查询缓存',optimistic_responses_tooltip:'TTL 到期后仍保留查询响应；命中时立即返回旧响应并按需刷新。',optimistic_idle_refresh:'决策缓存空闲刷新',optimistic_idle_refresh_tooltip:'启用后，在 DNS 空闲且求值队列空闲时自动刷新待更新决策；关闭不影响命中时的按需刷新。',optimistic_response_idle_refresh:'查询缓存空闲刷新',optimistic_response_idle_refresh_tooltip:'启用后，在 DNS 空闲时自动刷新待更新响应；关闭不影响命中时的按需查询上游。',optimistic_idle_refresh_hint:'关闭后仍会在缓存命中时按需刷新，只停止空闲时自动刷新。',optimistic_response_idle_refresh_hint:'关闭后仍会在缓存命中时按需查询上游，只停止空闲时自动刷新。',optimisticHelpSummary:'乐观缓存已开启：确认配置变化后保留旧决策；命中时立即返回并按需刷新。空闲自动刷新由独立开关控制，开启时会在至少 1 秒无 DNS 请求且求值队列空闲后逐条刷新；失败或 UNKNOWN 时保留旧值并重试。',
+  optimistic_responses_tooltip:'乐观查询缓存已开启：过期响应仍可立即返回，后台刷新成功后替换；响应会持久化并在重启后恢复。',
+  language:'页面语言',settingsTitle:'缓存设置',optimisticResponsesHelp:'乐观响应缓存已开启：TTL 到期后仍保留上游响应，命中时先返回旧响应，再在后台查询上游；成功后替换，失败时保留旧响应并稍后重试。确认 Surge 配置或外部资源更新后也会按需刷新。响应缓存每 5 秒保存，正常退出前保存最终值；重启后恢复包括已过期的响应，命中时后台刷新。过期响应返回 30 秒 TTL，不修改缓存原始过期时间；手动清理、容量淘汰或查询配置变化仍会移除缓存。关闭并应用此选项时，仅清理已过期响应，保留 TTL 内的响应和原始过期时间；关闭后不做响应缓存持久化。',refreshPending:'待刷新决策',responsePending:'待刷新响应',optimisticHelp:'乐观缓存已开启：确认 Surge 配置或外部资源更新后保留旧决策；下次命中时立即响应并在后台刷新；空闲时也会自动刷新待刷新决策，成功后替换。至少 1 秒没有 DNS 请求且求值队列空闲时，每次刷新一条、每秒最多启动 4 条；新请求优先，取消空闲刷新。刷新失败或无法确认决策时保留旧值并稍后重试。',expire_decisions:'决策 TTL 过期',expire_decisions_tooltip:'启用后，稳定决策按配置的 TTL 自动过期；关闭时直到确认配置更新才失效。',invalidate_on_read_failure:'读取失败时失效',invalidate_on_read_failure_tooltip:'Surge 配置读取失败时移除已有决策；关闭则保留旧决策。',invalidate_direct_on_selection_change:'DIRECT 选择变化时失效',invalidate_direct_on_selection_change_tooltip:'策略组选择变化时失效 DIRECT 决策。',invalidate_reject_on_selection_change:'REJECT 选择变化时失效',invalidate_reject_on_selection_change_tooltip:'策略组选择变化时失效 REJECT 决策。',capacity:'决策缓存容量',response_capacity:'响应缓存容量',workers:'规则求值工作线程',queue:'求值队列容量',timeout_ms:'超时（毫秒）',direct_ttl_seconds:'DIRECT 缓存 TTL（秒）',surge_ttl_seconds:'SURGE / REJECT 缓存 TTL（秒）',unknown_ttl_seconds:'UNKNOWN TTL（秒）',error_ttl_seconds:'错误 TTL（秒）',
   help:'默认长期缓存 DIRECT / SURGE / REJECT，确认 Surge 配置或外部资源更新时失效。开启乐观缓存后改为先用旧决策响应，命中时或空闲时后台刷新；成功后替换，失败或 UNKNOWN 时保留旧值。空闲刷新逐条限速，实时查询优先。决策缓存的待刷新标记可跨重启保留。响应缓存可独立选择乐观刷新，开启后每 5 秒及正常退出时保存到 SQLite，重启后恢复包括过期响应并按需后台刷新，保留原始过期时间。定时过期启用后才使用其 TTL；UNKNOWN 和求值错误始终按短 TTL 重试。读取失败及策略组选择变化的失效行为可独立控制。稳定决策每 5 秒保存到 SQLite，正常停止时保存最终值；重启后确认 Surge 配置再恢复，定时条目保留原过期时间。UNKNOWN 和求值错误不跨重启保留；手动清理、配置变化和容量限制仍然生效。',save:'保存设置',saved:'设置已保存',export:'导出备份',import:'导入 / 恢复',
   entries:'有效条目',cacheCapacity:'缓存容量',hits:'命中次数',misses:'未命中次数',evictions:'容量淘汰',lifecycle:'缓存生命周期',persistent:'DIRECT / SURGE / REJECT：长期保留，直到确认配置更新',timed:'DIRECT / SURGE / REJECT TTL',unknown:'UNKNOWN',errors:'求值错误',seconds:'秒',lastReason:'最近失效原因',lastAt:'最近失效时间',invalidations:'本次运行失效次数',noInvalidation:'本次运行尚未清理',confirmed:'确认 Surge 有效配置或外部资源更新后清理决策。',readFailure:'读取失败时',keep:'保留旧决策',drop:'失效旧决策',selection:'策略组选择变化时',none:'均保留',invalidated:'失效',capacityNote:'稳定决策每 5 秒保存，正常停止时保存最终值；重启后确认配置再恢复。强制结束可能丢失最近尚未保存的条目。手动清理、分流配置修改和容量限制仍然生效。',restorePending:'已读取持久化缓存，正在等待确认 Surge 配置；确认前不使用旧决策。',
   search:'搜索缓存域名',searchPlaceholder:'搜索全部有效缓存的域名',decisionFilter:'缓存决策',all:'全部决策',flushDomain:'清理此域名缓存',flushAll:'清理全部缓存',domainFlushed:'该域名缓存已清理',allFlushed:'全部决策缓存已清理',domain:'域名',type:'类型',decision:'决策',confidence:'依据',client:'客户端',remaining:'剩余时间',reason:'原因',certain:'已确认',configured:'按配置采用',uncertain:'尚未确认',untilUpdate:'直到配置更新',noExpiry:'不按时间过期',empty:'没有符合条件的有效缓存',loading:'正在加载缓存…',total:'共',items:'条',page:'页',pageSize:'每页',previous:'上一页',next:'下一页'
  },
  en:{
-  optimistic_idle_refresh:'Idle auto-refresh for optimistic decision cache',
-  optimistic_response_idle_refresh:'Idle auto-refresh for optimistic query cache',
+  optimistic:'Optimistic decision cache',
+  optimistic_tooltip:'Retain the previous decision after a confirmed configuration or resource update; refresh on cache hits or while idle.',
+  optimistic_responses:'Optimistic query cache',
+  optimistic_responses_tooltip:'Retain query responses past TTL expiry; return them immediately on hits and refresh on demand.',
+  optimistic_idle_refresh:'Decision cache idle refresh',
+  optimistic_idle_refresh_tooltip:'Automatically refresh pending decisions while DNS and evaluation are idle. Disabling this does not affect on-demand refresh on hits.',
+  optimistic_response_idle_refresh:'Query cache idle refresh',
+  optimistic_response_idle_refresh_tooltip:'Automatically refresh pending responses while DNS is idle. Disabling this does not affect on-demand upstream queries on hits.',
+  expire_decisions:'Expire decisions by TTL',
+  expire_decisions_tooltip:'When enabled, stable decisions expire according to their configured TTL; otherwise they remain until a confirmed configuration update.',
+  invalidate_on_read_failure:'Invalidate on read failure',
+  invalidate_on_read_failure_tooltip:'Remove cached decisions when reading Surge configuration fails. When disabled, retain the previous decisions.',
+  invalidate_direct_on_selection_change:'Invalidate DIRECT on selection change',
+  invalidate_direct_on_selection_change_tooltip:'Invalidate DIRECT decisions when a policy-group selection changes.',
+  invalidate_reject_on_selection_change:'Invalidate REJECT on selection change',
+  invalidate_reject_on_selection_change_tooltip:'Invalidate REJECT decisions when a policy-group selection changes.',
   optimistic_idle_refresh_hint:'On-demand refresh on cache hits remains enabled; only automatic idle refresh is stopped.',
   optimistic_response_idle_refresh_hint:'On-demand upstream refresh on cache hits remains enabled; only automatic idle refresh is stopped.',
   optimisticHelpSummary:'Optimistic caching is enabled: after a confirmed configuration update, the previous decision is retained. A cache hit returns it immediately and refreshes on demand. Idle auto-refresh is controlled separately; when enabled, stale entries refresh one at a time after at least one second without DNS requests and with evaluation workers idle. Failures or UNKNOWN retain the old value for retry.',
@@ -22,6 +38,26 @@ const messages={
   search:'Search cached domains',searchPlaceholder:'Search all valid cached domains',decisionFilter:'Cached decision',all:'All decisions',flushDomain:'Clear domain cache',flushAll:'Clear all decisions',domainFlushed:'Domain cache cleared',allFlushed:'Decision cache cleared',domain:'Domain',type:'Type',decision:'Decision',confidence:'Confidence',client:'Client',remaining:'Remaining lifetime',reason:'Reason',certain:'Confirmed',configured:'Configured',uncertain:'Uncertain',untilUpdate:'Until configuration update',noExpiry:'No timed expiry',empty:'No matching valid entries',loading:'Loading cache…',total:'Total',items:'entries',page:'Page',pageSize:'Per page',previous:'Previous',next:'Next'
  }
 };
+Object.assign(messages['zh-CN'],{
+ optimistic:'乐观决策缓存',
+ optimistic_responses:'乐观查询缓存',
+ optimistic_idle_refresh:'决策缓存空闲刷新',
+ optimistic_response_idle_refresh:'查询缓存空闲刷新',
+ expire_decisions:'决策 TTL 过期',
+ invalidate_on_read_failure:'读取失败时失效',
+ invalidate_direct_on_selection_change:'DIRECT 选择变化时失效',
+ invalidate_reject_on_selection_change:'REJECT 选择变化时失效'
+});
+Object.assign(messages.en,{
+ optimistic:'Optimistic decision cache',
+ optimistic_responses:'Optimistic query cache',
+ optimistic_idle_refresh:'Decision cache idle refresh',
+ optimistic_response_idle_refresh:'Query cache idle refresh',
+ expire_decisions:'Expire decisions by TTL',
+ invalidate_on_read_failure:'Invalidate on read failure',
+ invalidate_direct_on_selection_change:'Invalidate DIRECT on selection change',
+ invalidate_reject_on_selection_change:'Invalidate REJECT on selection change'
+});
 export const cacheText=locale=>key=>messages[locale]?.[key==='optimisticHelp'?'optimisticHelpSummary':key]||messages['zh-CN'][key==='optimisticHelp'?'optimisticHelpSummary':key]||key;
 
 export function cacheInvalidationReason(locale,reason){

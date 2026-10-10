@@ -1090,14 +1090,26 @@ func (a *App) cacheViewLocked(rt *Runtime, offset, limit int, domain, decision s
 		return (domain == "" || strings.Contains(d.Domain, strings.ToLower(domain))) && (decision == "" || string(d.Decision) == decision)
 	})
 	responseEntries, responsePending := 0, 0
+	var responseHits, responseMisses, responseEvictions uint64
 	for _, upstream := range append([]*resolver.Real{rt.real}, rt.policyResolvers...) {
 		if upstream != nil {
 			stats := upstream.Cache.Stats()
 			responseEntries += stats.Entries
 			responsePending += stats.StaleEntries
+			responseHits += stats.Hits
+			responseMisses += stats.Misses
+			responseEvictions += stats.Evictions
 		}
 	}
-	return map[string]any{"response_stats": map[string]int{"entries": responseEntries, "stale_entries": responsePending}, "stats": rt.engine.Cache.Stats(), "entries": rows, "total": total, "offset": offset, "limit": limit, "capacity": rt.settings.Settings.Cache.Capacity, "ttl": rt.settings.Settings.Cache, "restoration_pending": pending}
+	responseStats := map[string]any{
+		"entries":       responseEntries,
+		"stale_entries": responsePending,
+		"hits":          responseHits,
+		"misses":        responseMisses,
+		"evictions":     responseEvictions,
+		"capacity":      rt.settings.Settings.Cache.ResponseCapacity,
+	}
+	return map[string]any{"response_stats": responseStats, "stats": rt.engine.Cache.Stats(), "entries": rows, "total": total, "offset": offset, "limit": limit, "capacity": rt.settings.Settings.Cache.Capacity, "ttl": rt.settings.Settings.Cache, "restoration_pending": pending}
 }
 func (a *App) Flush(ctx context.Context, domain string) error {
 	a.transition.Lock()

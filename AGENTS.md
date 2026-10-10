@@ -22,9 +22,10 @@
 
 ## 发布版本
 
+- Gitea 网页与 API 使用 `https://gitea.knotding.com`；Git SSH remote 可能使用 `git.knotding.com`，不要把 SSH 主机名误作网页/API 域名。
 - 发布遵循 [发布准备与验收](docs/release-readiness.md) 和 `.gitea/workflows/release.yaml`，不绕过自动化门禁。
 - 发布前确认 `main` 基线、工作区改动范围、下一个未使用的语义化版本标签及远端状态；不得覆盖已有标签，不得把无关或他人未提交改动混入发布。
-- 更新 `internal/buildinfo/release.json` 的版本、`scripts/install_skill.sh` 中的官方 tag 和提示版本、README 中的当前版本引用，并新增 `.gitea/release-notes/vX.Y.Z.md`。Release Notes 写清用户可见变更，资产由工作流生成。
+- 更新 `internal/buildinfo/release.json` 的版本、`scripts/install_skill.sh` 中的官方 tag 和提示版本、README 中的当前版本引用，并新增 `.gitea/release-notes/vX.Y.Z.md`。Release Notes 只写 App 用户可见的功能、修复和行为变化；排除 agent/仓库工作规范、开发流程等与 App 无关的内容。资产由工作流生成。
 - 发布前运行 `make verify-release`；任何门禁失败都先修复，不得跳过。该命令会重建 `web/dist` 并替换 `artifacts/` 内的生成安装包，执行前检查这些路径中的现有文件。
 - `web/dist` 由发布工作流在构建时生成，不应加入版本提交；只提交 Web 源码和必要的构建配置。
 - 验证通过后，按仓库提交约定提交变更，创建指向该提交的 `vX.Y.Z` 标签，并推送 `main` 与标签以触发 Gitea Release 工作流。不得使用强制推送或移动已发布标签。
