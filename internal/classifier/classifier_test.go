@@ -99,6 +99,7 @@ func TestSingleflightAndFlush(t *testing.T) {
 		case <-ctx.Done():
 			return model.RuleMatchResult{}, ctx.Err()
 		}
+
 		return model.RuleMatchResult{FinalPolicy: "DIRECT", ContextSafe: true}, nil
 	}}
 	e, _ := classifier.New(context.Background(), mock, classifier.DefaultConfig())
@@ -129,6 +130,40 @@ func TestSingleflightAndFlush(t *testing.T) {
 		t.Fatal("domain flush missed")
 	}
 }
+
+func TestOptimisticDecisionCanDisableIdleRefresh(t *testing.T) {
+	mock := &mocks.Surge{Match: func(context.Context, model.RuleMatchRequest) (model.RuleMatchResult, error) {
+		return model.RuleMatchResult{FinalPolicy: "DIRECT", ContextSafe: true}, nil
+	}}
+	cfg := classifier.DefaultConfig()
+	cfg.Optimistic = true
+	cfg.OptimisticIdleRefresh = false
+	e, err := classifier.New(context.Background(), mock, cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer e.Close()
+	if _, err := e.Classify(context.Background(), query()); err != nil {
+		t.Fatal(err)
+	}
+	e.Cache.MarkStale(func(model.DecisionResult) bool { return true })
+	time.Sleep(1250 * time.Millisecond)
+	if mock.Calls.Load() != 1 || e.Cache.Stats().StaleEntries != 1 {
+		t.Fatal("disabled idle refresh reevaluated or discarded stale decision", mock.Calls.Load(), e.Cache.Stats())
+	}
+	got, err := e.Classify(context.Background(), query())
+	if err != nil || got.Decision != model.Direct || got.Source != "cache" {
+		t.Fatal("on-demand optimistic cache response changed", got, err)
+	}
+	deadline := time.Now().Add(time.Second)
+	for e.Cache.Stats().StaleEntries > 0 && time.Now().Before(deadline) {
+		time.Sleep(time.Millisecond)
+	}
+	if mock.Calls.Load() != 2 || e.Cache.Stats().StaleEntries != 0 {
+		t.Fatal("disabling idle refresh also disabled on-demand refresh", mock.Calls.Load(), e.Cache.Stats())
+	}
+}
+
 func TestFlushRejectsInFlightDirect(t *testing.T) {
 	started := make(chan struct{})
 	release := make(chan struct{})

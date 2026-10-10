@@ -80,21 +80,60 @@ func (c *Cache[K, V]) Get(k K) (V, bool) {
 
 // GetState reads freshness and the generation together with the value.
 func (c *Cache[K, V]) GetState(k K) (V, bool, bool, uint64) {
+	return c.getState(k, true)
+}
+
+// PeekState checks a maintenance candidate without affecting LRU or counters.
+func (c *Cache[K, V]) PeekState(k K) (V, bool, bool, uint64) {
+	return c.getState(k, false)
+}
+func (c *Cache[K, V]) getState(k K, touch bool) (V, bool, bool, uint64) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	if e, ok := c.items[k]; ok {
 		v := e.Value.(entry[K, V])
 		now := c.now()
 		if v.generation == c.Generation() && c.retained(now, v.expiry) {
-			c.order.MoveToFront(e)
-			c.hits.Add(1)
+			if touch {
+				c.order.MoveToFront(e)
+				c.hits.Add(1)
+			}
 			return v.value, true, v.stale || !validExpiry(now, v.expiry), v.generation
 		}
 		c.remove(e)
 	}
-	c.misses.Add(1)
+	if touch {
+		c.misses.Add(1)
+	}
 	var zero V
 	return zero, false, false, c.Generation()
+}
+
+// StaleRecords returns a bounded maintenance page in LRU order, together with
+// its generation. Reading it does not count as a hit or promote any entries.
+func (c *Cache[K, V]) StaleRecords(offset, limit int) ([]Record[K, V], uint64) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	now, generation := c.now(), c.Generation()
+	var out []Record[K, V]
+	if offset < 0 || limit < 1 {
+		return out, generation
+	}
+	for e := c.order.Front(); e != nil; e = e.Next() {
+		v := e.Value.(entry[K, V])
+		if v.generation != generation || !c.retained(now, v.expiry) || !(v.stale || !validExpiry(now, v.expiry)) {
+			continue
+		}
+		if offset > 0 {
+			offset--
+			continue
+		}
+		out = append(out, Record[K, V]{v.key, v.value, v.expiry, true})
+		if len(out) == limit {
+			break
+		}
+	}
+	return out, generation
 }
 
 // Put rejects a result evaluated before an invalidation, including an in-flight miss.

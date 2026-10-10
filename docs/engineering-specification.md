@@ -2829,11 +2829,14 @@ Packaging
 After every phase:
 
 ```text
-go test ./...
+make test
 frontend tests
 frontend build
 Go production build
 ```
+
+`make test` builds the embedded frontend assets before compiling Go packages.
+`web/dist` is generated during builds and is not tracked in source control.
 
 The project must remain runnable throughout development.
 

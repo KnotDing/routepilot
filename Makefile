@@ -1,7 +1,8 @@
 GO ?= go
 
-.PHONY: build cli test bench verify verify-release native-test ui-test coverage fuzz package-check checksums fmt frontend frontend-test app package clean-artifacts
-frontend: clean-artifacts
+.PHONY: build cli test bench verify verify-release native-test ui-test coverage fuzz package-check checksums fmt frontend frontend-test web-assets app package clean-artifacts
+frontend: clean-artifacts web-assets
+web-assets:
 	cd web && npm run build
 clean-artifacts:
 	sh scripts/clean_artifacts.sh
@@ -12,10 +13,10 @@ build: frontend
 	$(GO) build -trimpath -o bin/surge-controller ./cmd/controller
 	$(GO) build -trimpath -o bin/dns-probe ./cmd/dns-probe
 	$(GO) build -trimpath -o bin/routepilot ./cmd/routepilot
-cli:
+cli: web-assets
 	mkdir -p bin
 	$(GO) build -trimpath -o bin/routepilot ./cmd/routepilot
-test:
+test: web-assets
 	$(GO) test -race -count=1 ./...
 bench:
 	$(GO) test -run '^$$' -bench . -benchmem ./internal/cache
@@ -31,7 +32,7 @@ native-test:
 	sh scripts/test_native.sh
 ui-test:
 	node scripts/ui_forms_check.cjs
-coverage:
+coverage: web-assets
 	mkdir -p .cache
 	$(GO) test -race -count=1 -coverprofile=.cache/release-coverage.out ./...
 	$(GO) tool cover -func=.cache/release-coverage.out

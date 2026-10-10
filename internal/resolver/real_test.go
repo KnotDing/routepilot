@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"net/netip"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -256,5 +257,93 @@ func TestOptimisticResponseRefreshCannotResurrectManualFlush(t *testing.T) {
 	r.Close()
 	if r.Cache.Stats().Entries != 0 {
 		t.Fatal("background response resurrected manually flushed cache")
+	}
+
+}
+
+func TestOptimisticResponseCanDisableIdleRefresh(t *testing.T) {
+	tr := &mocks.Transport{Func: func(_ context.Context, _ resolver.ResolverEndpoint, q *dns.Msg) (*dns.Msg, error) {
+		return mocks.AddressReply(q, "203.0.113.1"), nil
+	}}
+	r, err := resolver.NewReal(tr, []resolver.ResolverEndpoint{{Enabled: true, Protocol: "udp", Address: "192.0.2.53:53"}}, false, 10, resolver.OptimisticOptions{Enabled: true, IdleRefresh: false})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer r.Close()
+	q := new(dns.Msg)
+	q.SetQuestion("example.test.", dns.TypeA)
+	if _, err := r.Resolve(context.Background(), model.ResolveRequest{Message: q}); err != nil {
+		t.Fatal(err)
+	}
+	r.ConfigurationChanged("resource updated", true)
+	time.Sleep(1250 * time.Millisecond)
+	if tr.Calls.Load() != 1 || r.Cache.Stats().StaleEntries != 1 {
+		t.Fatal("disabled idle refresh queried upstream or discarded stale response", tr.Calls.Load(), r.Cache.Stats())
+	}
+}
+
+func TestOptimisticResponseRefreshesWhileIdle(t *testing.T) {
+	var calls atomic.Int32
+	tr := &mocks.Transport{Func: func(_ context.Context, _ resolver.ResolverEndpoint, q *dns.Msg) (*dns.Msg, error) {
+		if calls.Add(1) == 1 {
+			return mocks.AddressReply(q, "203.0.113.1"), nil
+		}
+		return mocks.AddressReply(q, "203.0.113.2"), nil
+	}}
+	r, err := resolver.NewReal(tr, []resolver.ResolverEndpoint{{Enabled: true, Protocol: "udp", Address: "192.0.2.53:53"}}, false, 10, resolver.OptimisticOptions{Enabled: true, IdleRefresh: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer r.Close()
+	q := new(dns.Msg)
+	q.SetQuestion("idle.example.test.", dns.TypeA)
+	if _, err := r.Resolve(context.Background(), model.ResolveRequest{Message: q}); err != nil {
+		t.Fatal(err)
+	}
+	r.ConfigurationChanged("resource updated", true)
+	deadline := time.Now().Add(3 * time.Second)
+	for r.Cache.Stats().StaleEntries > 0 && time.Now().Before(deadline) {
+		time.Sleep(10 * time.Millisecond)
+	}
+	if calls.Load() != 2 || r.Cache.Stats().StaleEntries != 0 {
+		t.Fatal("idle query cache refresh did not replace its stale response", calls.Load(), r.Cache.Stats())
+	}
+}
+
+func TestRestoredOptimisticResponsesRefreshWhileIdle(t *testing.T) {
+	var calls atomic.Int32
+	tr := &mocks.Transport{Func: func(_ context.Context, _ resolver.ResolverEndpoint, q *dns.Msg) (*dns.Msg, error) {
+		if calls.Add(1) == 1 {
+			return mocks.AddressReply(q, "203.0.113.1"), nil
+		}
+		return mocks.AddressReply(q, "203.0.113.2"), nil
+	}}
+	endpoints := []resolver.ResolverEndpoint{{Enabled: true, Protocol: "udp", Address: "192.0.2.53:53"}}
+	before, err := resolver.NewReal(tr, endpoints, false, 10, resolver.OptimisticOptions{Enabled: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	q := new(dns.Msg)
+	q.SetQuestion("restored-idle.example.test.", dns.TypeA)
+	if _, err := before.Resolve(context.Background(), model.ResolveRequest{Message: q}); err != nil {
+		t.Fatal(err)
+	}
+	snapshot := before.ResponseSnapshot()
+	before.Close()
+
+	after, err := resolver.NewReal(tr, endpoints, false, 10, resolver.OptimisticOptions{Enabled: true, IdleRefresh: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer after.Close()
+	if restored := after.RestoreResponses(snapshot); restored != 1 {
+		t.Fatalf("restored %d responses, want 1", restored)
+	}
+	deadline := time.Now().Add(3 * time.Second)
+	for after.Cache.Stats().StaleEntries > 0 && time.Now().Before(deadline) {
+		time.Sleep(10 * time.Millisecond)
+	}
+	if calls.Load() != 2 || after.Cache.Stats().StaleEntries != 0 {
+		t.Fatal("restored response did not refresh while idle", calls.Load(), after.Cache.Stats())
 	}
 }

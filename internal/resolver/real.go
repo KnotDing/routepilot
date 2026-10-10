@@ -16,9 +16,12 @@ import (
 )
 
 type response struct {
-	Msg      *dns.Msg
-	Stored   time.Time
-	Endpoint string
+	Msg              *dns.Msg
+	Stored           time.Time
+	Endpoint         string
+	RefreshQuery     *dns.Msg
+	RefreshEndpoints []ResolverEndpoint
+	RefreshOriginal  bool
 }
 type EndpointStats struct {
 	Endpoint    ResolverEndpoint `json:"endpoint"`
@@ -30,13 +33,15 @@ type EndpointStats struct {
 	LastFailure time.Time        `json:"last_failure"`
 }
 type OptimisticOptions struct {
-	Context context.Context
-	Enabled bool
-	Timeout time.Duration
-	Workers int
+	Context     context.Context
+	Enabled     bool
+	IdleRefresh bool
+	Timeout     time.Duration
+	Workers     int
 }
 type Real struct {
 	optimistic       bool
+	idleRefresh      bool
 	refreshTimeout   time.Duration
 	refreshLimit     int
 	ctx              context.Context
@@ -52,6 +57,9 @@ type Real struct {
 	statsMu          sync.Mutex
 	stats            []EndpointStats
 	next             atomic.Uint64
+	lastQuery        atomic.Int64
+	activeQueries    atomic.Int64
+	idleCancel       context.CancelFunc
 	now              func() time.Time
 }
 
@@ -86,13 +94,26 @@ func NewReal(t UpstreamTransport, endpoints []ResolverEndpoint, preserve bool, c
 		option.Workers = 8
 	}
 	r.ctx, r.cancel = context.WithCancel(option.Context)
-	r.optimistic, r.refreshTimeout, r.refreshLimit = option.Enabled, option.Timeout, min(option.Workers, 256)
+	r.optimistic, r.idleRefresh = option.Enabled, option.IdleRefresh
+	r.refreshTimeout, r.refreshLimit = option.Timeout, min(option.Workers, 256)
 	r.Cache = cache.New[string, response](capacity, cache.Options{RetainExpired: r.optimistic})
 	r.refreshing = make(map[string]bool)
+	if r.optimistic && r.idleRefresh {
+		r.refreshWorkers.Add(1)
+		go r.refreshIdle()
+	}
 
 	return r, nil
 }
 func (r *Real) Resolve(ctx context.Context, req model.ResolveRequest) (*dns.Msg, error) {
+	r.lastQuery.Store(r.now().UnixNano())
+	r.activeQueries.Add(1)
+	defer r.activeQueries.Add(-1)
+	r.refreshMu.Lock()
+	if r.idleCancel != nil {
+		r.idleCancel()
+	}
+	r.refreshMu.Unlock()
 	if req.Message == nil || len(req.Message.Question) != 1 {
 		return nil, errors.New("exactly one DNS question required")
 	}
@@ -132,7 +153,7 @@ func (r *Real) Resolve(ctx context.Context, req model.ResolveRequest) (*dns.Msg,
 		gen = generation
 		if ok && (!stale || r.optimistic) {
 			if stale {
-				r.refresh(req, endpoints, original, key, gen)
+				r.refresh(req, endpoints, original, key, gen, false)
 			}
 			if req.Trace != nil {
 				req.Trace.Endpoint = v.Endpoint
@@ -211,7 +232,11 @@ func (r *Real) exchange(ctx context.Context, req model.ResolveRequest, endpoints
 		}
 		if cacheable {
 			if ttl := ResponseTTL(reply); ttl > 0 {
-				r.Cache.Put(key, response{Msg: reply.Copy(), Stored: r.now(), Endpoint: ep.Protocol + "://" + ep.Address}, gen, ttl)
+				refreshQuery := req.Message.Copy()
+				refreshQuery.Id = 0
+				refreshQuery.Question[0].Name = dns.CanonicalName(refreshQuery.Question[0].Name)
+				r.Cache.Put(key, response{Msg: reply.Copy(), Stored: r.now(), Endpoint: ep.Protocol + "://" + ep.Address,
+					RefreshQuery: refreshQuery, RefreshEndpoints: append([]ResolverEndpoint(nil), endpoints...), RefreshOriginal: original}, gen, ttl)
 			} else {
 				r.Cache.Delete(key, gen)
 			}
@@ -241,11 +266,20 @@ func (r *Real) Close() {
 	r.refreshMu.Unlock()
 	r.refreshWorkers.Wait()
 }
-func (r *Real) refresh(req model.ResolveRequest, endpoints []ResolverEndpoint, original bool, key string, gen uint64) {
+func (r *Real) refresh(req model.ResolveRequest, endpoints []ResolverEndpoint, original bool, key string, gen uint64, isIdle bool) bool {
 	r.refreshMu.Lock()
-	if r.closed || r.refreshing[key] || len(r.refreshing) >= r.refreshLimit {
+	if r.closed || r.refreshing[key] || len(r.refreshing) >= r.refreshLimit ||
+		isIdle && (len(r.refreshing) != 0 || !r.isIdle()) {
 		r.refreshMu.Unlock()
-		return
+		return false
+	}
+	if _, ok, stale, current := r.Cache.PeekState(key); !ok || !stale || current != gen {
+		r.refreshMu.Unlock()
+		return false
+	}
+	refreshCtx := r.ctx
+	if isIdle {
+		refreshCtx, r.idleCancel = context.WithCancel(r.ctx)
 	}
 	r.refreshing[key] = true
 	r.refreshWorkers.Add(1)
@@ -256,8 +290,16 @@ func (r *Real) refresh(req model.ResolveRequest, endpoints []ResolverEndpoint, o
 	endpoints = append([]ResolverEndpoint(nil), endpoints...)
 	go func() {
 		defer r.refreshWorkers.Done()
-		defer func() { r.refreshMu.Lock(); delete(r.refreshing, key); r.refreshMu.Unlock() }()
-		ctx, cancel := context.WithTimeout(r.ctx, r.refreshTimeout)
+		defer func() {
+			r.refreshMu.Lock()
+			delete(r.refreshing, key)
+			if isIdle {
+				r.idleCancel()
+				r.idleCancel = nil
+			}
+			r.refreshMu.Unlock()
+		}()
+		ctx, cancel := context.WithTimeout(refreshCtx, r.refreshTimeout)
 		_, err := r.exchange(ctx, req, endpoints, original, key, true, gen)
 		cancel()
 		if err == nil {
@@ -266,10 +308,11 @@ func (r *Real) refresh(req model.ResolveRequest, endpoints []ResolverEndpoint, o
 		timer := time.NewTimer(time.Second)
 		defer timer.Stop()
 		select {
-		case <-r.ctx.Done():
+		case <-refreshCtx.Done():
 		case <-timer.C:
 		}
 	}()
+	return true
 }
 
 // NXDOMAIN and successful empty answers are completed lookups, not failures.

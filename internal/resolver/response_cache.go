@@ -1,6 +1,8 @@
 package resolver
 
 import (
+	"bytes"
+	"fmt"
 	"strings"
 	"time"
 
@@ -11,11 +13,14 @@ import (
 // Wire data (including the binary query key) uses byte slices so JSON preserves
 // it exactly. Message IDs are restored from the new request when serving a hit.
 type ResponseCacheRecord struct {
-	Key       []byte    `json:"key"`
-	Message   []byte    `json:"message"`
-	Stored    time.Time `json:"stored"`
-	ExpiresAt time.Time `json:"expires_at"`
-	Endpoint  string    `json:"endpoint"`
+	Key       []byte             `json:"key"`
+	Message   []byte             `json:"message"`
+	Stored    time.Time          `json:"stored"`
+	ExpiresAt time.Time          `json:"expires_at"`
+	Endpoint  string             `json:"endpoint"`
+	Query     []byte             `json:"query,omitempty"`
+	Endpoints []ResolverEndpoint `json:"endpoints,omitempty"`
+	Original  bool               `json:"original,omitempty"`
 }
 
 func (r *Real) ResponseSnapshot() []ResponseCacheRecord {
@@ -29,7 +34,18 @@ func (r *Real) ResponseSnapshot() []ResponseCacheRecord {
 		msg.Id = 0
 		raw, err := msg.Pack()
 		if err == nil {
-			out = append(out, ResponseCacheRecord{[]byte(record.Key), raw, record.Value.Stored, record.ExpiresAt, record.Value.Endpoint})
+			var query []byte
+			if record.Value.RefreshQuery != nil {
+				query, err = record.Value.RefreshQuery.Pack()
+			}
+			if err == nil {
+				out = append(out, ResponseCacheRecord{
+					Key: []byte(record.Key), Message: raw, Stored: record.Value.Stored,
+					ExpiresAt: record.ExpiresAt, Endpoint: record.Value.Endpoint,
+					Query: query, Endpoints: append([]ResolverEndpoint(nil), record.Value.RefreshEndpoints...),
+					Original: record.Value.RefreshOriginal,
+				})
+			}
 		}
 	}
 	return out
@@ -71,8 +87,45 @@ func (r *Real) RestoreResponses(records []ResponseCacheRecord) int {
 		if !r.optimistic && !now.Before(expiry) {
 			continue
 		}
+		refreshQuery := query
+		refreshEndpoints := []ResolverEndpoint(nil)
+		refreshOriginal := false
+		if len(record.Query) > 0 && len(record.Endpoints) > 0 {
+			persistedQuery := new(dns.Msg)
+			if persistedQuery.Unpack(record.Query) == nil && !persistedQuery.Response &&
+				!persistedQuery.CheckingDisabled && len(persistedQuery.Question) == 1 {
+				if _, validName := dns.IsDomainName(persistedQuery.Question[0].Name); validName {
+					partition := makeEndpointPartition(record.Endpoints)
+					if bytes.Equal(record.Key[:index], partition) && bytes.Equal(record.Key[index:], record.Query) {
+						endpointsValid := true
+						for _, endpoint := range record.Endpoints {
+							if endpoint.Validate() != nil {
+								endpointsValid = false
+								break
+							}
+						}
+						if endpointsValid {
+							refreshQuery = persistedQuery
+							refreshEndpoints = append([]ResolverEndpoint(nil), record.Endpoints...)
+							refreshOriginal = record.Original
+						}
+					}
+				}
+			}
+		} else if bytes.Equal(record.Key[:index], makeEndpointPartition(r.endpoints)) {
+			refreshEndpoints = append([]ResolverEndpoint(nil), r.endpoints...)
+		}
 		values = append(values, cache.Record[string, response]{Key: key,
-			Value: response{Msg: msg, Stored: record.Stored, Endpoint: record.Endpoint}, ExpiresAt: expiry, Stale: r.optimistic})
+			Value: response{Msg: msg, Stored: record.Stored, Endpoint: record.Endpoint, RefreshQuery: refreshQuery,
+				RefreshEndpoints: refreshEndpoints, RefreshOriginal: refreshOriginal}, ExpiresAt: expiry, Stale: r.optimistic})
 	}
 	return r.Cache.Restore(values)
+}
+
+func makeEndpointPartition(endpoints []ResolverEndpoint) []byte {
+	var b strings.Builder
+	for _, endpoint := range endpoints {
+		fmt.Fprintf(&b, "%s:%s:%s|", endpoint.Protocol, endpoint.Address, endpoint.URL)
+	}
+	return []byte(b.String())
 }

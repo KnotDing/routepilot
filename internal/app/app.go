@@ -355,7 +355,7 @@ func (a *App) build(d config.Document, saved *decisionCacheSnapshot, responses *
 	if err != nil {
 		return nil, err
 	}
-	rt.engine, err = classifier.New(ctx, rt.adapter, classifier.Config{Optimistic: s.Cache.Optimistic, ExpireDecisions: s.Cache.ExpireDecisions, TrustDirect: s.Surge.TrustDirect, Capacity: s.Cache.Capacity, Workers: s.Cache.Workers, QueueSize: s.Cache.Queue, Timeout: time.Duration(s.Cache.TimeoutMS) * time.Millisecond, DirectTTL: time.Duration(s.Cache.DirectTTLSeconds) * time.Second, SurgeTTL: time.Duration(s.Cache.SurgeTTLSeconds) * time.Second, UnknownTTL: time.Duration(s.Cache.UnknownTTLSeconds) * time.Second, ErrorTTL: time.Duration(s.Cache.ErrorTTLSeconds) * time.Second})
+	rt.engine, err = classifier.New(ctx, rt.adapter, classifier.Config{Optimistic: s.Cache.Optimistic, OptimisticIdleRefresh: s.Cache.OptimisticIdleRefresh, ExpireDecisions: s.Cache.ExpireDecisions, TrustDirect: s.Surge.TrustDirect, Capacity: s.Cache.Capacity, Workers: s.Cache.Workers, QueueSize: s.Cache.Queue, Timeout: time.Duration(s.Cache.TimeoutMS) * time.Millisecond, DirectTTL: time.Duration(s.Cache.DirectTTLSeconds) * time.Second, SurgeTTL: time.Duration(s.Cache.SurgeTTLSeconds) * time.Second, UnknownTTL: time.Duration(s.Cache.UnknownTTLSeconds) * time.Second, ErrorTTL: time.Duration(s.Cache.ErrorTTLSeconds) * time.Second})
 	if err != nil {
 		return nil, err
 	}
@@ -389,7 +389,7 @@ func (a *App) build(d config.Document, saved *decisionCacheSnapshot, responses *
 			return nil, e
 		}
 		rt.wire, _ = resolver.NewWireTransport(dial, time.Duration(s.DNS.TimeoutMS)*time.Millisecond)
-		rt.real, err = resolver.NewReal(rt.wire, s.DNS.Upstreams, s.DNS.PreserveOriginal, s.Cache.ResponseCapacity, resolver.OptimisticOptions{Context: ctx, Enabled: s.Cache.OptimisticResponses, Timeout: time.Duration(s.DNS.TimeoutMS) * time.Millisecond, Workers: s.Cache.Workers})
+		rt.real, err = resolver.NewReal(rt.wire, s.DNS.Upstreams, s.DNS.PreserveOriginal, s.Cache.ResponseCapacity, resolver.OptimisticOptions{Context: ctx, Enabled: s.Cache.OptimisticResponses, IdleRefresh: s.Cache.OptimisticResponseIdleRefresh, Timeout: time.Duration(s.DNS.TimeoutMS) * time.Millisecond, Workers: s.Cache.Workers})
 		if err != nil {
 			return nil, err
 		}
@@ -408,14 +408,14 @@ func (a *App) build(d config.Document, saved *decisionCacheSnapshot, responses *
 				continue
 			}
 			capacity := max(1, s.Cache.ResponseCapacity/max(1, policyPools))
-			upstream, e := resolver.NewReal(rt.wire, rule.Upstreams, false, capacity, resolver.OptimisticOptions{Context: ctx, Enabled: s.Cache.OptimisticResponses, Timeout: time.Duration(s.DNS.TimeoutMS) * time.Millisecond, Workers: s.Cache.Workers})
+			upstream, e := resolver.NewReal(rt.wire, rule.Upstreams, false, capacity, resolver.OptimisticOptions{Context: ctx, Enabled: s.Cache.OptimisticResponses, IdleRefresh: s.Cache.OptimisticResponseIdleRefresh, Timeout: time.Duration(s.DNS.TimeoutMS) * time.Millisecond, Workers: s.Cache.Workers})
 			if e != nil {
 				return nil, e
 			}
 			rt.policyResolvers = append(rt.policyResolvers, upstream)
 			binding := dnsserver.PolicyDNSBinding{Field: rule.Field, Policy: rule.Policy, Resolver: &observedReal{real: upstream, rt: rt}, Fallback: rule.Fallback, AttemptTimeout: time.Duration(s.DNS.TimeoutMS) * time.Millisecond}
 			if rule.Fallback == "upstreams" {
-				backup, err := resolver.NewReal(rt.wire, rule.FallbackUpstreams, false, capacity, resolver.OptimisticOptions{Context: ctx, Enabled: s.Cache.OptimisticResponses, Timeout: time.Duration(s.DNS.TimeoutMS) * time.Millisecond, Workers: s.Cache.Workers})
+				backup, err := resolver.NewReal(rt.wire, rule.FallbackUpstreams, false, capacity, resolver.OptimisticOptions{Context: ctx, Enabled: s.Cache.OptimisticResponses, IdleRefresh: s.Cache.OptimisticResponseIdleRefresh, Timeout: time.Duration(s.DNS.TimeoutMS) * time.Millisecond, Workers: s.Cache.Workers})
 				if err != nil {
 					return nil, err
 				}

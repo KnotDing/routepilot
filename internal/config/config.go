@@ -71,7 +71,9 @@ type BGP struct {
 }
 type Cache struct {
 	Optimistic                        bool `json:"optimistic"`
+	OptimisticIdleRefresh             bool `json:"optimistic_idle_refresh"`
 	OptimisticResponses               bool `json:"optimistic_responses"`
+	OptimisticResponseIdleRefresh     bool `json:"optimistic_response_idle_refresh"`
 	ExpireDecisions                   bool `json:"expire_decisions"`
 	InvalidateOnReadFailure           bool `json:"invalidate_on_read_failure"`
 	InvalidateDirectOnSelectionChange bool `json:"invalidate_direct_on_selection_change"`
@@ -307,7 +309,7 @@ func Default() Document {
 		DNS:     DNS{AAAAFallback: "surge", Listeners: []string{"127.0.0.1:1053"}, PreserveOriginal: true, TimeoutMS: 2000, SourcePortFirst: 20000, SourcePortLast: 20999, Upstreams: []resolver.ResolverEndpoint{{Name: "Cloudflare", Protocol: "udp", Address: "1.1.1.1:53", Enabled: true}}},
 		Surge:   Surge{CLIPath: "/Applications/Surge.app/Contents/Applications/surge-cli", DNS: "198.18.0.2:53", FakePrefixes: []string{"198.18.0.0/15"}},
 		BGP:     BGP{LocalASN: 64512, ListenPort: 179, RouteLimit: 128, HoldSeconds: 30, KeepaliveSeconds: 10},
-		Cache:   Cache{Capacity: 10000, ResponseCapacity: 10000, Workers: 8, Queue: 256, TimeoutMS: 500, DirectTTLSeconds: 300, SurgeTTLSeconds: 300, UnknownTTLSeconds: 10, ErrorTTLSeconds: 1, InvalidateDirectOnSelectionChange: true, InvalidateRejectOnSelectionChange: true},
+		Cache:   Cache{OptimisticIdleRefresh: true, OptimisticResponseIdleRefresh: true, Capacity: 10000, ResponseCapacity: 10000, Workers: 8, Queue: 256, TimeoutMS: 500, DirectTTLSeconds: 300, SurgeTTLSeconds: 300, UnknownTTLSeconds: 10, ErrorTTLSeconds: 1, InvalidateDirectOnSelectionChange: true, InvalidateRejectOnSelectionChange: true},
 		Health:  Health{1000, 3, 3, 60, 3, "example.com"}, Logging: Logging{"info", true, 1000, true, 2000},
 		Notifications: Notifications{Surge: true, BGP: true, DNS: true, Controller: true, CooldownSeconds: 300},
 		Security:      Security{Username: "admin", SessionMinutes: 60, AllowedNetworks: []string{"127.0.0.0/8", "::1/128"}},

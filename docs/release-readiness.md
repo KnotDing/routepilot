@@ -20,6 +20,8 @@ make fuzz
 
 `verify-release` 按顺序执行前端测试、全部 Go 竞态测试、go vet、前后端构建、原生检查、浏览器检查、完整 App/DMG/ZIP 打包及校验。每次实际执行 Go 测试，不使用旧的成功缓存。构建会清理历史发布产物，保留 UI 检查截图；不要同时运行多个构建命令。
 
+`web/dist` 不提交到源码；`make test`、`make cli` 和 `make build` 会先从 `web/src` 构建嵌入资源。干净检出后使用这些 Makefile 目标，而不是直接调用 Go 编译器。
+
 可单独运行：
 
 | 命令 | 范围 / 前提 |

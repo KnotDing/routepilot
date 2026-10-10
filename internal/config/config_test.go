@@ -87,6 +87,20 @@ func TestTrustDirectIsOptInAcrossOldAndNewConfiguration(t *testing.T) {
 	}
 }
 
+func TestOptimisticIdleRefreshDefaultsOn(t *testing.T) {
+	c := Default().Settings.Cache
+	if !c.OptimisticIdleRefresh || !c.OptimisticResponseIdleRefresh {
+		t.Fatal("idle refresh defaults must preserve existing optimistic behavior")
+	}
+	d := Default()
+	if err := json.Unmarshal([]byte(`{"cache":{"optimistic":true,"optimistic_responses":true}}`), &d.Settings); err != nil {
+		t.Fatal(err)
+	}
+	if !d.Settings.Cache.OptimisticIdleRefresh || !d.Settings.Cache.OptimisticResponseIdleRefresh {
+		t.Fatal("older settings did not inherit enabled idle-refresh defaults")
+	}
+}
+
 func TestRemoteBackendOriginsAndClone(t *testing.T) {
 	for _, raw := range []string{"https://192.168.20.10:1055", "https://[fd00:20::10]:1055", "http://127.0.0.1:1088/"} {
 		if _, err := BackendURL(raw); err != nil {
