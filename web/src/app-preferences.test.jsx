@@ -47,12 +47,3 @@ it('offers immediate installation only after update download is complete',async(
  fireEvent.click(install);
  expect(postAction).toHaveBeenCalledWith('installAvailable');
 });
-
-it('shows a prominent manual beta check action in native update settings',()=>{
- const postAction=vi.fn();
- window.webkit={messageHandlers:{routepilotPreferences:{postMessage:vi.fn()},routepilotUpdateAction:{postMessage:postAction}}};
- render(<AppPreferencesPanel kind="updates" notify={()=>{}}/>);
-
- fireEvent.click(screen.getByRole('button',{name:'检查 Beta 版本更新'}));
- expect(postAction).toHaveBeenCalledWith('checkBeta');
-});

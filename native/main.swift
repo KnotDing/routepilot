@@ -330,7 +330,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
             : L("后台未提供完整的版本和构建编号，请更新后台服务。")
         let summary = appInfo + "\n" + backendInfo
         guard child == nil, FileManager.default.fileExists(atPath: "/Library/LaunchDaemons/com.routepilot.surge-controller.plist") else {
-            alert(title, summary + "\n\n" + L("请在“设置 → 软件更新”中执行完整升级，以同步更新 App 和已安装的本机网络后台。通过 DMG/ZIP 手动替换 App 不会更新后台；测试版请使用“检查 Beta 版本更新”修复。"), preventsTermination: false)
+            alert(title, summary + "\n\n" + L("请在“设置 → 软件更新”中执行完整升级，以同步更新 App 和已安装的本机网络后台。通过 DMG/ZIP 手动替换 App 不会更新后台；测试版请启用“自动检查 Beta 版本”后重新检查更新。"), preventsTermination: false)
             return
         }
         let dialog = NSAlert()
@@ -367,7 +367,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
             }
             alert("后台服务已覆盖", L("本机网络后台已替换为 App 携带的版本。"), preventsTermination: false)
         } catch {
-            alert("后台服务未覆盖", error.localizedDescription + "\n\n" + L("请在“设置 → 软件更新”中执行完整升级，以同步更新 App 和已安装的本机网络后台。通过 DMG/ZIP 手动替换 App 不会更新后台；测试版请使用“检查 Beta 版本更新”修复。"), preventsTermination: false)
+            alert("后台服务未覆盖", error.localizedDescription + "\n\n" + L("请在“设置 → 软件更新”中执行完整升级，以同步更新 App 和已安装的本机网络后台。通过 DMG/ZIP 手动替换 App 不会更新后台；测试版请启用“自动检查 Beta 版本”后重新检查更新。"), preventsTermination: false)
         }
         reconnect()
     }
@@ -461,12 +461,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
         if message.name == "routepilotUpdateAction" {
             guard trusted, let action = message.body as? String else { return }
             if action == "check" { Task { await checkReleaseUpdate(silent: false) } }
-            else if action == "checkBeta" { Task { await checkReleaseUpdate(silent: false, beta: true) } }
+            else if action == "checkBeta" { Task { await checkReleaseUpdate(silent: false, beta: true) } } // older management pages still post this action
             else if action == "installAvailable" {
                 guard let release = availableRelease else { alert("没有可安装的更新", "请重新检查更新后再试。"); return }
                 Task { await installRelease(release) }
             }
-            else if action == "install" { performReleaseUpdate() }
+            else if action == "install" { performReleaseUpdate() } // older management pages post "install" for the same flow
             else if action == "enableAssistant" { enableUpdateAssistant() }
             else if action == "disableAssistant" { disableUpdateAssistant() }
             return
