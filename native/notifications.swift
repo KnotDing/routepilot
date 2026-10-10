@@ -39,8 +39,8 @@ struct AppPreferences: Codable {
 
     static var current: AppPreferences {
         get {
-            guard let data = UserDefaults.standard.data(forKey: "appPreferences"),
-                  let preferences = try? JSONDecoder().decode(Self.self, from: data) else { return Self() }
+            var preferences = UserDefaults.standard.data(forKey: "appPreferences").flatMap { try? JSONDecoder().decode(Self.self, from: $0) } ?? Self()
+            if let saved = try? AutomationIntegration.savedPreferences() { preferences.automation = saved }
             return preferences
         }
         set { if let data = try? JSONEncoder().encode(newValue) { UserDefaults.standard.set(data, forKey: "appPreferences") } }

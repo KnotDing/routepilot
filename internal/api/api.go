@@ -10,6 +10,7 @@ import (
 	"reflect"
 	"strconv"
 	"strings"
+	"surge-controller/internal/appautomation"
 	"surge-controller/internal/config"
 	"surge-controller/internal/database"
 	"surge-controller/internal/events"
@@ -41,6 +42,9 @@ type API struct {
 	operations        map[string]operation
 	RouteImportClient *http.Client
 	SoftwareUpdates   softwareUpdateController
+	AppAutomation     interface {
+		Call(context.Context, string, *appautomation.Change) (appautomation.Result, error)
+	}
 	updateMu          sync.Mutex
 	updateCheckMu     sync.Mutex
 	updateState       updateAutomationState
@@ -233,6 +237,10 @@ func (a *API) Handler() http.Handler {
 }
 func (a *API) serve(w http.ResponseWriter, r *http.Request) {
 	path := strings.TrimPrefix(r.URL.Path, "/api/v1/")
+	if path == "app/automation" {
+		a.automation(w, r)
+		return
+	}
 	if path == "operations/status" && r.Method == "GET" {
 		a.operationStatus(w, r)
 		return

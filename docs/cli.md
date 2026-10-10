@@ -4,7 +4,7 @@ CLI 通过同一套管理 API 控制运行中的 RoutePilot，支持本机和远
 
 ## 在 App 设置中管理
 
-进入 **设置 → CLI 与 skill**，启用 CLI 后安装到 `~/.local/bin/routepilot`；请把这个目录加入 PATH。关闭 CLI 后移除 App 管理的命令行入口，并拒绝同一用户运行 CLI 发起的控制请求，包括通过绝对路径启动。帮助和版本查询仍可使用；独立源码 CLI 在没有 App 管理开关时正常工作。这个开关管理本机 CLI，不改变后台 HTTP API 的认证设置。
+进入 **设置 → CLI 与 skill**，启用 CLI 后安装到 `~/.local/bin/routepilot`；请把这个目录加入 PATH。关闭 CLI 后移除 App 管理的命令行入口，并拒绝同一用户运行 CLI 发起的控制请求，包括通过绝对路径启动。帮助和版本查询仍可使用；独立源码 CLI 在没有 App 管理开关时正常工作。这个开关管理当前连接后端所在 Mac 的 CLI，不改变后台 HTTP API 的认证设置。CLI 发起请求时仍检查执行 CLI 的 Mac 上的开关。
 
 勾选 **自动安装 AI agent skill**，通过复选框同时选择下面的任意多个 agent。安装的是指向 App 内资源的链接，完整 App 更新后 CLI 和 skill 会同步使用新版本。取消某个 agent 或关闭自动安装并保存，会移除对应的 App 管理集成并恢复覆盖前的内容。安装状态单独显示实际安装、跳过和当前选择的目标。
 
@@ -31,7 +31,7 @@ CLI 通过同一套管理 API 控制运行中的 RoutePilot，支持本机和远
 | [Amp](https://ampcode.com/docs/customize/skills) | `amp` | `~/.config/amp/skills` |
 | [Pi](https://github.com/earendil-works/pi/blob/main/packages/coding-agent/src/config.ts) | `pi` | `~/.pi/agent/skills` |
 
-Codex、Hermes 和 Pi 分别支持 `$CODEX_HOME`、`$HERMES_HOME` 和 `$PI_CODING_AGENT_DIR` 自定义根目录，skill 安装到该目录的 `skills` 子目录；请使用绝对路径。环境变量以运行本机 App 时的值为准。
+Codex、Hermes 和 Pi 分别支持 `$CODEX_HOME`、`$HERMES_HOME` 和 `$PI_CODING_AGENT_DIR` 自定义根目录，skill 安装到该目录的 `skills` 子目录；请使用绝对路径。安装使用目标 Mac 的桌面用户目录；自定义根目录使用该桌面会话的环境变量。
 
 同时安装示例：
 
@@ -42,7 +42,7 @@ curl -fsSL https://gitea.knotding.com/knot/routepilot/raw/branch/main/scripts/in
 
 已有同名文件、目录或其他链接时，设置会列出冲突并提供 **覆盖 / 跳过**，默认选择覆盖。覆盖前将原内容完整移到 CLI 配置目录下的 `backups`，禁用对应集成时恢复原内容；跳过不会覆盖已有内容，设置中显示跳过状态。重新保存可再次处理被跳过的冲突。自动启动时不会未经选择覆盖新的冲突，可在设置中处理。
 
-这些操作由本机 App 执行；普通浏览器或切换远程后台不会在目标远程 Mac 安装 CLI 或修改 agent 目录。打开浏览器时该设置页说明如何在 App 中管理。
+设置通过管理 API 作用于**当前连接的后端**，App 管理窗口与普通浏览器行为一致：连接本机修改本机，连接远程修改远程 Mac。页面显示目标地址、桌面用户和实际安装路径。安装由目标完整 App 的助手执行，并降权到 Surge 设置指定的用户（未指定时使用目标 Mac 当前桌面用户），不会安装到 root 或操作浏览器所在设备。目标桌面用户需要已登录；旧版后端或旧版 App 缺少接口时仅禁用此设置页并提示更新。读取和保存使用同一套管理认证与 CSRF 保护。
 
 ## 手动安装
 

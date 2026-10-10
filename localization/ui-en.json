@@ -941,5 +941,18 @@
   "启用更新助手…": "Enable update assistant…",
   "停用更新助手…": "Disable update assistant…",
   "本地使用 Beta 测试版，远端使用正式版": "The local interface uses a Beta release; the remote backend uses a stable release.",
-  "本地使用正式版，远端使用 Beta 测试版": "The local interface uses a stable release; the remote backend uses a Beta release."
+  "本地使用正式版，远端使用 Beta 测试版": "The local interface uses a stable release; the remote backend uses a Beta release.",
+  "设置作用于当前连接的后端，在目标 Mac 的桌面用户目录中安装 CLI 和 skill。": "These settings apply to the connected backend and install the CLI and skills in the desktop user directory on that Mac.",
+  "当前目标：{target}": "Current target: {target}",
+  "桌面用户：{user}": "Desktop user: {user}",
+  "正在读取 CLI 与 skill 设置…": "Loading CLI and skill settings…",
+  "请更新当前后端的完整 App，以管理 CLI 与 skill。": "Update the complete App on the connected backend to manage the CLI and skills.",
+  "重新读取": "Reload",
+  "启用后安装 ~/.local/bin/routepilot；禁用后拒绝目标 Mac 上的 CLI 控制请求，并移除该 App 管理的命令行入口。帮助和版本查询仍可使用。": "Enabling installs ~/.local/bin/routepilot on the target Mac. Disabling rejects CLI control requests on that Mac and removes the App-managed command. Help and version queries remain available.",
+  "请通过当前后端的 CLI 与 skill 设置保存。": "Save through the CLI and skill settings on the connected backend.",
+  "无法锁定 CLI 与 skill 设置。": "Cannot lock CLI and skill settings.",
+  "CLI 集成锁文件权限或类型无效。": "The CLI integration lock has invalid permissions or type.",
+  "CLI 与 skill 设置正在应用，请稍后重试。": "CLI and skill settings are being applied; retry shortly.",
+  "CLI 与 skill 安装必须以桌面用户运行。": "CLI and skill installation must run as a desktop user.",
+  "CLI 与 skill 请求过大。": "The CLI and skill request is too large."
 }

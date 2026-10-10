@@ -390,5 +390,19 @@
   "A software update is already in progress": "软件更新正在进行中",
   "Automatic installation could not start: {error}": "自动安装无法启动：{error}",
   "Cannot load automatic update state: {error}": "无法读取自动更新记录：{error}",
-  "Cannot save automatic update state: {error}": "无法保存自动更新记录：{error}"
+  "Cannot save automatic update state: {error}": "无法保存自动更新记录：{error}",
+  "Update the complete App on this backend to manage CLI and skill integrations": "请更新当前后端的完整 App，以管理 CLI 与 skill。",
+  "CLI and skill management requires the installed macOS service": "CLI 与 skill 管理需要已安装的 macOS 后台服务。",
+  "CLI and skill management is not supported on this backend": "当前后端不支持 CLI 与 skill 管理，请更新完整 App。",
+  "backend desktop user is unavailable": "目标 Mac 的桌面用户不可用，请检查 Surge 用户设置或登录状态。",
+  "backend desktop user session is unavailable": "目标 Mac 的桌面用户尚未登录。",
+  "CLI and skill settings are being applied; retry shortly": "CLI 与 skill 设置正在应用，请稍后重试。",
+  "App integration helper failed": "App 集成助手执行失败。",
+  "cannot validate installed App integration helper": "无法验证已安装 App 的集成助手。",
+  "invalid App integration response": "App 集成助手返回了无效数据。",
+  "incomplete App integration response": "App 集成助手返回数据不完整。",
+  "installed App ownership or permissions are unsafe": "已安装 App 的所有者或权限不安全。",
+  "complete CLI and skill preferences are required": "需要完整的 CLI 与 skill 设置。",
+  "invalid or duplicate skill target": "skill 目标无效或重复。",
+  "invalid CLI or skill conflict choice": "CLI 或 skill 冲突处理选项无效。"
 }

@@ -11,6 +11,7 @@ app_dir="$build_dir/RoutePilot.app"
 mkdir -p "$app_dir/Contents/MacOS" "$app_dir/Contents/Resources/Service/bin" "$app_dir/Contents/Resources/Service/scripts" "$app_dir/Contents/Resources/Service/launchd" .cache/swift-module .cache/AppIcon.iconset
 xcrun swiftc -parse-as-library -swift-version 5 -target "$(uname -m)-apple-macos13.0" -module-cache-path "$project_dir/.cache/swift-module" -framework AppKit -framework WebKit -framework ServiceManagement -framework UserNotifications native/main.swift native/window_frame.swift native/status_icon.swift native/status_preferences.swift native/credentials.swift native/remote_credentials.swift native/notifications.swift native/automation.swift native/installer.swift native/localization.swift native/release_updater.swift native/update_assistant.swift native/update_dialog.swift native/remote_update_restart.swift -o "$app_dir/Contents/MacOS/RoutePilot"
 cp native/Info.plist "$app_dir/Contents/Info.plist"
+printf '{"version":1}\n' > "$app_dir/Contents/Resources/automation-api.json"
 # Keep the native bundle aligned with the release identity embedded in Go and Vite.
 release_version=$(plutil -extract version raw -o - internal/buildinfo/release.json)
 release_build=$(plutil -extract build raw -o - internal/buildinfo/release.json)

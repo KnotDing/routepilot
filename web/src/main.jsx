@@ -116,7 +116,7 @@ export function Settings({settings,refresh,notify,status={},backend=null,interce
  };
  return <>
   <div className="tabs">{Object.entries(groups).map(([k,v])=><button key={k} className={k===category?'selected':''} onClick={()=>setCategory(k)}>{t(v)}</button>)}</div>
-  {category==='about'?<About status={status} backend={backend}/>:category==='statusbar'?<StatusBarSettings notify={notify}/>:category==='automation'?<AutomationSettings notify={notify}/>:<>
+  {category==='about'?<About status={status} backend={backend}/>:category==='statusbar'?<StatusBarSettings notify={notify}/>:category==='automation'?<AutomationSettings notify={notify} backend={backend}/>:<>
    {category==='notifications'&&<AppPreferencesPanel notify={notify}/>}
    {saving&&<p className="notice" role="status">{t('正在提交配置…')}</p>}
    <form className="settings-form" onSubmit={save}>

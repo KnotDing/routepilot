@@ -21,6 +21,7 @@ import (
 	"sort"
 	"strings"
 	"surge-controller/internal/api"
+	"surge-controller/internal/appautomation"
 	"surge-controller/internal/buildinfo"
 	"surge-controller/internal/classifier"
 	"surge-controller/internal/config"
@@ -265,7 +266,7 @@ func Open(ctx context.Context, path string) (*App, error) {
 	a.notificationDone = make(chan struct{})
 	a.notifications = notifications.New(a.event)
 	go func() { defer close(a.notificationDone); a.notifications.Run(notificationCtx) }()
-	a.control = &api.API{Service: a, Store: a.store, Bus: a.bus, SoftwareUpdates: softwareupdate.New(ctx, path, a.security.SaveUpdateSessions)}
+	a.control = &api.API{Service: a, Store: a.store, Bus: a.bus, SoftwareUpdates: softwareupdate.New(ctx, path, a.security.SaveUpdateSessions), AppAutomation: appautomation.New(path)}
 	go a.control.RunRouteFeedScheduler(ctx)
 	go a.control.RunUpdateScheduler(ctx)
 	var savedDecisions decisionCacheSnapshot

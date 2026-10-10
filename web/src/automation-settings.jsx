@@ -1,14 +1,17 @@
 import React,{useEffect,useRef,useState} from 'react';
-import {useT} from './i18n';
-import {nativeApp,savePreferences,usePreferenceDraft} from './app-preferences';
+import {useT,message} from './i18n';
+import {request} from './client';
 
 const defaults={cliEnabled:false,automaticSkillInstall:false,skillTargets:['codex']};
 const agents=[['codex','Codex'],['claude','Claude Code'],['hermes','Hermes'],['cursor','Cursor'],['copilot','GitHub Copilot'],['gemini','Gemini CLI'],['opencode','OpenCode'],['windsurf','Windsurf / Devin Desktop'],['cline','Cline'],['roo','Roo Code'],['kilo','Kilo Code'],['antigravity','Antigravity'],['openclaw','OpenClaw'],['qwen','Qwen Code'],['amp','Amp'],['pi','Pi']].map(([id,name])=>({id,name}));
 const entryLabel=id=>id==='cli'?'CLI':(agents.find(agent=>agent.id===id)?.name||id)+' skill';
-export function AutomationSettings({notify}){
- const t=useT(),[preferences,setPreferences,saved]=usePreferenceDraft(['automation']),[busy,setBusy]=useState(false),[conflicts,setConflicts]=useState(null),[choices,setChoices]=useState({});
+export function AutomationSettings({notify,backend=null}){
+ const t=useT(),[draft,setDraft]=useState(defaults),[state,setState]=useState(null),[error,setError]=useState(''),[loading,setLoading]=useState(true),[busy,setBusy]=useState(false),[conflicts,setConflicts]=useState(null),[choices,setChoices]=useState({});
+ const alive=useRef(false);
+ const load=async()=>{setLoading(true);setError('');try{const value=await request('app/automation');if(alive.current){setState(value);if(value.preferences)setDraft(value.preferences)}}catch(e){if(alive.current&&e.name!=='AbortError')setError([404,501].includes(e.status)?t('请更新当前后端的完整 App，以管理 CLI 与 skill。'):message(e.message))}finally{if(alive.current)setLoading(false)}};
+ useEffect(()=>{alive.current=true;load();return()=>{alive.current=false}},[]);
  const modal=useRef(null),pending=useRef(null);
- const draft={...defaults,...preferences.automation},supported=nativeApp()&&preferences.automationSupported===true&&Array.isArray(preferences.automation?.skillTargets),status=preferences.automationStatus||{},entries=status.entries||[];
+ const supported=state?.supported===true&&Array.isArray(state.preferences?.skillTargets),status=state?.status||{},entries=status.entries||[];
  const missingTarget=draft.automaticSkillInstall&&!draft.skillTargets.length;
  const visibleEntries=entries.filter(entry=>entry.id==='cli'||entry.installed||entry.skipped||draft.automaticSkillInstall&&draft.skillTargets.includes(entry.id));
  useEffect(()=>{
@@ -20,24 +23,25 @@ export function AutomationSettings({notify}){
   };
   document.addEventListener('keydown',key);return()=>{document.body.style.overflow=overflow;document.removeEventListener('keydown',key);focus?.focus()};
  },[Boolean(conflicts),busy]);
- const set=(key,value)=>setPreferences({...preferences,automation:{...draft,[key]:value}});
+ const set=(key,value)=>setDraft({...draft,[key]:value});
  const commit=async(value,resolutions={})=>{
   if(busy||!supported)return;
-  if(value.automation.automaticSkillInstall&&!value.automation.skillTargets.length){notify(t('至少选择一个 agent。'),true);return}
+  if(value.automaticSkillInstall&&!value.skillTargets.length){notify(t('至少选择一个 agent。'),true);return}
   setBusy(true);
-  try{await savePreferences({...value,_automation:true,_automationChoices:resolutions});saved();setConflicts(null);pending.current=null;notify(t('CLI 与 skill 设置已保存'))}
-  catch(e){if(e.code==='automation_conflict'&&Array.isArray(e.conflicts)&&e.conflicts.length){pending.current=value;setConflicts(e.conflicts);setChoices(Object.fromEntries(e.conflicts.map(item=>[item.id,'overwrite'])))}else notify(e.message,true)}
-  finally{setBusy(false)}
+  try{const result=await request('app/automation','PUT',{preferences:value,choices:resolutions});if(!alive.current)return;setState(result);setDraft(result.preferences);setConflicts(null);pending.current=null;notify(t('CLI 与 skill 设置已保存'))}
+  catch(e){if(!alive.current||e.name==='AbortError')return;if(e.code==='automation_conflict'&&Array.isArray(e.conflicts)&&e.conflicts.length){pending.current=value;setConflicts(e.conflicts);setChoices(Object.fromEntries(e.conflicts.map(item=>[item.id,'overwrite'])))}else notify(message(e.message),true)}
+  finally{if(alive.current)setBusy(false)}
  };
- const save=e=>{e.preventDefault();commit({...preferences,automation:draft})};
- return <><section className="panel automation-settings"><h2>{t('CLI 与 AI agent skill')}</h2><p>{t('设置作用于运行此管理窗口的本机 App，不会修改当前查看的远程后台或浏览器设备。')}</p>{!supported&&<p className="notice">{t(nativeApp()?'请更新完整 App，以使用 CLI 和 skill 管理功能。':'请在 RoutePilot App 中启用 CLI 和自动安装 skill。')}</p>}
-  <form onSubmit={save}><fieldset disabled={!supported||busy} className="plain-fieldset"><div className="option-grid">
+ const save=e=>{e.preventDefault();commit(draft)};
+ return <><section className="panel automation-settings"><h2>{t('CLI 与 AI agent skill')}</h2><p>{t('设置作用于当前连接的后端，在目标 Mac 的桌面用户目录中安装 CLI 和 skill。')}</p><p>{t('当前目标：{target}',{target:backend?.url||location.origin})}{state?.user&&' · '+t('桌面用户：{user}',{user:state.user})}</p>{loading&&<p role="status">{t('正在读取 CLI 与 skill 设置…')}</p>}{!loading&&!supported&&!error&&<p className="notice">{message(state?.error||t('请更新当前后端的完整 App，以管理 CLI 与 skill。'))}</p>}{error&&<p className="notice error" role="alert">{error}</p>}{!loading&&(error||!supported)&&<button type="button" onClick={load}>{t('重新读取')}</button>}
+
+  <form onSubmit={save}><fieldset disabled={!supported||loading||busy||Boolean(error)} className="plain-fieldset"><div className="option-grid">
    <label className="check"><input type="checkbox" checked={draft.cliEnabled} onChange={e=>set('cliEnabled',e.target.checked)}/>{t('启用 CLI')}</label>
    <label className="check"><input type="checkbox" checked={draft.automaticSkillInstall} onChange={e=>set('automaticSkillInstall',e.target.checked)}/>{t('自动安装 AI agent skill')}</label>
-  </div><p>{t('启用后安装 ~/.local/bin/routepilot；禁用后拒绝本机 CLI 控制请求，并移除本 App 管理的命令行入口。帮助和版本查询仍可使用。')}</p>
+  </div><p>{t('启用后安装 ~/.local/bin/routepilot；禁用后拒绝目标 Mac 上的 CLI 控制请求，并移除该 App 管理的命令行入口。帮助和版本查询仍可使用。')}</p>
   {draft.automaticSkillInstall&&<fieldset className="plain-fieldset" aria-describedby="automation-target-hint"><legend className="field-caption"><span>{t('安装到哪些 agent（可多选）')}</span><span className="required-mark">{t('必填')}</span></legend><div className="option-grid">{agents.map(agent=><label className="check" key={agent.id}><input type="checkbox" checked={draft.skillTargets.includes(agent.id)} onChange={e=>set('skillTargets',e.target.checked?[...draft.skillTargets,agent.id]:draft.skillTargets.filter(id=>id!==agent.id))}/>{agent.name}</label>)}</div><p id="automation-target-hint" className={missingTarget?'notice error':'field-hint'}>{t(missingTarget?'至少选择一个 agent。':'可同时安装到多个 agent；取消勾选并保存会移除对应集成，恢复覆盖前的内容。')}</p></fieldset>}
   <p>{t('skill 自动安装后随 App 升级同步更新；关闭自动安装会移除本 App 管理的 skill，并恢复覆盖前的内容。CLI 默认关闭，需要先启用才能控制服务。')}</p>
-  <div className="toolbar automation-actions"><button className="primary" disabled={!supported||busy||missingTarget}>{t(busy?'正在保存…':'保存 CLI 与 skill 设置')}</button></div></fieldset></form>
+  <div className="toolbar automation-actions"><button className="primary" disabled={!supported||loading||busy||Boolean(error)||missingTarget}>{t(busy?'正在保存…':'保存 CLI 与 skill 设置')}</button></div></fieldset></form>
   {visibleEntries.length>0&&<section className="automation-installations" aria-label={t('安装状态')}><h3>{t('安装状态')}</h3><dl>{visibleEntries.map(entry=><React.Fragment key={entry.id}><dt>{entryLabel(entry.id)}</dt><dd><code>{entry.path}</code>{' · '}{t(entry.installed?'已安装':entry.skipped?'已跳过，保留原内容':'未安装')}</dd></React.Fragment>)}</dl></section>}
   {status.error&&<p className="notice error" role="alert">{status.error}</p>}
   <p>{t('请将 ~/.local/bin 加入 PATH；覆盖前会备份原内容，禁用时恢复。')}</p>{status.backupDirectory&&<p>{t('备份目录：{path}',{path:status.backupDirectory})}</p>}

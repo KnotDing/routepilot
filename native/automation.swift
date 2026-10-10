@@ -40,6 +40,7 @@ struct AutomationConflict: Error {
 enum AutomationIntegration {
     private struct State: Codable {
         var cli_enabled = false
+        var preferences: AutomationPreferences?
         var owned: [String: String] = [:]
         var backups: [String: String] = [:]
         var skipped: [String: String] = [:]
@@ -121,7 +122,64 @@ enum AutomationIntegration {
         return ["entries": values, "backupDirectory": backupDirectory.path]
     }
 
+    // Atomic integration state is shared with the helper and the running App.
+    // Older installations migrate their UserDefaults preferences on first apply.
+    static func savedPreferences() throws -> AutomationPreferences? { try readState().preferences }
+
+    private static func locked<T>(_ work: () throws -> T) throws -> T {
+        try ensureDirectory(directory, privateMode: true)
+        let path = directory.appendingPathComponent("integration.lock").path
+        let fd = Darwin.open(path, O_CREAT | O_RDWR | O_NOFOLLOW, 0o600)
+        guard fd >= 0 else { throw failure("无法锁定 CLI 与 skill 设置。") }
+        defer { Darwin.close(fd) }
+        var info = stat()
+        guard fstat(fd, &info) == 0, info.st_uid == geteuid(), info.st_mode & S_IFMT == S_IFREG,
+              info.st_mode & 0o077 == 0, info.st_nlink == 1 else { throw failure("CLI 集成锁文件权限或类型无效。") }
+        guard flock(fd, LOCK_EX | LOCK_NB) == 0 else { throw failure("CLI 与 skill 设置正在应用，请稍后重试。") }
+        defer { flock(fd, LOCK_UN) }
+        return try work()
+    }
+
+    static func runHelper() {
+        var result: [String: Any] = ["supported": supported]
+        do {
+            guard geteuid() >= 500 else { throw failure("CLI 与 skill 安装必须以桌面用户运行。") }
+            var data = Data()
+            while let part = try FileHandle.standardInput.read(upToCount: 4096), !part.isEmpty {
+                data.append(part)
+                guard data.count <= 65536 else { throw failure("CLI 与 skill 请求过大。") }
+            }
+            struct Request: Decodable {
+                let action: String
+                let preferences: AutomationPreferences?
+                let choices: [String: String]?
+            }
+            let request = try JSONDecoder().decode(Request.self, from: data)
+            if request.action == "set" {
+                guard let preferences = request.preferences else { throw failure("CLI 与 skill 设置无效。") }
+                let choices = request.choices ?? [:]
+                guard choices.keys.allSatisfy({ $0 == "cli" || AutomationPreferences.agents.contains($0) }), choices.values.allSatisfy({ ["overwrite", "skip"].contains($0) }) else { throw failure("CLI 与 skill 设置无效。") }
+                try apply(preferences, choices: choices)
+            } else if request.action != "get" { throw failure("CLI 与 skill 设置无效。") }
+            result = try locked {
+                let preferences = try savedPreferences() ?? AppPreferences.current.automation
+                guard preferences.valid else { throw failure("CLI 与 skill 设置无效。") }
+                let value = try JSONSerialization.jsonObject(with: JSONEncoder().encode(preferences))
+                return ["supported": supported, "preferences": value, "status": status()]
+            }
+        } catch let conflict as AutomationConflict {
+            result["code"] = "automation_conflict"
+            result["conflicts"] = conflict.items
+            result["error"] = L("检测到同名文件，请选择覆盖或跳过。")
+        } catch { result["error"] = error.localizedDescription }
+        if let data = try? JSONSerialization.data(withJSONObject: result) { FileHandle.standardOutput.write(data) }
+    }
+
     static func apply(_ preferences: AutomationPreferences, choices: [String: String] = [:], startup: Bool = false) throws {
+        try locked { try applyUnlocked(preferences, choices: choices, startup: startup) }
+    }
+
+    private static func applyUnlocked(_ preferences: AutomationPreferences, choices: [String: String], startup: Bool) throws {
         guard preferences.valid else { throw failure("CLI 与 skill 设置无效。") }
         if preferences.cliEnabled || preferences.automaticSkillInstall {
             guard supported else { throw failure("此 App 未包含 CLI 或 skill，请更新完整应用。") }
@@ -149,6 +207,7 @@ enum AutomationIntegration {
         var undo: [() throws -> Void] = []
         var next = previous
         next.cli_enabled = preferences.cliEnabled
+        next.preferences = preferences
         func move(_ from: URL, _ to: URL) throws {
             try fm.moveItem(at: from, to: to)
             undo.append { try fm.moveItem(at: to, to: from) }

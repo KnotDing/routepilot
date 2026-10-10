@@ -163,7 +163,7 @@ App 菜单的 **应用偏好 → 登录凭证保存方式** 可选 macOS 钥匙�
 
 `routepilot` CLI 支持状态、DNS 决策、缓存、BGP、路由、配置和完整 App 升级，默认输出 JSON。本机与远程后台使用同一套管理认证接口。
 
-在 **设置 → CLI 与 skill** 启用 CLI，并将 `~/.local/bin` 加入 PATH：
+在 **设置 → CLI 与 skill** 启用 CLI，设置作用于当前连接的后端（本机或远程 Mac），浏览器也可配置。安装到目标 Mac 的桌面用户目录；在该 Mac 上将 `~/.local/bin` 加入 PATH：
 
 ```sh
 routepilot status
