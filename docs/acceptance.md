@@ -73,10 +73,12 @@ P50 <1 ms and P99 <5 ms. Race instrumentation is for correctness, not capacity.
 Run the same load test on the deployed machine to establish its own sustained
 capacity; results above are measured samples rather than a universal guarantee.
 
-## Deployment boundaries
+## Deployment boundaries (automated and isolated evidence, 2026-10-08)
 
-- BGP remains disabled in the local preview. No live router BGP configuration or
-  announcement was made; local GoBGP tests use high loopback ports only.
+- At the time of this isolated preview, BGP was disabled and no live router
+  configuration or announcement was made. This is a dated test boundary, not
+  the current state of the deployed local instance; see the field-validation
+  update below.
 - IPv6 NLRI, DNS answers, listener/rule construction and Darwin NATLOOK layout
   have automated coverage. Actual IPv6 PF ingress and independent IPv6 gateway
   WAN bypass are unverified, so no IPv6 interception is enabled by default.
@@ -96,8 +98,40 @@ capacity; results above are measured samples rather than a universal guarantee.
 - macOS BGP active-connection TTL tuning reports an unsupported-platform warning;
   normal eBGP/iBGP exchanges pass. No unverified MD5/GTSM feature is claimed.
 
-The implementation and release are reviewable and runnable. Full site production
-acceptance is intentionally not claimed before these network/service checks.
+The checks above describe the automated and isolated acceptance scope as of
+2026-10-08. Subsequent user-reported field validation is recorded separately
+below; unverified details are not inferred from these earlier checks.
+
+## Subsequent field validation (2026-10-10)
+
+The user confirms that BGP is enabled on the local RoutePilot instance and has
+been exercised in actual use. The user also confirms repeated real-world
+validation of both local App upgrades and remote backend upgrades. These reports
+supersede the earlier statements that BGP was disabled in the local preview and
+that local/remote upgrades had only been tested with mocks.
+
+Detailed run-by-run logs, tested version pairs, route matrices, and upgrade
+failure-injection cases were not added to this repository in this update.
+Accordingly, this record does not claim an independently audited external
+gateway RIB/FIB matrix, every BGP failure mode, or every upgrade rollback case.
+IPv6 transparent PF/WAN validation remains outstanding and IPv6 interception
+remains disabled by default.
+
+## Remaining field-validation status
+
+For the v1.0.0 release, IPv6 transparent DNS is explicitly marked **unverified**
+and remains disabled by default. IPv6 support in configuration, route families,
+and automated tests does not imply validation of the real PF ingress or gateway
+WAN/return path.
+
+| Area | Current status | Evidence boundary |
+|---|---|---|
+| IPv4 transparent DNS | Passed for the documented Docker macvlan/macOS PF path on 2026-10-08 | See [packet evidence](phase-2-docker-evidence.md); gateway policy was not disabled, and production cutover is deployment-specific |
+| IPv6 transparent DNS | Not yet validated on a real PF/WAN path; disabled by default | Automated IPv6 construction/tests do not prove live ingress, routing or return path |
+| BGP | Enabled and used on the local instance, confirmed by the user on 2026-10-10 | Independent external gateway RIB/FIB matrix and detailed run logs are not archived here |
+| Local App upgrade | Repeated actual upgrades confirmed by the user on 2026-10-10 | Exact source/target versions and scenario-by-scenario logs are not archived here |
+| Remote backend upgrade | Repeated actual upgrades confirmed by the user on 2026-10-10 | Exact backend versions and failure-injection coverage are not archived here |
+| Developer ID signing/notarization | Not provided; release packages use ad-hoc signing | Affects Gatekeeper trust and first-run experience, not the reported upgrade test outcome |
 
 ## macOS APP and local DNS additions (2026-10-08)
 

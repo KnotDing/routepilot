@@ -72,7 +72,7 @@ Static 的确认表示用户已完成外部配置，RoutePilot 不自动安装�
 
 DNS 查询不会生成单 IP BGP 路由。Surge 不可用时停止新 Fake-IP、回退真实 DNS；已发行地址保留 TTL / 宽限期，切换路由后端前需要等待排空。
 
-**部署边界：** IPv4 透明 UDP / TCP DNS 已有 macOS PF 与抓包验证；IPv6 的实际 PF / WAN 路径尚未验收，默认关闭。解析器前缀路由影响该地址的全部流量，透明入口仅处理 UDP / TCP 53，还需考虑 DoH / DoT 等流量。
+**部署边界：IPv6 透明 DNS 未验证。** 实际 macOS PF / 网关 WAN 路径尚未验收，因此默认关闭；IPv4 透明 UDP / TCP DNS 已有 macOS PF 与抓包验证。解析器前缀路由影响该地址的全部流量，透明入口仅处理 UDP / TCP 53，还需考虑 DoH / DoT 等流量。
 
 更多配置见 [路由后端说明](docs/routing-backends.md) 和 [透明 DNS 部署指南](docs/phase-2-acceptance.md)。
 
@@ -191,7 +191,7 @@ curl -fsSL https://gitea.knotding.com/knot/routepilot/raw/branch/main/scripts/in
 curl -fsSL https://gitea.knotding.com/knot/routepilot/raw/branch/main/scripts/install_skill.sh | sh -s -- --agent codex --agent cursor --agent gemini
 ```
 
-安装器从官方仓库获取 **v0.6.10** 的 skill，无需克隆、编译或管理员权限。默认覆盖并备份；追加 `--on-conflict skip` 可保留现有内容。安装 skill 不会启用 CLI 或保存登录凭证，使用前请在 App 设置中启用 CLI，并让 agent 重新加载 skills。
+安装器从官方仓库获取 **v1.0.0** 的 skill，无需克隆、编译或管理员权限。默认覆盖并备份；追加 `--on-conflict skip` 可保留现有内容。安装 skill 不会启用 CLI 或保存登录凭证，使用前请在 App 设置中启用 CLI，并让 agent 重新加载 skills。
 
 [CLI 使用与安装目录](docs/cli.md) · [安装脚本源码](scripts/install_skill.sh)
 

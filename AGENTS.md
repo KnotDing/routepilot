@@ -24,7 +24,7 @@
 ## 发布版本
 
 - Gitea 网页与 API 使用 `https://gitea.knotding.com`；Git SSH remote 可能使用 `git.knotding.com`，不要把 SSH 主机名误作网页/API 域名。
-- 发布遵循 [发布准备与验收](docs/release-readiness.md) 和 `.gitea/workflows/release.yaml`，不绕过自动化门禁。
+- 发布遵循 [实际验收记录](docs/acceptance.md)、`.gitea/workflows/release.yaml` 和下列发布约定，不绕过自动化门禁。
 - 发布前确认 `main` 基线、工作区改动范围、下一个未使用的语义化版本标签及远端状态；不得覆盖已有标签，不得把无关或他人未提交改动混入发布。
 - Gitea Actions 列表中每次运行的主标题取自触发提交标题，工作流名称显示在其下方。所有提交（包括发布提交）都遵循 Conventional Commits（如 `feat:`、`fix:`、`docs:`）；发布提交标题应简洁概括本次面向用户的功能或修复，不要写成 `Release RoutePilot vX.Y.Z`。不要为了改标题重写或移动已推送的提交与标签。
 - 更新 `internal/buildinfo/release.json` 的版本、`scripts/install_skill.sh` 中的官方 tag 和提示版本、README 中的当前版本引用，并新增 `.gitea/release-notes/vX.Y.Z.md`。Release Notes 只写 App 用户可见的功能、修复和行为变化；排除 agent/仓库工作规范、开发流程等与 App 无关的内容。资产由工作流生成。
@@ -39,6 +39,8 @@
 - 委派者负责合并与最终验证。接收结果后检查实际文件和工作区状态，不把“已完成”的口头报告视作验证。
 - 交接时使用以下格式；未知或未验证的信息明确标为“未知”或“未验证”，不要猜测。
 
+### 通用交接模板
+
 ```text
 ## 任务交接
 - 目标与验收条件：
@@ -51,3 +53,25 @@
 ```
 
 - 交接时只提供完成后续工作所需的信息；引用仓库文件使用相对路径，避免包含凭证、个人信息或无关对话。
+
+### 当前项目交接（2026-10-10）
+
+```text
+## 项目交接
+- 目标与验收条件：维护 RoutePilot 正式版；保持 IPv6 透明 DNS“未验证”的明确声明与默认关闭，远程 API 变更需兼容不同版本后端。
+- 当前状态：v1.0.0 发布文件已更新，`make verify-release`、`make fuzz` 和包验证均通过；尚未提交、打标签或推送。接手时先检查工作区与 v1.0.0 标签状态。
+- 已完成：v0.6.10（commit 6d33ec2742c2d3f012f0550bfc26371f21bd797d）发布，Gitea 回归/发布工作流及 DMG、ZIP、SHA256SUMS 验证通过。用户确认本地实例实际使用 BGP，本机 App 和远程后台升级已多次实测。IPv4 透明 DNS/PF 的隔离 macvlan 验收见 `docs/phase-2-docker-evidence.md`。
+- 修改文件及目的：更新 `internal/buildinfo/release.json`、`scripts/install_skill.sh` 至 v1.0.0；在 `README.md` 和 `docs/acceptance.md` 明确 IPv6 透明 DNS未验证；新增 `.gitea/release-notes/v1.0.0.md`（发布准备中）；保留此前用户要求的验收文档更新、两份旧 readiness 文档删除及 v0.5.3 文档链接修正。
+- 验证：v1.0.0 `make verify-release`、`make fuzz`、`git diff --check` 通过；前端 79 项测试、Go race tests、vet、原生 UI 检查通过。`artifacts/package-verification.json` 报告版本 1.0.0 和包完整性检查通过。远端工作流与 Release 资产尚待推送后确认。
+- 未解决问题、风险或重要约束：真实 IPv6 PF/WAN 路径未验证，IPv6 透明拦截默认关闭；App 使用 ad-hoc 签名而非 Developer ID/公证。用户报告的 BGP 与升级实测无详细矩阵归档，不要将主流程描述为未实测，也不要推断所有边缘场景均覆盖。Surge 策略与缓存使用有界轮询同步。
+- 下一步行动与依赖：确认 v1.0.0 标签仍未占用；创建 Conventional Commit 和 v1.0.0 标签并推送；确认 Gitea 回归及发布工作流成功且 DMG、ZIP、SHA256SUMS 均发布。不要在远端门禁成功前宣称正式版已发布。
+```
+
+### 新接手者快速入口
+
+- **产品、安装和用户操作：** 从 [README](README.md) 开始，按需读“第一次配置”“本地、远程，一个管理窗口”“数据与凭证”。
+- **架构与安全边界：** [架构说明](docs/architecture.md) 描述 DNS 请求路径、保守 DIRECT、Fake-IP 发放、缓存一致性、PF、路由与安全；[验收记录](docs/acceptance.md) 区分自动化、隔离网络证据与现场验证。不要把历史隔离测试推断为整个用户部署均已验收。
+- **主要代码：** `cmd/` 为程序入口；`internal/dnsserver/` 和 `internal/classifier/` 为 DNS 分发与决策；`internal/resolver/` 为真实 DNS 上游；`internal/bgp/`、`internal/routing/`、`internal/state/` 管理路由与运行状态；`internal/api/`、`internal/remote/` 管理 API 与远程中继；`native/` 是 macOS 状态栏 App；`web/src/` 是管理界面。Go 包边界与数据流以架构文档为准。
+- **构建与测试：** `make verify` 跑前端测试、全 Go race 测试、vet 和构建；`make verify-release` 另外做原生/浏览器验收与 DMG/ZIP 打包校验；`make fuzz` 单独测版本解析。发布门禁会重建 `web/dist` 并替换 `artifacts/` 生成包，运行前检查并确认这些产物可重建。不要直接编辑 `web/dist`。
+- **运行及发布现实边界：** IPv4 Docker macvlan/PF 证据见 `docs/phase-2-docker-evidence.md`；IPv6 真实入口和 WAN 回程仍未验证。服务端路由状态、BGP Adj-RIB-Out 与外部网关 RIB/FIB 不是同一确认信号；Static 路由由外部管理，不要描述为应用已安装或验证。远程 API 变更必须测试旧后端缺接口/字段的局部降级。
+- **发布基线：** 当前已发布基线 `v0.6.10`；v1.0.0 包验证已通过，远端发布待完成，须先确认标签未占用。发布流程及禁止移动标签等约束见本文件“发布版本”和 `.gitea/workflows/`。每次接手代码先执行 `git status --short --branch`，再决定是否运行会覆盖构建产物的门禁；不得覆盖或丢弃已有工作区内容。
