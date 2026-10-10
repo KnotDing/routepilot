@@ -12,6 +12,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -502,13 +503,22 @@ func TestManagerRejectsUnsupportedStaleOrBusyUpdates(t *testing.T) {
 }
 
 func FuzzVersionParser(f *testing.F) {
-	for _, s := range []string{"v1.0.0", "01.0.0", "1.2.3-beta", ""} {
+	for _, s := range []string{"v1.0.0", "01.0.0", "1.2.3-beta", "", "0.0.0-beta.1", "v1.0.1-beta.7", "1.0.1-beta.01"} {
 		f.Add(s)
 	}
 	f.Fuzz(func(t *testing.T, s string) {
 		parts, err := versionParts(s)
 		if err == nil {
 			canonical := fmt.Sprintf("%d.%d.%d", parts[0], parts[1], parts[2])
+			// Numbered Beta tags are supported too; reconstruct their canonical
+			// suffix independently rather than treating every accepted tag as stable.
+			if _, suffix, beta := strings.Cut(strings.TrimPrefix(s, "v"), "-beta."); beta {
+				number, suffixErr := strconv.Atoi(suffix)
+				if suffixErr != nil || number <= 0 {
+					t.Fatalf("invalid beta suffix accepted %q", s)
+				}
+				canonical += fmt.Sprintf("-beta.%d", number)
+			}
 			if strings.TrimPrefix(s, "v") != canonical {
 				t.Fatal("noncanonical version accepted", s)
 			}

@@ -205,3 +205,18 @@ These checks cover update configuration, persistent scheduling/skips, release
 channels, unsaved preferences and remote version notices. They do not extend
 the existing IPv6 ingress or gateway commissioning evidence. Release publication
 is performed separately by the stable Gitea workflow.
+
+
+The v1.0.1 tag was **not released**: CI fuzzing found an outdated test invariant
+that incorrectly treated an accepted numbered Beta tag as a stable-only tag.
+The minimized `0.0.0-beta.1` case was reproduced locally, then added alongside
+`v1.0.1-beta.7` and an invalid leading-zero Beta seed. The assertion now checks
+canonical numbered Beta suffixes independently. Production version validation
+was unchanged. The existing tag remains immutable; the next candidate is v1.0.2.
+
+### v1.0.2 candidate verification
+
+After correcting the fuzz assertion, `make verify-release` passed again for
+v1.0.2 with the same 108 frontend tests, full Go race/vet, native UI, responsive
+browser checks and DMG/ZIP package validation. `make fuzz` also passed with all
+regression seeds and 203,435 randomized executions over five seconds.

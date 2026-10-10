@@ -193,7 +193,7 @@ curl -fsSL https://gitea.knotding.com/knot/routepilot/raw/branch/main/scripts/in
 curl -fsSL https://gitea.knotding.com/knot/routepilot/raw/branch/main/scripts/install_skill.sh | sh -s -- --agent codex --agent cursor --agent gemini
 ```
 
-安装器从官方仓库获取 **v1.0.1** 的 skill，无需克隆、编译或管理员权限。默认覆盖并备份；追加 `--on-conflict skip` 可保留现有内容。安装 skill 不会启用 CLI 或保存登录凭证，使用前请在 App 设置中启用 CLI，并让 agent 重新加载 skills。
+安装器从官方仓库获取 **v1.0.2** 的 skill，无需克隆、编译或管理员权限。默认覆盖并备份；追加 `--on-conflict skip` 可保留现有内容。安装 skill 不会启用 CLI 或保存登录凭证，使用前请在 App 设置中启用 CLI，并让 agent 重新加载 skills。
 
 [CLI 使用与安装目录](docs/cli.md) · [安装脚本源码](scripts/install_skill.sh)
 
