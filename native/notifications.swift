@@ -21,24 +21,24 @@ private enum NotificationSelection {
 
 struct AppPreferences: Codable {
     var automaticCheck = true
-    var automaticDownload = false
     var automaticInstall = false
     var updatePrompts = true
     var checkIntervalHours = 12
+    var updateTime = "03:00"
     var desktopNotifications = false
     var notificationSound = true
     var statusBar = StatusBarPreferences()
     var automation = AutomationPreferences()
 
-    enum CodingKeys: String, CodingKey { case automation, statusBar, automaticCheck, automaticDownload, automaticInstall, updatePrompts, checkIntervalHours, desktopNotifications, notificationSound }
+    enum CodingKeys: String, CodingKey { case automation, statusBar, automaticCheck, automaticInstall, updatePrompts, checkIntervalHours, updateTime, desktopNotifications, notificationSound }
     init() {}
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         automaticCheck = try c.decodeIfPresent(Bool.self, forKey: .automaticCheck) ?? true
-        automaticDownload = try c.decodeIfPresent(Bool.self, forKey: .automaticDownload) ?? false
         automaticInstall = try c.decodeIfPresent(Bool.self, forKey: .automaticInstall) ?? false
         updatePrompts = try c.decodeIfPresent(Bool.self, forKey: .updatePrompts) ?? true
         checkIntervalHours = try c.decodeIfPresent(Int.self, forKey: .checkIntervalHours) ?? 12
+        updateTime = try c.decodeIfPresent(String.self, forKey: .updateTime) ?? "03:00"
         desktopNotifications = try c.decodeIfPresent(Bool.self, forKey: .desktopNotifications) ?? false
         statusBar = try c.decodeIfPresent(StatusBarPreferences.self, forKey: .statusBar) ?? StatusBarPreferences()
         automation = try c.decodeIfPresent(AutomationPreferences.self, forKey: .automation) ?? AutomationPreferences()
@@ -82,7 +82,7 @@ final class ServiceNotifications {
     private var alarms: [String: [String: Alarm]] = [:]
     func reset() { alarms.removeAll() }
 
-    func observe(scope: String, name: String, health: [[String: Any]], settings: [String: Any]) {
+    func observe(scope: String, health: [[String: Any]], settings: [String: Any]) {
         guard AppPreferences.current.desktopNotifications, settings["enabled"] as? Bool == true else {
             alarms[scope] = nil
             return
@@ -108,7 +108,7 @@ final class ServiceNotifications {
         previous = previous.filter { seen.contains($0.key) }
         alarms[scope] = previous
         for (items, title, suffix) in [(failures, "服务异常", "down"), (recovered, "服务已恢复", "up")] where !items.isEmpty {
-            Task { await DesktopNotifications.shared.send(title: "RoutePilot · " + name + " · " + L(title), body: items.sorted().joined(separator: "、"), identifier: scope + ":" + suffix) }
+            Task { await DesktopNotifications.shared.send(title: "RoutePilot · " + L(title), body: items.sorted().joined(separator: "、"), identifier: scope + ":" + suffix) }
         }
     }
 }
@@ -117,13 +117,12 @@ final class ServiceNotifications {
 final class RemoteNotificationWatch {
     let id: String
     let scope: String
-    let name: String
     let client: ControllerClient
     var settings: [String: Any]
     var health: [[String: Any]] = []
     var failures = 0
-    init(id: String, scope: String, name: String, base: URL, cookie: HTTPCookie, settings: [String: Any]) {
-        self.id = id; self.scope = scope; self.name = name; self.settings = settings
+    init(id: String, scope: String, base: URL, cookie: HTTPCookie, settings: [String: Any]) {
+        self.id = id; self.scope = scope; self.settings = settings
         self.client = ControllerClient(base)
         self.client.session.configuration.httpCookieStorage?.setCookie(cookie)
     }

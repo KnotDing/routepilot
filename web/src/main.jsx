@@ -131,7 +131,7 @@ export function Settings({settings,refresh,notify,status={},backend=null,interce
       <div className="form-grid">{entries.filter(([,v])=>typeof v!=='boolean').map(renderField)}</div>
       <div className="option-grid">{entries.filter(([,v])=>typeof v==='boolean').map(renderField)}{category==='surge'&&<Field name="conservative_direct" value={!draft.surge.trust_direct} onChange={value=>setDraft({...draft,surge:{...draft.surge,trust_direct:!value}})}/>}</div>
      </>}
-     {category==='notifications'&&<><NotificationErrors settings={draft.notifications} onChange={errors=>setDraft({...draft,notifications:{...draft.notifications,errors}})}/><p>{t('通知依据健康探测的连续失败阈值触发，未启用的组件不会告警。设置作用于当前后端。')}</p><p>{t('Webhook 由后台独立发送 JSON POST，包含 title、body、backend、state、components 和 at；页面关闭后仍可推送。地址加密保存，不包含在导出备份中。')}</p><p>{draft.notifications?.webhook_configured?t('已保存 Webhook 地址'):t('尚未配置 Webhook 地址；仍可使用本机系统通知。')}</p></>}
+     {category==='notifications'&&<><NotificationErrors settings={draft.notifications} onChange={errors=>setDraft({...draft,notifications:{...draft.notifications,errors}})}/><p>{t('通知依据健康探测的连续失败阈值触发，未启用的组件不会告警。设置作用于当前后端。')}</p><p>{t('Webhook 由后台独立发送 JSON POST，包含 title、body、state、components 和 at；页面关闭后仍可推送。地址加密保存，不包含在导出备份中。')}</p><p>{draft.notifications?.webhook_configured?t('已保存 Webhook 地址'):t('尚未配置 Webhook 地址；仍可使用本机系统通知。')}</p></>}
      {category==='cache'&&<p>{ct('help')}</p>}
      {category==='dns'&&<p>{t('仅在确认 Surge 的有效配置关闭 IPv6 时应用；拦截会返回成功空响应（NODATA），上游查询会跳过本地 Hosts、规则判断与 Fake-IP，使用配置的真实 DNS 上游。Surge 开启 IPv6、不可用或配置读取失败时沿用原有规则。')}</p>}
      {category==='surge'&&<><SurgeRestartSettings value={draft.surge.restart} onChange={restart=>setDraft({...draft,surge:{...draft.surge,restart}})} apiURL={draft.surge.api_url} status={status.surge_restart}/><p>{t("开启时，Surge 返回 DIRECT 但连接上下文不充分会记为 UNKNOWN，并交给 Surge。关闭时，采用 Surge 返回的内置 DIRECT 并查询真实 DNS 上游；未来连接仍可能命中不同策略。求值失败或超时仍保持 UNKNOWN。")}</p></>}
@@ -169,8 +169,8 @@ function Workspace({backend,onManage,onLocalSession}){const t=useT();const [sess
   return()=>{alive.current=false;if(window.routepilotActiveBackend?.id===backend?.id)window.routepilotActiveBackend=null};
  },[]);
 
- const refreshing=useRef(false),refreshPending=useRef(false),refreshRef=useRef(null),notificationState=useRef({settings:null,health:[],name:'',failures:0}),visible=useWindowVisible();
- const reportHealth=health=>observeServices({scope:backend?.url||location.origin,name:notificationState.current.name||backend?.name||t('本地服务'),health,settings:notificationState.current.settings||{},remote:Boolean(backend),backendID:backend?.id});
+ const refreshing=useRef(false),refreshPending=useRef(false),refreshRef=useRef(null),notificationState=useRef({settings:null,health:[],failures:0}),visible=useWindowVisible();
+ const reportHealth=health=>observeServices({scope:backend?.url||location.origin,health,settings:notificationState.current.settings||{},remote:Boolean(backend),backendID:backend?.id});
  const refresh=async()=>{
   if(!session?.authenticated||!visible)return;
   if(refreshing.current){refreshPending.current=true;return}
@@ -181,7 +181,7 @@ function Workspace({backend,onManage,onLocalSession}){const t=useT();const [sess
    const values=await Promise.all(keys.map(k=>Object.hasOwn(optional,k)?requestOptional(k,optional[k]):request(k)));
    const next=Object.fromEntries(keys.map((k,i)=>[k.split('?')[0],values[i]]));
    setData(previous=>({...previous,...next}));setError('');
-   notificationState.current={...notificationState.current,settings:next.settings?.notifications,name:next.status?.name||backend?.name,failures:0};
+   notificationState.current={...notificationState.current,settings:next.settings?.notifications,failures:0};
    if(next.health){
     const peers=new Set((next['bgp/peers']||[]).filter(p=>p.enabled&&next['bgp/status']?.enabled).map(p=>'BGP peer '+p.address));
     const health=next.health.filter(c=>!c.name.startsWith('BGP peer ')||peers.has(c.name));

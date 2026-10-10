@@ -38,68 +38,77 @@ func TestSelectionDebounceRecoveryAndCooldown(t *testing.T) {
 	m := New(func(string, string, string) {})
 	s := notificationSettings()
 	s.BGP = false
-	m.Observe("Backend", s, []state.Component{component("Surge CLI", "DOWN"), component("BGP engine", "DOWN"), component("DNS", "DISABLED")})
+	m.Observe(s, []state.Component{component("Surge CLI", "DOWN"), component("BGP engine", "DOWN"), component("DNS", "DISABLED")})
 	item := queued(t, m)
-	if item.payload.State != "DOWN" || len(item.payload.Components) != 1 || item.payload.Components[0] != "Surge CLI" || item.payload.Backend != "Backend" || item.payload.At.IsZero() {
+	if item.payload.Title != "RoutePilot · 服务异常" || strings.Contains(item.payload.Title, "Surge Controller") ||
+		item.payload.State != "DOWN" || len(item.payload.Components) != 1 || item.payload.Components[0] != "Surge CLI" ||
+		item.payload.At.IsZero() {
 		t.Fatal(item)
 	}
-	m.Observe("Backend", s, []state.Component{component("Surge CLI", "DOWN")})
+	encoded, err := json.Marshal(item.payload)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(encoded), `"backend"`) {
+		t.Fatalf("webhook payload contains a backend name field: %s", encoded)
+	}
+	m.Observe(s, []state.Component{component("Surge CLI", "DOWN")})
 	assertNoQueue(t, m)
 	m.states["Surge CLI"] = componentState{down: true, lastAlert: time.Now().Add(-301 * time.Second)}
-	m.Observe("Backend", s, []state.Component{component("Surge CLI", "DOWN")})
+	m.Observe(s, []state.Component{component("Surge CLI", "DOWN")})
 	queued(t, m)
-	m.Observe("Backend", s, []state.Component{component("Surge CLI", "UP")})
+	m.Observe(s, []state.Component{component("Surge CLI", "UP")})
 	if queued(t, m).payload.State != "UP" {
 		t.Fatal("recovery not sent")
 	}
-	m.Observe("Backend", s, []state.Component{component("Surge CLI", "UP")})
+	m.Observe(s, []state.Component{component("Surge CLI", "UP")})
 	assertNoQueue(t, m)
 	s.CooldownSeconds = 0
-	m.Observe("Backend", s, []state.Component{component("Surge CLI", "DOWN")})
+	m.Observe(s, []state.Component{component("Surge CLI", "DOWN")})
 	queued(t, m)
-	m.Observe("Backend", s, []state.Component{component("Surge CLI", "DOWN")})
+	m.Observe(s, []state.Component{component("Surge CLI", "DOWN")})
 	assertNoQueue(t, m)
 	s.Recovery = false
-	m.Observe("Backend", s, []state.Component{component("Surge CLI", "UP")})
+	m.Observe(s, []state.Component{component("Surge CLI", "UP")})
 	assertNoQueue(t, m)
 	if m.states["Surge CLI"].down {
 		t.Fatal("disabled recovery left alarm stuck")
 	}
-	m.Observe("Backend", s, []state.Component{component("Surge CLI", "DOWN")})
+	m.Observe(s, []state.Component{component("Surge CLI", "DOWN")})
 	queued(t, m)
 }
 func TestExplicitSelectionDisabledStateAndQueueSaturation(t *testing.T) {
 	m := New(func(string, string, string) {})
 	s := notificationSettings()
 	s.Errors = []string{}
-	m.Observe("Backend", s, []state.Component{component("Surge CLI", "DOWN")})
+	m.Observe(s, []state.Component{component("Surge CLI", "DOWN")})
 	assertNoQueue(t, m)
 	s.Errors = nil
-	m.Observe("Backend", s, []state.Component{component("Surge CLI", "DOWN")})
+	m.Observe(s, []state.Component{component("Surge CLI", "DOWN")})
 	queued(t, m)
 	s.Enabled = false
-	m.Observe("Backend", s, nil)
+	m.Observe(s, nil)
 	if len(m.states) != 0 || m.activeURL != "" {
 		t.Fatal("disabled notifications remained active")
 	}
 	s.Enabled = true
 	s.WebhookURL = ""
-	m.Observe("Backend", s, []state.Component{component("Surge CLI", "DOWN")})
+	m.Observe(s, []state.Component{component("Surge CLI", "DOWN")})
 	assertNoQueue(t, m)
 	s = notificationSettings()
 	for range cap(m.queue) {
 		m.queue <- job{}
 	}
-	m.Observe("Backend", s, []state.Component{component("Surge CLI", "DOWN")})
+	m.Observe(s, []state.Component{component("Surge CLI", "DOWN")})
 	if m.states["Surge CLI"].down {
 		t.Fatal("full queue incorrectly acknowledged alarm")
 	}
 	for len(m.queue) > 0 {
 		<-m.queue
 	}
-	m.Observe("Backend", s, []state.Component{component("Surge CLI", "DOWN")})
+	m.Observe(s, []state.Component{component("Surge CLI", "DOWN")})
 	queued(t, m)
-	m.Observe("Backend", s, []state.Component{component("Surge CLI", "DISABLED")})
+	m.Observe(s, []state.Component{component("Surge CLI", "DISABLED")})
 	assertNoQueue(t, m)
 	if _, found := m.states["Surge CLI"]; found {
 		t.Fatal("disabled component kept alarm")
@@ -143,7 +152,7 @@ func TestWebhookDeliveryRetriesAndNeverLeaksSecrets(t *testing.T) {
 			m := New(func(_, kind, message string) { events <- kind + ":" + message })
 			s := notificationSettings()
 			s.WebhookURL = server.URL + "/secret-key"
-			m.Observe("Remote", s, []state.Component{component("Surge CLI", "DOWN"), component("BGP engine", "DOWN")})
+			m.Observe(s, []state.Component{component("Surge CLI", "DOWN"), component("BGP engine", "DOWN")})
 			done := make(chan struct{})
 			go func() { defer close(done); m.Run(ctx) }()
 			var event string
@@ -170,6 +179,9 @@ func TestWebhookDeliveryRetriesAndNeverLeaksSecrets(t *testing.T) {
 			if calls != wantCalls {
 				t.Fatal(calls, wantCalls)
 			}
+			if payload.Title != "RoutePilot · 服务异常" || strings.Contains(payload.Title, "Surge Controller") {
+				t.Fatal("webhook title contains backend name or wrong brand", payload.Title)
+			}
 			if len(payload.Components) != 2 || payload.Components[0] != "BGP engine" || payload.Body != "BGP engine、Surge CLI" {
 				t.Fatal(payload)
 			}
@@ -195,7 +207,7 @@ func TestQueuedNotificationIsDiscardedAfterSettingsChange(t *testing.T) {
 			m := New(func(_, kind, _ string) { events <- kind })
 			s := notificationSettings()
 			s.WebhookURL = server.URL
-			m.Observe("Backend", s, []state.Component{component("Surge CLI", "DOWN")})
+			m.Observe(s, []state.Component{component("Surge CLI", "DOWN")})
 			switch change {
 			case "disable":
 				s.Enabled = false
@@ -204,7 +216,7 @@ func TestQueuedNotificationIsDiscardedAfterSettingsChange(t *testing.T) {
 			case "selection changed":
 				s.Errors = []string{}
 			}
-			m.Observe("Backend", s, nil)
+			m.Observe(s, nil)
 			ctx, cancel := context.WithCancel(context.Background())
 			done := make(chan struct{})
 			go func() { defer close(done); m.Run(ctx) }()

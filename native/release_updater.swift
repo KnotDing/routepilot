@@ -34,7 +34,31 @@ enum ReleaseUpdater {
     private static let host = "gitea.knotding.com"
 
     static func latest() async throws -> GiteaRelease {
-        guard let url = URL(string: "https://\(host)/api/v1/repos/knot/routepilot/releases/latest") else {
+        let data = try await releaseData(path: "releases/latest")
+        let release = try JSONDecoder().decode(GiteaRelease.self, from: data)
+        guard release.draft != true, release.prerelease != true, stableVersion(release.tagName) != nil else {
+            throw AppFailure(message: "更新服务返回了无效的正式版本信息")
+        }
+
+        return release
+    }
+
+    static func latestBeta() async throws -> GiteaRelease {
+        let data = try await releaseData(path: "releases?limit=50")
+        let releases = try JSONDecoder().decode([GiteaRelease].self, from: data)
+        guard let latest = newestBeta(in: releases) else {
+            throw AppFailure(message: "没有可用的 Beta 版本")
+        }
+        return latest
+    }
+
+    static func newestBeta(in releases: [GiteaRelease]) -> GiteaRelease? {
+        releases.filter({ $0.draft != true && $0.prerelease == true && betaVersion($0.tagName) != nil })
+            .max(by: { isNewer($1.tagName, than: $0.tagName) })
+    }
+
+    private static func releaseData(path: String) async throws -> Data {
+        guard let url = URL(string: "https://\(host)/api/v1/repos/knot/routepilot/\(path)") else {
             throw AppFailure(message: "更新服务地址无效")
         }
         var request = URLRequest(url: url)
@@ -48,11 +72,7 @@ enum ReleaseUpdater {
             let code = (response as? HTTPURLResponse)?.statusCode ?? 0
             throw AppFailure(message: L("获取最新版本失败（HTTP {code}）", ["code": code]))
         }
-        let release = try JSONDecoder().decode(GiteaRelease.self, from: data)
-        guard release.draft != true, release.prerelease != true, stableVersion(release.tagName) != nil else {
-            throw AppFailure(message: "更新服务返回了无效的正式版本信息")
-        }
-        return release
+        return data
     }
 
     static func stableVersion(_ raw: String) -> [Int]? {
@@ -66,19 +86,53 @@ enum ReleaseUpdater {
         }
         return values.count == 3 ? values : nil
     }
+
+    static func betaVersion(_ raw: String) -> ([Int], Int)? {
+        let parts = raw.hasPrefix("v") ? String(raw.dropFirst()) : raw
+        let components = parts.split(separator: "-", omittingEmptySubsequences: false)
+        guard components.count == 2, let core = stableVersion(String(components[0])) else { return nil }
+        let suffix = components[1].split(separator: ".", omittingEmptySubsequences: false)
+        guard suffix.count == 2, suffix[0] == "beta",
+              let number = Int(suffix[1]), number > 0, String(number) == suffix[1] else { return nil }
+        return (core, number)
+    }
+
+    private static func parsedVersion(_ raw: String) -> ([Int], Int?)? {
+        if let stable = stableVersion(raw) { return (stable, nil) }
+        guard let beta = betaVersion(raw) else { return nil }
+        return (beta.0, beta.1)
+    }
+
+    static func isNewer(_ candidate: String, than current: String) -> Bool {
+        guard let next = parsedVersion(candidate), let installed = parsedVersion(current) else { return false }
+        for index in 0..<3 where next.0[index] != installed.0[index] {
+            return next.0[index] > installed.0[index]
+        }
+        switch (next.1, installed.1) {
+        case (nil, .some): return true
+        case (.some, nil), (nil, nil): return false
+        case let (.some(nextBeta), .some(installedBeta)): return nextBeta > installedBeta
+        }
+    }
+
     static func newer(_ release: GiteaRelease,
                       current: String = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "0") -> Bool {
         guard release.draft != true, release.prerelease != true,
-              let latest = stableVersion(release.tagName), let installed = stableVersion(current) else { return false }
-        for index in 0..<3 {
-            if latest[index] != installed[index] { return latest[index] > installed[index] }
-        }
-        return false
+              stableVersion(release.tagName) != nil else { return false }
+        return isNewer(release.tagName, than: current)
+    }
+
+    static func newerBeta(_ release: GiteaRelease, current: String) -> Bool {
+        guard release.draft != true, release.prerelease == true, betaVersion(release.tagName) != nil else { return false }
+        return isNewer(release.tagName, than: current)
     }
 
     static func needsBackendUpdate(_ release: GiteaRelease, app: String, backend: String) -> Bool {
-        guard stableVersion(release.tagName) == stableVersion(app), stableVersion(app) != nil else { return false }
-        return newer(release, current: backend)
+        guard let target = parsedVersion(release.tagName), let installed = parsedVersion(app),
+              target.0 == installed.0,
+              release.tagName.trimmingCharacters(in: CharacterSet(charactersIn: "v")) ==
+                app.trimmingCharacters(in: CharacterSet(charactersIn: "v")) else { return false }
+        return release.prerelease == true ? newerBeta(release, current: backend) : newer(release, current: backend)
     }
 
     static func trustedDownloadURL(_ url: URL) -> Bool {
@@ -174,5 +228,29 @@ enum ReleaseUpdater {
         }
         guard data.count <= maximumBytes else { throw AppFailure(message: "Release 文件超过大小限制") }
         return data
+    }
+}
+
+enum UpdateSchedule {
+    static func isValidTime(_ value: String) -> Bool {
+        let parts = value.split(separator: ":", omittingEmptySubsequences: false)
+        guard parts.count == 2, parts.allSatisfy({ $0.count == 2 && $0.allSatisfy(\.isNumber) }),
+              parts.allSatisfy({ $0.allSatisfy(\.isASCII) }),
+              let hour = Int(parts[0]), let minute = Int(parts[1]) else { return false }
+        return (0..<24).contains(hour) && (0..<60).contains(minute)
+    }
+
+    static func matches(_ value: String, at date: Date) -> Bool {
+        guard isValidTime(value) else { return false }
+        let parts = value.split(separator: ":")
+        let components = Calendar.current.dateComponents([.hour, .minute], from: date)
+        return components.hour == Int(parts[0]) && components.minute == Int(parts[1])
+    }
+
+    static func key(for value: String, at date: Date) -> String? {
+        guard isValidTime(value) else { return nil }
+        let parts = Calendar.current.dateComponents([.year, .month, .day], from: date)
+        guard let year = parts.year, let month = parts.month, let day = parts.day else { return nil }
+        return String(format: "%04d-%02d-%02d@%@", year, month, day, value)
     }
 }

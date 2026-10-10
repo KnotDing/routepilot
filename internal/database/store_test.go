@@ -85,7 +85,7 @@ func TestVersionOneMigrationRetainsConfigAndLocalHosts(t *testing.T) {
 		t.Fatal(e)
 	}
 	d := config.Default()
-	d.Settings.General.Name = "existing configuration"
+	d.Settings.General.Theme = "dark"
 	if e = s.Save(ctx, d); e != nil {
 		t.Fatal(e)
 	}
@@ -102,7 +102,7 @@ func TestVersionOneMigrationRetainsConfigAndLocalHosts(t *testing.T) {
 	}
 	defer s.Close()
 	loaded, e := s.Load(ctx)
-	if e != nil || loaded.Settings.General.Name != d.Settings.General.Name || len(loaded.Hosts) != 0 {
+	if e != nil || loaded.Settings.General.Theme != d.Settings.General.Theme || len(loaded.Hosts) != 0 {
 		t.Fatal(loaded, e)
 	}
 	loaded.Hosts = []config.Host{{ID: "h", Domain: "nas.test", Match: "exact", Addresses: []string{"192.0.2.53"}, TTL: 60, Source: "manual", Enabled: true}}

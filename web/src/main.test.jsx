@@ -57,7 +57,7 @@ it('defaults DIRECT conservatism on and saves an explicit opt-out',async()=>{
 it('keeps routing configuration in settings and preserves it when saving other categories',async()=>{
  const routing={mode:'hybrid',fake_ip_backend:'static',dns_backend:'bgp',static_fake_ip_configured:true};
  const bgp={enabled:true,local_asn:64512,router_id:'192.0.2.1',listen_port:179,route_limit:128,hold_seconds:90,keepalive_seconds:30};
- const settings={general:{web_listen:'127.0.0.1:1055',name:'Controller',theme:'system'},routing,bgp,security:{tls_cert:''}};
+ const settings={general:{web_listen:'127.0.0.1:1055',theme:'system'},routing,bgp,security:{tls_cert:''}};
  const fetch=vi.fn(async(url,options)=>({ok:true,status:200,json:async()=>({settings:JSON.parse(options.body)})}));
  vi.stubGlobal('fetch',fetch);
  render(<Settings settings={settings} refresh={()=>{}} notify={()=>{}}/>);

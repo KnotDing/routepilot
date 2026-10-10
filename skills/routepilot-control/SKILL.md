@@ -11,7 +11,7 @@ Use `routepilot` to operate the running backend through its management API. The 
 
 - Locate `routepilot` on PATH; alternatively use `/Applications/RoutePilot.app/Contents/Resources/Service/bin/routepilot` or the checkout's `bin/routepilot`. Use `help --json` for installed command syntax and `version` for the CLI build.
 - Select the user's target explicitly with `--url http://IP:1055` or `--url https://IP:PORT`. IPv6 uses brackets. Global options precede the command. The default `http://127.0.0.1:1055` is the local host only; a web connection profile does not change this default. Do not substitute another host when connection fails.
-- Read `session`, then `status` and `health`. Report the backend name, address and `software.version` when the target matters. A CLI version is not proof of the running App/backend version.
+- Read `session`, then `status` and `health`. Report the target address and `software.version` when relevant. A CLI version is not proof of the running App/backend version.
 - Login uses `login --username NAME --password-stdin` or `--password-file FILE`. Obtain credentials from the user or their authorized secret source; never put a password in shell arguments, print it, read App credential files, or inspect the CLI session store. The CLI saves only a private, per-origin session cookie, not the password. An expired session requires login again.
 - HTTP is supported. HTTPS validates certificates; `--ca-file` adds a trusted PEM CA. A network allow-list rejection is a backend access configuration issue, not an invitation to disable authentication or TLS validation.
 

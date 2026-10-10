@@ -10,6 +10,10 @@ struct LocalizationTests {
             NativeText.translate(text, locale: locale, english: english, errors: errors, params: params)
         }
         precondition(translated("检查更新", "en") == "Check for updates")
+        precondition(translated("检查Beta版本更新", "en") == "Check for beta updates")
+        precondition(translated("自动更新时间（本地时间）", "en") == "Automatic update time (local time)")
+        precondition(translated("自动检查仍按设置的检查周期独立运行；发现更新后会立即下载并校验，可手动立即安装。启用自动安装后，RoutePilot App 运行期间每天到达设定的本地时间时还会自动安装。若 Mac 在该时间休眠或 App 未运行，当天不会延迟补装。", "en") == "Automatic checks continue on their independent interval. Detected updates are downloaded and verified immediately, and can be installed manually right away. With automatic installation enabled, updates are installed daily at this local time while the App is running. If the Mac is asleep or the App is not running then, the update is not installed later that day.")
+        precondition(translated("立即安装", "en") == "Install now")
         precondition(translated("正在检查更新…", "en") == "Checking for updates…")
         precondition(translated("Authorization failed.", "zh-CN") == "管理员授权失败")
         precondition(translated("查询：{count} / 分钟", "en", ["count": 12]) == "Queries: 12 / minute")

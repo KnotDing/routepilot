@@ -25,8 +25,8 @@ func TestCompleteApplicationUpdateOrdering(t *testing.T) {
 			t.Errorf("backend=%s app=%s: got %v", tc.backend, tc.app, got)
 		}
 	}
-	if applicationUpdateAvailable("v0.5.6-beta", "0.5.4", "0.5.4") {
-		t.Fatal("prerelease accepted")
+	if !applicationUpdateAvailable("v0.5.6-beta.1", "0.5.4", "0.5.4") {
+		t.Fatal("numbered beta update rejected")
 	}
 }
 

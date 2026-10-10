@@ -141,20 +141,44 @@ func privateOwned(file string, directory bool) error {
 	return nil
 }
 func versionParts(value string) ([]int, error) {
-	parts := strings.Split(strings.TrimPrefix(value, "v"), ".")
+	version := strings.TrimPrefix(value, "v")
+	segments := strings.Split(version, "-")
+	if len(segments) > 2 || len(segments) == 2 && !validBetaSuffix(segments[1]) {
+		return nil, errors.New("Only stable or numbered beta semantic releases can be installed online")
+	}
+	parts := strings.Split(segments[0], ".")
 	if len(parts) != 3 {
-		return nil, errors.New("Only stable semantic releases can be installed online")
+		return nil, errors.New("Only stable or numbered beta semantic releases can be installed online")
 	}
 	result := make([]int, 3)
 	for i, part := range parts {
 		n, e := strconv.Atoi(part)
 		if e != nil || n < 0 || strconv.Itoa(n) != part {
-			return nil, errors.New("Only stable semantic releases can be installed online")
+			return nil, errors.New("Only stable or numbered beta semantic releases can be installed online")
 		}
 		result[i] = n
 	}
 	return result, nil
 }
+
+func validBetaSuffix(suffix string) bool {
+	parts := strings.Split(suffix, ".")
+	if len(parts) != 2 || parts[0] != "beta" {
+		return false
+	}
+	n, err := strconv.Atoi(parts[1])
+	return err == nil && n > 0 && strconv.Itoa(n) == parts[1]
+}
+
+func betaNumber(value string) (int, bool) {
+	parts := strings.Split(strings.TrimPrefix(value, "v"), "-")
+	if len(parts) != 2 || !validBetaSuffix(parts[1]) {
+		return 0, false
+	}
+	n, _ := strconv.Atoi(strings.TrimPrefix(parts[1], "beta."))
+	return n, true
+}
+
 func newer(latest, current string) bool {
 	a, e := versionParts(latest)
 	b, f := versionParts(current)
@@ -166,7 +190,12 @@ func newer(latest, current string) bool {
 			return a[i] > b[i]
 		}
 	}
-	return false
+	latestBeta, latestIsBeta := betaNumber(latest)
+	currentBeta, currentIsBeta := betaNumber(current)
+	if latestIsBeta != currentIsBeta {
+		return currentIsBeta
+	}
+	return latestIsBeta && latestBeta > currentBeta
 }
 func readState() Status {
 	var s Status
@@ -247,7 +276,11 @@ func (m *Manager) Check(ctx context.Context) (Status, error) {
 	if err = json.Unmarshal(b, &r); err != nil || r.Draft || r.Prerelease {
 		return m.Status(), errors.New("Latest release metadata is invalid")
 	}
-	if _, err = versionParts(r.Tag); err != nil {
+	_, isBeta := betaNumber(r.Tag)
+	if _, err = versionParts(r.Tag); err != nil || isBeta || r.Prerelease {
+		if err == nil {
+			err = errors.New("The latest endpoint did not return a stable release")
+		}
 		return m.Status(), err
 	}
 	m.mu.Lock()

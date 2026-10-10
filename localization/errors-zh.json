@@ -3,7 +3,7 @@
   "maximum 32 remote backends": "最多配置 32 个远程后端",
   "invalid or duplicate backend": "远程后端配置无效或重复",
   "persistent static DNS interception requires explicit opt-in": "请明确允许持久的静态 DNS 拦截路由",
-  "invalid configuration version or controller name": "配置版本或控制器名称无效",
+  "invalid configuration version": "配置版本无效",
   "invalid mode": "运行模式无效",
   "management listen must be a concrete IP:port": "管理监听地址必须填写明确的 IP:端口",
   "remote management requires authentication": "远程管理需要启用认证",

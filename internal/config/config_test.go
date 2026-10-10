@@ -2,6 +2,7 @@ package config
 
 import (
 	"encoding/json"
+	"strings"
 	"testing"
 )
 
@@ -98,6 +99,23 @@ func TestOptimisticIdleRefreshDefaultsOn(t *testing.T) {
 	}
 	if !d.Settings.Cache.OptimisticIdleRefresh || !d.Settings.Cache.OptimisticResponseIdleRefresh {
 		t.Fatal("older settings did not inherit enabled idle-refresh defaults")
+	}
+}
+
+func TestLegacyGeneralNameIsIgnoredAndNotSerialized(t *testing.T) {
+	var d Document
+	if err := json.Unmarshal([]byte(`{"version":1,"settings":{"general":{"name":"Surge Controller","web_listen":"127.0.0.1:1055","mode":"auto","theme":"system"}}}`), &d); err != nil {
+		t.Fatal(err)
+	}
+	if d.Settings.General.WebListen != "127.0.0.1:1055" {
+		t.Fatalf("legacy name prevented other general settings from loading: %+v", d.Settings.General)
+	}
+	encoded, err := json.Marshal(d.Settings.General)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(encoded), `"name"`) {
+		t.Fatalf("general name was serialized: %s", encoded)
 	}
 }
 

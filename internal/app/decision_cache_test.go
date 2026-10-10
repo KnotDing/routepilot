@@ -114,11 +114,11 @@ func TestDecisionsSurviveUnrelatedSavesDNSRebuildAndDiskRestart(t *testing.T) {
 	if !engine.Cache.Put(key, value, engine.Cache.Generation(), cache.Forever) {
 		t.Fatal("could not seed cache")
 	}
-	for _, change := range []string{"name", "aaaa", "dns-timeout"} {
+	for _, change := range []string{"theme", "aaaa", "dns-timeout"} {
 		d := a.Configuration()
 		switch change {
-		case "name":
-			d.Settings.General.Name = "saved unrelated name"
+		case "theme":
+			d.Settings.General.Theme = "dark"
 		case "aaaa":
 			d.Settings.DNS.AAAAFallback = "block"
 		case "dns-timeout":

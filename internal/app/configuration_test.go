@@ -15,9 +15,9 @@ func TestSaveConfigurationDoesNotWaitForActivation(t *testing.T) {
 	var once sync.Once
 	release := func() { once.Do(a.transition.Unlock) }
 	t.Cleanup(release)
-	for _, name := range []string{"first saved", "latest saved"} {
+	for _, theme := range []string{"light", "dark"} {
 		d := a.Configuration()
-		d.Settings.General.Name = name
+		d.Settings.General.Theme = theme
 		ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 		if err := a.SaveConfiguration(ctx, d); err != nil {
 			cancel()
@@ -26,10 +26,10 @@ func TestSaveConfigurationDoesNotWaitForActivation(t *testing.T) {
 		cancel()
 	}
 	saved, err := a.store.Load(context.Background())
-	if err != nil || saved.Settings.General.Name != "latest saved" {
+	if err != nil || saved.Settings.General.Theme != "dark" {
 		t.Fatalf("desired configuration was not durably saved: %v", err)
 	}
-	if a.activeConfiguration().Settings.General.Name != old.Settings.General.Name {
+	if a.activeConfiguration().Settings.General.Theme != old.Settings.General.Theme {
 		t.Fatal("blocked activation unexpectedly changed the runtime")
 	}
 	release()
@@ -39,7 +39,7 @@ func TestSaveConfigurationDoesNotWaitForActivation(t *testing.T) {
 		status := a.application
 		a.mu.RUnlock()
 		if status.AppliedRevision == 2 && status.State == "succeeded" {
-			if a.activeConfiguration().Settings.General.Name != "latest saved" {
+			if a.activeConfiguration().Settings.General.Theme != "dark" {
 				t.Fatal("worker did not apply the latest saved configuration")
 			}
 			return

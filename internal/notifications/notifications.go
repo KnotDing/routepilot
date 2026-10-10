@@ -19,7 +19,6 @@ import (
 type Payload struct {
 	Title      string    `json:"title"`
 	Body       string    `json:"body"`
-	Backend    string    `json:"backend"`
 	State      string    `json:"state"`
 	Components []string  `json:"components"`
 	At         time.Time `json:"at"`
@@ -46,7 +45,7 @@ func New(event func(string, string, string)) *Manager {
 }
 
 // Observe consumes already-debounced health states. Delivery never blocks probes.
-func (m *Manager) Observe(name string, s config.Notifications, values []state.Component) {
+func (m *Manager) Observe(s config.Notifications, values []state.Component) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	if m.activeURL != s.WebhookURL {
@@ -99,7 +98,7 @@ func (m *Manager) Observe(name string, s config.Notifications, values []state.Co
 		if batch.state == "UP" {
 			title = "服务已恢复"
 		}
-		payload := Payload{Title: "RoutePilot · " + name + " · " + title, Body: strings.Join(batch.names, "、"), Backend: name, State: batch.state, Components: batch.names, At: now}
+		payload := Payload{Title: "RoutePilot · " + title, Body: strings.Join(batch.names, "、"), State: batch.state, Components: batch.names, At: now}
 		select {
 		case m.queue <- job{s.WebhookURL, payload}:
 			for _, key := range batch.names {

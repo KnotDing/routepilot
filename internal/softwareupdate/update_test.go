@@ -22,12 +22,12 @@ import (
 )
 
 func TestStableVersionsAndUpdateOrdering(t *testing.T) {
-	for _, value := range []string{"0.5.2", "v1.0.0", "v12.30.40"} {
+	for _, value := range []string{"0.5.2", "v1.0.0", "v12.30.40", "v1.0.1-beta.1"} {
 		if _, err := versionParts(value); err != nil {
 			t.Errorf("%s: %v", value, err)
 		}
 	}
-	for _, value := range []string{"", "v", "1", "1.2", "1.2.3.4", "01.2.3", "+1.2.3", "1.-2.3", "1.2.3-beta", "1.2.3+build", "release-1.2.3", "vv1.2.3", "1.2.3\n", "999999999999999999999.0.0"} {
+	for _, value := range []string{"", "v", "1", "1.2", "1.2.3.4", "01.2.3", "+1.2.3", "1.-2.3", "1.2.3-beta", "1.2.3-beta.0", "1.2.3-beta.01", "1.2.3-rc.1", "1.2.3+build", "release-1.2.3", "vv1.2.3", "1.2.3\n", "999999999999999999999.0.0"} {
 		if _, err := versionParts(value); err == nil {
 			t.Errorf("accepted %q", value)
 		}
@@ -35,7 +35,7 @@ func TestStableVersionsAndUpdateOrdering(t *testing.T) {
 	for _, tc := range []struct {
 		a, b string
 		want bool
-	}{{"v1.0.0", "0.5.2", true}, {"v0.10.0", "0.9.99", true}, {"v0.5.10", "0.5.2", true}, {"v0.5.2", "0.5.2", false}, {"v0.5.1", "0.5.2", false}, {"v1.0.0-beta", "0.5.2", false}, {"v1.0.0", "invalid", false}} {
+	}{{"v1.0.0", "0.5.2", true}, {"v0.10.0", "0.9.99", true}, {"v0.5.10", "0.5.2", true}, {"v0.5.2", "0.5.2", false}, {"v0.5.1", "0.5.2", false}, {"v1.0.0-beta.1", "0.5.2", true}, {"v1.0.0-beta.2", "1.0.0-beta.1", true}, {"v1.0.0", "1.0.0-beta.2", true}, {"v1.0.0-beta.1", "1.0.0", false}, {"v1.0.0", "invalid", false}} {
 		if newer(tc.a, tc.b) != tc.want {
 			t.Errorf("newer(%s,%s)", tc.a, tc.b)
 		}
@@ -49,6 +49,23 @@ func TestStableVersionsAndUpdateOrdering(t *testing.T) {
 		if _, err := ParseAgentUID(value); err == nil {
 			t.Errorf("accepted UID %q", value)
 		}
+	}
+}
+
+func TestNewestBetaRelease(t *testing.T) {
+	releases := []release{
+		{Tag: "v1.0.1-beta.1", Prerelease: true},
+		{Tag: "v1.0.1-beta.3", Prerelease: true},
+		{Tag: "v1.0.1-beta.4", Prerelease: true, Draft: true},
+		{Tag: "v1.0.1-rc.1", Prerelease: true},
+		{Tag: "v1.1.0"},
+	}
+	latest, ok := newestBetaRelease(releases)
+	if !ok || latest.Tag != "v1.0.1-beta.3" {
+		t.Fatalf("newest beta = %q, %v", latest.Tag, ok)
+	}
+	if _, ok := newestBetaRelease([]release{{Tag: "v1.0.1-beta.1"}}); ok {
+		t.Fatal("accepted a stable release incorrectly tagged as beta")
 	}
 }
 

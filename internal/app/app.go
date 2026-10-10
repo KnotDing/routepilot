@@ -807,7 +807,7 @@ func (a *App) monitor(ctx context.Context, rt *Runtime) {
 				}
 				filtered = append(filtered, value)
 			}
-			a.notifications.Observe(document.Settings.General.Name, document.Settings.Notifications, filtered)
+			a.notifications.Observe(document.Settings.Notifications, filtered)
 		}
 		select {
 		case <-ctx.Done():
@@ -1070,7 +1070,7 @@ func (a *App) View(ctx context.Context, key string) (any, error) {
 	a.mu.RLock()
 	rt := a.runtime
 	application := a.application
-	name, mode := a.config.Settings.General.Name, a.config.Settings.General.Mode
+	mode := a.config.Settings.General.Mode
 	var manager *routing.Manager
 	if rt != nil {
 		manager = rt.routes
@@ -1088,7 +1088,7 @@ func (a *App) View(ctx context.Context, key string) (any, error) {
 		return application, nil
 	case "status":
 		p := rt.machine.Plan()
-		return map[string]any{"software": buildinfo.Current(), "go_runtime": currentGoRuntimeStatus(), "online_update": true, "remote_credential_origin_binding": true, "fast_configuration_save": true, "configuration_application": application, "name": name, "mode": mode, "state": p.State, "fake_ip_enabled": p.AllowFakeIP, "queries_per_minute": rt.queryRate.Load(), "queries_per_second": math.Float64frombits(a.queryRateBits.Load()), "surge_restart": a.surgeRecovery.Status(), "counters": rt.dispatcher.Statistics().Snapshot(), "client_statistics": clientStatistics, "cache": map[string]any{"decision": rt.engine.Cache.Stats(), "response": responseCacheStats(rt)}, "warning": rt.Fault(), "uptime_seconds": int(time.Since(rt.started).Seconds())}, nil
+		return map[string]any{"software": buildinfo.Current(), "go_runtime": currentGoRuntimeStatus(), "online_update": true, "remote_credential_origin_binding": true, "fast_configuration_save": true, "configuration_application": application, "mode": mode, "state": p.State, "fake_ip_enabled": p.AllowFakeIP, "queries_per_minute": rt.queryRate.Load(), "queries_per_second": math.Float64frombits(a.queryRateBits.Load()), "surge_restart": a.surgeRecovery.Status(), "counters": rt.dispatcher.Statistics().Snapshot(), "client_statistics": clientStatistics, "cache": map[string]any{"decision": rt.engine.Cache.Stats(), "response": responseCacheStats(rt)}, "warning": rt.Fault(), "uptime_seconds": int(time.Since(rt.started).Seconds())}, nil
 	case "health":
 		values := rt.health.Values()
 		sort.Slice(values, func(i, j int) bool { return values[i].Name < values[j].Name })

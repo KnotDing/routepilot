@@ -29,12 +29,12 @@ func TestActiveConfigurationCheckpointIsEncryptedAndIndependent(t *testing.T) {
 		t.Fatal("checkpoint is not encrypted")
 	}
 	desired := d.Clone()
-	desired.Settings.General.Name = "unapplied desired"
+	desired.Settings.General.Theme = "dark"
 	if err = s.Save(ctx, desired); err != nil {
 		t.Fatal(err)
 	}
 	active, err := s.LoadActiveConfiguration(ctx)
-	if err != nil || active.Settings.General.Name != d.Settings.General.Name || active.Settings.Surge.APIToken != d.Settings.Surge.APIToken {
+	if err != nil || active.Settings.General.Theme != d.Settings.General.Theme || active.Settings.Surge.APIToken != d.Settings.Surge.APIToken {
 		t.Fatal("checkpoint changed with desired configuration", err)
 	}
 }

@@ -5,7 +5,7 @@ import {saveSettings} from './configuration';
 afterEach(()=>{selectBackend('');vi.unstubAllGlobals()});
 
 it('acknowledges durable settings without waiting for runtime activation or another session request',async()=>{
- const settings={general:{name:'Saved'}};
+ const settings={general:{theme:'system'}};
  const fetch=vi.fn().mockResolvedValue({ok:true,json:async()=>({settings})});
  vi.stubGlobal('fetch',fetch);
  const progress=vi.fn();

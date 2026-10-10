@@ -74,7 +74,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
     var health: [[String: Any]] = []
     var bgp: [String: Any] = [:]
     var availableRelease: GiteaRelease?
+    var releaseDownloadInProgress = false
+    var releaseDownloadError = ""
     var checkingRelease = false
+    var pendingScheduledInstallDay: String?
 	let serviceNotifications = ServiceNotifications()
 	var notificationSettings: [String: Any] = [:]
     var notificationHealth: [[String: Any]] = []
@@ -163,10 +166,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
             Task { @MainActor in await self?.refreshRemoteNotifications() }
         }
         Task { await refresh() }
+        Task { await checkScheduledAutomaticUpdate() }
         Task { await checkReleaseUpdate(silent: true) }
-        releaseTimer = Timer.scheduledTimer(withTimeInterval: 60 * 60, repeats: true) { [weak self] _ in
-            Task { @MainActor in await self?.checkReleaseUpdate(silent: true) }
-        }
+        startReleaseUpdateTimer()
         ManagementWindowFrame.isOpen = false
         if arguments.contains("--open-management") && !smoke { openManagement() }
         if smoke {
@@ -238,7 +240,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
             authenticated = false; status = [:]; lastError = connectionError; versionWarning = nil
             backendFailures += 1
             if backendFailures >= 3 {
-                serviceNotifications.observe(scope: client.base.absoluteString, name: L("本地服务"), health: notificationHealth + [["name": "Management connection", "state": "DOWN"]], settings: notificationSettings)
+                serviceNotifications.observe(scope: client.base.absoluteString, health: notificationHealth + [["name": "Management connection", "state": "DOWN"]], settings: notificationSettings)
             }
             if child == nil && !starting && bootFailures < 5 && Date() >= nextBoot && client.base.scheme == "http" && (smoke || !FileManager.default.fileExists(atPath: "/Library/LaunchDaemons/com.routepilot.surge-controller.plist")) {
                 startBackend()
@@ -276,7 +278,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
             notificationHealth = activeHealth
             if previousHealthNames != notificationHealth.compactMap({ $0["name"] as? String }) { publishStatusBarHealth() }
             activeHealth.append(["name": "Management connection", "state": "UP"])
-            serviceNotifications.observe(scope: client.base.absoluteString, name: status["name"] as? String ?? L("本地服务"), health: activeHealth, settings: notificationSettings)
+            serviceNotifications.observe(scope: client.base.absoluteString, health: activeHealth, settings: notificationSettings)
             lastError = ""
             await checkBackendVersion()
             if smoke && !smokeStarted {
@@ -374,7 +376,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
                 webView?.evaluateJavaScript("window.dispatchEvent(new CustomEvent('routepilot-preferences-saved',{detail:" + json + "}));", completionHandler: nil)
             }
             guard let data = try? JSONSerialization.data(withJSONObject: values),
-                  var preferences = try? JSONDecoder().decode(AppPreferences.self, from: data), (1...168).contains(preferences.checkIntervalHours), preferences.statusBar.valid, preferences.automation.valid else { reply(false); return }
+                  var preferences = try? JSONDecoder().decode(AppPreferences.self, from: data), (1...168).contains(preferences.checkIntervalHours), UpdateSchedule.isValidTime(preferences.updateTime), preferences.statusBar.valid, preferences.automation.valid else { reply(false); return }
             preferences.automaticInstall = preferences.automaticInstall && preferences.automaticCheck && UpdateAssistant.configured
             let previous = AppPreferences.current
             if preferences.automation != previous.automation || values["_automation"] as? Bool == true {
@@ -391,7 +393,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
             }
             AppPreferences.current = preferences
             updateToolTip()
-            if preferences.automaticCheck && (!previous.automaticCheck || preferences.automaticDownload != previous.automaticDownload || preferences.updatePrompts != previous.updatePrompts || preferences.automaticInstall != previous.automaticInstall) {
+            if preferences.automaticCheck && (!previous.automaticCheck || preferences.updatePrompts != previous.updatePrompts || preferences.automaticInstall != previous.automaticInstall || preferences.checkIntervalHours != previous.checkIntervalHours) {
                 UserDefaults.standard.removeObject(forKey: "releaseUpdateLastCheck")
             }
             configurePreferenceSeed(userContentController)
@@ -401,6 +403,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
                     if !(await DesktopNotifications.shared.authorize()) { alert("通知未授权", "请在 macOS 系统设置 → 通知 → RoutePilot 中允许通知。") }
                     serviceNotifications.reset()
                 }
+                await checkScheduledAutomaticUpdate()
                 await checkReleaseUpdate(silent: true)
             }
             return
@@ -408,6 +411,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
         if message.name == "routepilotUpdateAction" {
             guard trusted, let action = message.body as? String else { return }
             if action == "check" { Task { await checkReleaseUpdate(silent: false) } }
+            else if action == "checkBeta" { Task { await checkReleaseUpdate(silent: false, beta: true) } }
+            else if action == "installAvailable" {
+                guard let release = availableRelease else { alert("没有可安装的更新", "请重新检查更新后再试。"); return }
+                Task { await installRelease(release) }
+            }
             else if action == "install" { performReleaseUpdate() }
             else if action == "enableAssistant" { enableUpdateAssistant() }
             else if action == "disableAssistant" { disableUpdateAssistant() }
@@ -417,9 +425,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
             guard trusted, let values = message.body as? [String: Any] else { return }
             if values["clear"] as? Bool == true { remoteNotificationGeneration += 1; remoteNotificationWatch = nil; return }
             guard let scope = values["scope"] as? String, scope.count <= 512,
-                  let name = values["name"] as? String, name.count <= 100,
                   let health = values["health"] as? [[String: Any]], let settings = values["settings"] as? [String: Any] else { return }
-            serviceNotifications.observe(scope: scope, name: name, health: health, settings: settings)
+            serviceNotifications.observe(scope: scope, health: health, settings: settings)
             if let id = values["backendID"] as? String, !id.isEmpty, id.count <= 64, id.allSatisfy({ $0.isASCII && ($0.isLetter || $0.isNumber || $0 == "_" || $0 == "-") }), let webView {
                 if let watch = remoteNotificationWatch, watch.id == id && watch.scope == scope {
                     watch.settings = settings; watch.health = health.filter { $0["name"] as? String != "Management connection" }
@@ -431,7 +438,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
                         Task { @MainActor in
                             guard let self, self.client.base == base, self.remoteNotificationGeneration == generation,
                                   let cookie = cookies.first(where: { $0.name == "controller_session" && $0.domain.trimmingCharacters(in: CharacterSet(charactersIn: ".[]")) == base.host?.trimmingCharacters(in: CharacterSet(charactersIn: "[]")) }) else { return }
-                            self.remoteNotificationWatch = RemoteNotificationWatch(id: id, scope: scope, name: name, base: base, cookie: cookie, settings: settings)
+                            self.remoteNotificationWatch = RemoteNotificationWatch(id: id, scope: scope, base: base, cookie: cookie, settings: settings)
                             self.remoteNotificationWatch?.health = health.filter { $0["name"] as? String != "Management connection" }
                         }
                     }
@@ -482,6 +489,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
         let source = "window.routepilotNativePreferences=window.routepilotNativePreferences||{};window.routepilotNativePreferences.statusBarHealth=" + json + ";window.dispatchEvent(new Event('routepilot-statusbar-health-changed'));"
         webView?.evaluateJavaScript(source, completionHandler: nil)
     }
+    func publishReleaseUpdateStatus() {
+        let status: [String: Any] = [
+            "updateAvailable": availableRelease != nil,
+            "updateVersion": availableRelease?.tagName ?? "",
+            "updateDownloading": releaseDownloadInProgress,
+            "updateDownloadError": releaseDownloadError
+        ]
+        guard let data = try? JSONSerialization.data(withJSONObject: status),
+              let json = String(data: data, encoding: .utf8) else { return }
+        let source = "window.routepilotNativePreferences=window.routepilotNativePreferences||{};Object.assign(window.routepilotNativePreferences,\(json));window.dispatchEvent(new Event('routepilot-preferences-changed'));"
+        webView?.evaluateJavaScript(source, completionHandler: nil)
+    }
     func configurePreferenceSeed(_ controller: WKUserContentController) {
         let marker = "/* RoutePilot preferences */"
         let scripts = controller.userScripts.filter { !$0.source.hasPrefix(marker) }
@@ -491,6 +510,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
               var preferences = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { return }
         preferences["statusBarHealth"] = notificationHealth.compactMap { $0["name"] as? String }
         preferences["assistantReady"] = UpdateAssistant.configured
+        preferences["updateAvailable"] = availableRelease != nil
+        preferences["updateVersion"] = availableRelease?.tagName ?? ""
+        preferences["updateDownloading"] = releaseDownloadInProgress
+        preferences["updateDownloadError"] = releaseDownloadError
         preferences["remoteCredentialsSupported"] = true
         preferences["localCredentialsSupported"] = true
         preferences["managementBackend"] = UserDefaults.standard.dictionary(forKey: "managementBackend")
@@ -521,14 +544,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
             watch.health = health.filter { !($0["name"] as? String ?? "").hasPrefix("BGP peer ") || active.contains($0["name"] as? String ?? "") }
             watch.settings = settings["notifications"] as? [String: Any] ?? [:]
             watch.failures = 0
-            serviceNotifications.observe(scope: watch.scope, name: watch.name, health: watch.health + [["name": "Management connection", "state": "UP"]], settings: watch.settings)
+            serviceNotifications.observe(scope: watch.scope, health: watch.health + [["name": "Management connection", "state": "UP"]], settings: watch.settings)
         } catch let failure as AppFailure where failure.statusCode == 401 || failure.statusCode == 403 || failure.statusCode == 404 {
             if remoteNotificationWatch === watch { remoteNotificationWatch = nil }
         } catch {
             guard remoteNotificationWatch === watch else { return }
             watch.failures += 1
             if watch.failures >= 3 {
-                serviceNotifications.observe(scope: watch.scope, name: watch.name, health: watch.health + [["name": "Management connection", "state": "DOWN"]], settings: watch.settings)
+                serviceNotifications.observe(scope: watch.scope, health: watch.health + [["name": "Management connection", "state": "DOWN"]], settings: watch.settings)
             }
         }
     }
@@ -656,41 +679,94 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
         menu.addItem(quit)
         statusItem.menu = menu
     }
-    func checkReleaseUpdate(silent: Bool) async {
-        guard !checkingRelease, !stopping else { return }
+    func checkScheduledAutomaticUpdate() async {
+        let preferences = AppPreferences.current
+        let now = Date()
+        guard preferences.automaticCheck, preferences.automaticInstall, UpdateAssistant.configured,
+              UpdateSchedule.matches(preferences.updateTime, at: now),
+              let day = UpdateSchedule.key(for: preferences.updateTime, at: now),
+              UserDefaults.standard.string(forKey: "releaseUpdateLastScheduledCheck") != day else { return }
+        await checkReleaseUpdate(silent: true, scheduledInstallDay: day)
+    }
+    func startReleaseUpdateTimer() {
+        releaseTimer?.invalidate()
+        releaseTimer = Timer.scheduledTimer(withTimeInterval: 60, repeats: true) { [weak self] _ in
+            Task { @MainActor in
+                await self?.checkScheduledAutomaticUpdate()
+                await self?.checkReleaseUpdate(silent: true)
+            }
+        }
+    }
+    func checkReleaseUpdate(silent: Bool, beta: Bool = false, scheduledInstallDay: String? = nil) async {
+        guard !stopping else { return }
+        if checkingRelease {
+            if scheduledInstallDay != nil { pendingScheduledInstallDay = scheduledInstallDay }
+            return
+        }
         let preferences = AppPreferences.current
         if silent && !preferences.automaticCheck { return }
         let lastCheck = UserDefaults.standard.object(forKey: "releaseUpdateLastCheck") as? Date ?? .distantPast
-        if silent && Date().timeIntervalSince(lastCheck) < Double(preferences.checkIntervalHours * 3600) { return }
+        if silent && scheduledInstallDay == nil && Date().timeIntervalSince(lastCheck) < Double(preferences.checkIntervalHours * 3600) { return }
         checkingRelease = true
         rebuildMenu()
-        defer { checkingRelease = false; rebuildMenu() }
+        defer {
+            checkingRelease = false
+            rebuildMenu()
+            if let pendingDay = pendingScheduledInstallDay {
+                pendingScheduledInstallDay = nil
+                Task { await checkReleaseUpdate(silent: true, scheduledInstallDay: pendingDay) }
+            }
+        }
         do {
-            let latest = try await ReleaseUpdater.latest()
-            UserDefaults.standard.set(Date(), forKey: "releaseUpdateLastCheck")
+            let latest: GiteaRelease
+            if beta {
+                latest = try await ReleaseUpdater.latestBeta()
+            } else {
+                latest = try await ReleaseUpdater.latest()
+                if scheduledInstallDay == nil {
+                    UserDefaults.standard.set(Date(), forKey: "releaseUpdateLastCheck")
+                }
+            }
             let appVersion = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? ""
             let backendVersion = (status["software"] as? [String: Any])?["version"] as? String ?? ""
             let repairLocalService = child == nil && FileManager.default.fileExists(atPath: "/Library/LaunchDaemons/com.routepilot.surge-controller.plist") && ReleaseUpdater.needsBackendUpdate(latest, app: appVersion, backend: backendVersion)
-            availableRelease = ReleaseUpdater.newer(latest) || repairLocalService ? latest : nil
+            availableRelease = (beta ? ReleaseUpdater.newerBeta(latest, current: appVersion) : ReleaseUpdater.newer(latest, current: appVersion)) || repairLocalService ? latest : nil
+            releaseDownloadError = ""
+            publishReleaseUpdateStatus()
+            if let scheduledInstallDay {
+                UserDefaults.standard.set(scheduledInstallDay, forKey: "releaseUpdateLastScheduledCheck")
+            }
             guard let release = availableRelease else {
-                if !silent { alert("RoutePilot 已是最新版本", "当前版本：\(Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "未知")") }
+                if !silent {
+                    alert(beta ? "没有可用的 Beta 更新" : "RoutePilot 已是最新版本",
+                          "当前版本：\(Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "未知")")
+                }
                 return
             }
-            if silent && UserDefaults.standard.string(forKey: "releaseUpdateSkippedTag") == release.tagName { return }
-            if silent && preferences.automaticInstall && UpdateAssistant.configured {
+            if silent && UserDefaults.standard.string(forKey: "releaseUpdateSkippedTag") == release.tagName {
+                availableRelease = nil
+                publishReleaseUpdateStatus()
+                return
+            }
+            releaseDownloadInProgress = true
+            publishReleaseUpdateStatus()
+            do { _ = try await ReleaseUpdater.downloadPackage(from: release) }
+            catch {
+                releaseDownloadError = error.localizedDescription
+            }
+            releaseDownloadInProgress = false
+            publishReleaseUpdateStatus()
+            if silent && scheduledInstallDay != nil && preferences.automaticInstall && UpdateAssistant.configured {
                 await installRelease(release)
                 return
             }
-            if silent && preferences.automaticDownload {
-                do { _ = try await ReleaseUpdater.downloadPackage(from: release) }
-                catch { if preferences.updatePrompts { alert("自动下载更新失败", error.localizedDescription) } }
-            }
+            if silent && preferences.automaticInstall && scheduledInstallDay == nil { return }
             if !silent || preferences.updatePrompts && UserDefaults.standard.string(forKey: "releaseUpdateLastNotifiedTag") != release.tagName {
                 UserDefaults.standard.set(release.tagName, forKey: "releaseUpdateLastNotifiedTag")
                 await presentRelease(release)
             }
         } catch {
-            if !silent { alert("检查更新失败", error.localizedDescription) }
+            if !silent { alert(beta ? "检查 Beta 更新失败" : "检查更新失败", error.localizedDescription) }
         }
     }
     func presentRelease(_ release: GiteaRelease) async {
@@ -701,6 +777,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
             await installRelease(release)
         case .skip:
             UserDefaults.standard.set(release.tagName, forKey: "releaseUpdateSkippedTag")
+            availableRelease = nil
+            publishReleaseUpdateStatus()
         case .later: break
         }
     }
@@ -757,7 +835,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
         do {
             if !UpdateAssistant.configured { try await UpdateAssistant.enable() }
             if let controller = webView?.configuration.userContentController { configurePreferenceSeed(controller) }
-            _ = try await UpdateAssistant.request("check")
+            if release.prerelease == true {
+                let assistant = try await UpdateAssistant.request("status")
+                if (assistant.protocolVersion ?? 0) < 1 {
+                    label.stringValue = L("正在升级 Beta 更新助手…")
+                    try await UpdateAssistant.enable()
+                }
+            }
+            _ = try await UpdateAssistant.request("check", channel: release.prerelease == true ? "beta" : nil)
             if !(await stopChild()) { throw AppFailure(message: "后台进程尚未停止，升级已取消") }
             var status = try await UpdateAssistant.request("install", version: release.tagName)
             let deadline = Date().addingTimeInterval(10 * 60)
@@ -772,6 +857,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
             }
             guard status.phase == "succeeded", status.target == release.tagName else { throw AppFailure(message: L(status.error ?? "在线升级失败，现有安装已保留")) }
             _ = try? await UpdateAssistant.request("refresh-agent")
+            availableRelease = nil
+            publishReleaseUpdateStatus()
             let launch = Process()
             launch.executableURL = URL(fileURLWithPath: "/usr/bin/open")
             launch.arguments = ["-n", UpdateAssistant.appPath]
@@ -1040,6 +1127,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
                 Task { @MainActor in await self?.refresh() }
                 Task { @MainActor in await self?.refreshRemoteNotifications() }
             }
+            self.startReleaseUpdateTimer()
         }
         return .terminateLater
     }

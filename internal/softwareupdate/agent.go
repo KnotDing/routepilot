@@ -33,10 +33,12 @@ type agentConfig struct {
 type agentRequest struct {
 	Action  string `json:"action"`
 	Version string `json:"version,omitempty"`
+	Channel string `json:"channel,omitempty"`
 }
 type agentStatus struct {
 	Status
-	Ready bool `json:"ready"`
+	Ready          bool `json:"ready"`
+	ProtocolVersion int `json:"protocol_version"`
 }
 type agent struct {
 	mu     sync.Mutex
@@ -278,7 +280,7 @@ func (a *agent) view(ctx context.Context) agentStatus {
 	s.Current = appVersion(ctx)
 	s.Latest = a.latest.Tag
 	s.Available = assistantUpdateAvailable(ctx, s.Latest)
-	return agentStatus{Status: s, Ready: true}
+	return agentStatus{Status: s, Ready: true, ProtocolVersion: 1}
 }
 func (a *agent) serve(ctx context.Context, c *net.UnixConn) {
 	_ = c.SetDeadline(time.Now().Add(25 * time.Second))
@@ -301,18 +303,28 @@ func (a *agent) serve(ctx context.Context, c *net.UnixConn) {
 	case "check":
 		checkCtx, cancel := context.WithTimeout(ctx, 15*time.Second)
 		defer cancel()
-		b, e := download(checkCtx, origin+"/api/v1/repos/knot/routepilot/releases/latest", 2<<20)
-		failure = e
-		if failure == nil {
+		a.latest = release{}
+		a.state.CheckedAt = time.Time{}
+		switch req.Channel {
+		case "", "stable":
 			var r release
-			if json.Unmarshal(b, &r) != nil || r.Draft || r.Prerelease {
-				failure = errors.New("Latest release metadata is invalid")
-			} else if _, e = versionParts(r.Tag); e != nil {
-				failure = e
-			} else {
+			var e error
+			r, e = fetchStableRelease(checkCtx)
+			failure = e
+			if failure == nil {
 				a.latest = r
-				a.state.CheckedAt = time.Now().UTC()
 			}
+		case "beta":
+			var r release
+			r, failure = fetchBetaRelease(checkCtx)
+			if failure == nil {
+				a.latest = r
+			}
+		default:
+			failure = errors.New("Unsupported release channel")
+		}
+		if failure == nil {
+			a.state.CheckedAt = time.Now().UTC()
 		}
 	case "install":
 		if a.busy {
@@ -361,6 +373,60 @@ func (a *agent) serve(ctx context.Context, c *net.UnixConn) {
 		_ = json.NewEncoder(c).Encode(a.view(ctx))
 	}
 }
+
+func fetchStableRelease(ctx context.Context) (release, error) {
+	b, err := download(ctx, origin+"/api/v1/repos/knot/routepilot/releases/latest", 2<<20)
+	if err != nil {
+		return release{}, err
+	}
+	var r release
+	if json.Unmarshal(b, &r) != nil || r.Draft || r.Prerelease {
+		return release{}, errors.New("Latest release metadata is invalid")
+	}
+	if _, err = versionParts(r.Tag); err != nil {
+		return release{}, err
+	}
+	if _, isBeta := betaNumber(r.Tag); isBeta {
+		return release{}, errors.New("Latest release metadata is not a stable release")
+	}
+	return r, nil
+}
+
+func fetchBetaRelease(ctx context.Context) (release, error) {
+	b, err := download(ctx, origin+"/api/v1/repos/knot/routepilot/releases?limit=50", 2<<20)
+	if err != nil {
+		return release{}, err
+	}
+	var releases []release
+	if json.Unmarshal(b, &releases) != nil {
+		return release{}, errors.New("Beta release metadata is invalid")
+	}
+	latest, ok := newestBetaRelease(releases)
+	if !ok {
+		return release{}, errors.New("No beta release is available")
+	}
+	return latest, nil
+}
+
+func newestBetaRelease(releases []release) (release, bool) {
+	var latest release
+	for _, candidate := range releases {
+		if candidate.Draft || !candidate.Prerelease {
+			continue
+		}
+		if _, err := versionParts(candidate.Tag); err != nil {
+			continue
+		}
+		if _, isBeta := betaNumber(candidate.Tag); !isBeta {
+			continue
+		}
+		if latest.Tag == "" || newer(candidate.Tag, latest.Tag) {
+			latest = candidate
+		}
+	}
+	return latest, latest.Tag != ""
+}
+
 func (a *agent) phase(value string) {
 	a.mu.Lock()
 	defer a.mu.Unlock()

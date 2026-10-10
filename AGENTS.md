@@ -28,10 +28,14 @@
 - 发布前确认 `main` 基线、工作区改动范围、下一个未使用的语义化版本标签及远端状态；不得覆盖已有标签，不得把无关或他人未提交改动混入发布。
 - Gitea Actions 列表中每次运行的主标题取自触发提交标题，工作流名称显示在其下方。所有提交（包括发布提交）都遵循 Conventional Commits（如 `feat:`、`fix:`、`docs:`）；发布提交标题应简洁概括本次面向用户的功能或修复，不要写成 `Release RoutePilot vX.Y.Z`。不要为了改标题重写或移动已推送的提交与标签。
 - 更新 `internal/buildinfo/release.json` 的版本、`scripts/install_skill.sh` 中的官方 tag 和提示版本、README 中的当前版本引用，并新增 `.gitea/release-notes/vX.Y.Z.md`。Release Notes 只写 App 用户可见的功能、修复和行为变化；排除 agent/仓库工作规范、开发流程等与 App 无关的内容。资产由工作流生成。
-- 发布前运行 `make verify-release`；任何门禁失败都先修复，不得跳过。该命令会重建 `web/dist` 并替换 `artifacts/` 内的生成安装包，执行前检查这些路径中的现有文件。
+- 正式版发布前运行 `make verify-release` 和 `make fuzz`；任何门禁失败都先修复，不得跳过。正式版 Release 必须不是 prerelease，并通过 `release.yaml` 的完整测试与包验证。
+- Beta 版本使用 `vX.Y.Z-beta.N` 标签（例如 `v1.0.1-beta.1`、`v1.0.1-beta.2`），每个 tag 唯一且 N 对同一个目标版本严格递增；不要覆盖或复用已推送的 Beta tag。为每个 Beta 新增对应 `.gitea/release-notes/vX.Y.Z-beta.N.md`，只写用户可见变化，并在 `internal/buildinfo/release.json` 保持同一版本值，供本地构建一致使用（CI 也会从 tag 设置版本及构建号）。
+- Beta tag 推送到 `main` 后由同一个 `release.yaml` 自动识别为 prerelease；Beta CI 精简为安装锁定依赖、构建 App/后台及前端、校验 DMG/ZIP/校验和和包内容（`make package package-check`），不运行 `make verify-release`、完整 Go/UI 回归及 fuzz。正式版仍执行完整门禁。Beta 发布前至少确认代码已推送到 `main`，目标 tag 不存在，且 Beta 说明文件已加入该提交。
+- 建议的 Beta 发布步骤：确认工作区干净且 `main` 已同步；选择当前正式版基础上的下一个稳定版本号及未用的 Beta 序号；更新 `internal/buildinfo/release.json`、README 中与本次行为有关的说明及对应 Beta Release Notes；提交 Conventional Commit；创建注释 tag（如 `git tag -a v1.0.1-beta.1 -m "RoutePilot v1.0.1-beta.1"`）并推送 `main` 与 tag。等待 Release workflow 成功后检查 Gitea Release 标记为 prerelease，三项资产齐全且可下载，再向测试者提供链接。下一轮继续递增 Beta 序号；正式候选版本则按下列稳定版流程发布正式版本。Beta 发布不要把 `scripts/install_skill.sh` 的官方稳定版 tag 改指到 Beta。
+- 正式版发布步骤：选择尚未使用的稳定 tag `vX.Y.Z`（不带后缀），更新 `internal/buildinfo/release.json`、`scripts/install_skill.sh` 官方 tag/提示版本、README 当前版本及 `.gitea/release-notes/vX.Y.Z.md`；确认变更和工作区仅包含本次发布内容，运行 `make verify-release` 与 `make fuzz`。通过后按 Conventional Commits 提交、创建注释 tag 并推送 `main` 与 tag。确认 Gitea 回归和 Release workflows 均成功，Release 不是 prerelease，DMG、ZIP、SHA256SUMS 均可下载后才报告完成。
+- `make verify-release` 和 `make package` 会重建 `web/dist` 并替换 `artifacts/` 内的生成安装包；执行前检查这些路径中的现有文件。
 - `web/dist` 由发布工作流在构建时生成，不应加入版本提交；只提交 Web 源码和必要的构建配置。
-- 验证通过后，按仓库提交约定提交变更，创建指向该提交的 `vX.Y.Z` 标签，并推送 `main` 与标签以触发 Gitea Release 工作流。不得使用强制推送或移动已发布标签。
-- 推送后确认 Gitea 的回归和发布 Actions 均成功，且 Release 附带 `RoutePilot-macos-arm64.dmg`、`RoutePilot-macos-arm64.zip`、`SHA256SUMS` 三项资产；未确认前不得宣称发布完成。
+- 不得使用强制推送或移动已发布标签。未确认工作流、Release 类型与三项资产前不得宣称版本已发布。
 
 ## 多 agent 协作与交接
 

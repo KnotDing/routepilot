@@ -18,7 +18,7 @@ export function resourceRequired(page,name){return numericField(name)||({Hosts:[
 export function settingsRequirement(category,name,draft,interception=[]){
  const section=draft[category]||{},dns=draft.dns||{},routing=draft.routing||{},surge=draft.surge||{},bgp=draft.bgp||{};
  const result={required:numericField(name)};
- const fields={general:['name','web_listen','mode','theme'],dns:['listeners','aaaa_fallback'],surge:['cli_path','dns','fake_prefixes'],security:['allowed_networks'],health:['probe_domain'],logging:['level']};
+ const fields={general:['web_listen','mode','theme'],dns:['listeners','aaaa_fallback'],surge:['cli_path','dns','fake_prefixes'],security:['allowed_networks'],health:['probe_domain'],logging:['level']};
  if(fields[category]?.includes(name))result.required=true;
  if(category==='bgp'&&name==='router_id'){result.required=Boolean(bgp.enabled&&routing.mode!=='static');if(result.required)result.hint='启用 BGP 后需要有效的 IPv4 Router ID。'}
  if(category==='security'){

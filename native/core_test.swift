@@ -7,7 +7,24 @@ struct NativeCoreTests {
     @MainActor static func main() throws {
         for value in ["0.5.2","v1.0.0","v0.10.20"] { try nativeCheck(ReleaseUpdater.stableVersion(value) != nil, "stable version rejected") }
         for value in ["", "v", "1.2", "1.2.3.4", "01.2.3", "+1.2.3", "1.-1.0", "1.2.3-beta", "1.2.3+build", "release1.0.0", "١.٢.٣"] { try nativeCheck(ReleaseUpdater.stableVersion(value) == nil, "invalid stable version accepted: " + value) }
+        for value in ["1.0.1-beta.1", "v1.2.3-beta.12"] { try nativeCheck(ReleaseUpdater.betaVersion(value) != nil, "beta version rejected") }
+        for value in ["1.0.1-beta", "1.0.1-beta.0", "1.0.1-beta.01", "1.0.1-rc.1", "01.0.1-beta.1"] { try nativeCheck(ReleaseUpdater.betaVersion(value) == nil, "invalid beta version accepted: " + value) }
+        for value in ["00:00", "03:00", "23:59"] { try nativeCheck(UpdateSchedule.isValidTime(value), "valid update time rejected: " + value) }
+        for value in ["", "3:00", "24:00", "12:60", "１２:００"] { try nativeCheck(!UpdateSchedule.isValidTime(value), "invalid update time accepted: " + value) }
+        let scheduleDate = Calendar.current.date(from: DateComponents(year: 2026, month: 10, day: 10, hour: 3, minute: 0))!
+        try nativeCheck(UpdateSchedule.matches("03:00", at: scheduleDate), "configured local update time did not match")
+        try nativeCheck(!UpdateSchedule.matches("03:01", at: scheduleDate), "scheduled update ran at the wrong time")
+        try nativeCheck(UpdateSchedule.key(for: "03:00", at: scheduleDate) != UpdateSchedule.key(for: "04:00", at: scheduleDate), "changing the scheduled time did not create a distinct daily check")
+        let betas = [try nativeRelease("v1.0.1-beta.1", prerelease:true), try nativeRelease("v1.0.1-beta.3", prerelease:true), try nativeRelease("v1.0.1-beta.2", draft:true, prerelease:true), try nativeRelease("v1.0.1-rc.1", prerelease:true), try nativeRelease("v1.1.0")]
+        try nativeCheck(ReleaseUpdater.newestBeta(in: betas)?.tagName == "v1.0.1-beta.3", "latest valid beta not selected")
+        let oldAssistant = try JSONDecoder().decode(UpdateAssistantStatus.self, from: Data(#"{"ready":true}"#.utf8))
+        let currentAssistant = try JSONDecoder().decode(UpdateAssistantStatus.self, from: Data(#"{"ready":true,"protocol_version":1}"#.utf8))
+        try nativeCheck(oldAssistant.protocolVersion == nil && currentAssistant.protocolVersion == 1, "update assistant protocol compatibility changed")
         try nativeCheck(ReleaseUpdater.newer(try nativeRelease("v1.0.0"),current:"0.5.2"), "major upgrade missed")
+        try nativeCheck(ReleaseUpdater.newer(try nativeRelease("v1.0.1"),current:"1.0.1-beta.2"), "stable upgrade from beta missed")
+        try nativeCheck(ReleaseUpdater.newerBeta(try nativeRelease("v1.0.1-beta.2",prerelease:true),current:"1.0.1-beta.1"), "newer beta was missed")
+        try nativeCheck(ReleaseUpdater.newerBeta(try nativeRelease("v1.0.1-beta.1",prerelease:true),current:"1.0.0"), "beta upgrade from stable was missed")
+        try nativeCheck(!ReleaseUpdater.newerBeta(try nativeRelease("v1.0.1-beta.1",prerelease:true),current:"1.0.1"), "beta offered over stable")
         try nativeCheck(!ReleaseUpdater.newer(try nativeRelease("v0.5.2"),current:"0.5.2"), "equal version offered")
         try nativeCheck(!ReleaseUpdater.newer(try nativeRelease("v1.0.0",draft:true),current:"0.5.2"), "draft offered")
         try nativeCheck(!ReleaseUpdater.newer(try nativeRelease("v1.0.0",prerelease:true),current:"0.5.2"), "prerelease offered")
@@ -15,6 +32,7 @@ struct NativeCoreTests {
         try nativeCheck(!ReleaseUpdater.needsBackendUpdate(try nativeRelease("v0.5.5"), app:"0.5.5", backend:"0.5.5"), "matching service reinstalled")
         try nativeCheck(!ReleaseUpdater.needsBackendUpdate(try nativeRelease("v0.5.4"), app:"0.5.5", backend:"0.5.3"), "repair downgraded app")
         try nativeCheck(!ReleaseUpdater.needsBackendUpdate(try nativeRelease("v0.5.5",draft:true), app:"0.5.5", backend:"0.5.4"), "draft repair accepted")
+        try nativeCheck(ReleaseUpdater.needsBackendUpdate(try nativeRelease("v1.0.1-beta.2",prerelease:true), app:"1.0.1-beta.2", backend:"1.0.1-beta.1"), "beta backend repair was missed")
         for address in ["https://gitea.knotding.com/a","https://gitea.knotding.com:443/a"] { try nativeCheck(ReleaseUpdater.trustedDownloadURL(URL(string:address)!), "trusted origin rejected") }
         for address in ["http://gitea.knotding.com/a","https://evil.test/a","https://gitea.knotding.com:8443/a","https://user:pass@gitea.knotding.com/a","https://gitea.knotding.com/a#fragment"] { try nativeCheck(!ReleaseUpdater.trustedDownloadURL(URL(string:address)!), "untrusted origin accepted") }
         let digest=String(repeating:"a",count:64), name="RoutePilot-macos-arm64.zip"

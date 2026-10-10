@@ -10,6 +10,9 @@ import subprocess
 import zipfile
 
 
+RELEASE_VERSION = re.compile(r"(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-beta\.[1-9][0-9]*)?")
+
+
 def require(condition, message):
     if not condition:
         raise ValueError(message)
@@ -17,6 +20,10 @@ def require(condition, message):
 
 def sha256(data):
     return hashlib.sha256(data).hexdigest()
+
+
+def valid_release_version(value):
+    return RELEASE_VERSION.fullmatch(value) is not None
 
 
 def checksum_entries(text):
@@ -64,7 +71,7 @@ def main():
     report = artifacts / "package-verification.json"
     report.unlink(missing_ok=True)  # A failed run must not leave an old success report.
     identity = json.loads((root / "internal/buildinfo/release.json").read_text())
-    require(re.fullmatch(r"(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)", identity["version"]), "Release must have a stable semantic version")
+    require(valid_release_version(identity["version"]), "Release must have a stable or numbered beta semantic version")
     arch = platform.machine()
     names = [f"RoutePilot-macos-{arch}.dmg", f"RoutePilot-macos-{arch}.zip"]
     files = {name: (artifacts / name).read_bytes() for name in names}

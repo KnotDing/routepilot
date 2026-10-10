@@ -15,7 +15,6 @@ import (
 )
 
 type General struct {
-	Name      string `json:"name"`
 	WebListen string `json:"web_listen"`
 	Mode      string `json:"mode"`
 	Theme     string `json:"theme"`
@@ -305,7 +304,7 @@ func (d Document) Clone() Document {
 func Default() Document {
 	return Document{Version: 1, Settings: Settings{
 		Routing: Routing{Mode: "bgp", FakeIPBackend: "bgp", DNSBackend: "bgp"},
-		General: General{"Surge Controller", "127.0.0.1:1055", "auto", "system"},
+		General: General{"127.0.0.1:1055", "auto", "system"},
 		DNS:     DNS{AAAAFallback: "surge", Listeners: []string{"127.0.0.1:1053"}, PreserveOriginal: true, TimeoutMS: 2000, SourcePortFirst: 20000, SourcePortLast: 20999, Upstreams: []resolver.ResolverEndpoint{{Name: "Cloudflare", Protocol: "udp", Address: "1.1.1.1:53", Enabled: true}}},
 		Surge:   Surge{CLIPath: "/Applications/Surge.app/Contents/Applications/surge-cli", DNS: "198.18.0.2:53", FakePrefixes: []string{"198.18.0.0/15"}},
 		BGP:     BGP{LocalASN: 64512, ListenPort: 179, RouteLimit: 128, HoldSeconds: 30, KeepaliveSeconds: 10},
@@ -384,8 +383,8 @@ func (d Document) Validate() error {
 	if s.DNS.InterceptionEnabled && routing.DNSBackend == "static" && !routing.StaticDNSInterception {
 		return errors.New("persistent static DNS interception requires explicit opt-in")
 	}
-	if d.Version != 1 || len(s.General.Name) == 0 || len(s.General.Name) > 100 {
-		return errors.New("invalid configuration version or controller name")
+	if d.Version != 1 {
+		return errors.New("invalid configuration version")
 	}
 	if s.General.Mode != "auto" && s.General.Mode != "force-direct" && s.General.Mode != "force-surge" {
 		return errors.New("invalid mode")

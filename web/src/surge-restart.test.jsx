@@ -6,7 +6,7 @@ import {SurgeRestartSettings,restartDefaults} from './surge-restart';
 import {settingsRequirement} from './form-fields';
 afterEach(()=>{cleanup();localStorage.clear()});
 it('enables conditional restart controls and independent tolerance values',()=>{
- render(<Settings settings={{general:{name:'Fixture'},surge:{api_url:'',cli_path:'/Applications/Surge.app/Contents/Applications/surge-cli',trust_direct:false}}} notify={()=>{}} refresh={()=>{}}/>);
+ render(<Settings settings={{general:{},surge:{api_url:'',cli_path:'/Applications/Surge.app/Contents/Applications/surge-cli',trust_direct:false}}} notify={()=>{}} refresh={()=>{}}/>);
  fireEvent.click(screen.getByRole('button',{name:'Surge',exact:true}));
  expect(screen.queryByLabelText('连续失败次数')).not.toBeInTheDocument();
  fireEvent.click(screen.getByLabelText('启用 Surge 异常重启'));
@@ -28,7 +28,7 @@ it('migrates zero values, emits selected nodes, and marks API requirements',()=>
 });
 
 it('preserves a trailing newline so targets can be typed one line at a time',()=>{
- render(<Settings settings={{general:{name:'Fixture'},surge:{restart:{...restartDefaults,enabled:true},trust_direct:false}}} notify={()=>{}} refresh={()=>{}}/>);
+ render(<Settings settings={{general:{},surge:{restart:{...restartDefaults,enabled:true},trust_direct:false}}} notify={()=>{}} refresh={()=>{}}/>);
  fireEvent.click(screen.getByRole('button',{name:'Surge',exact:true}));
  const input=screen.getByLabelText('指定节点（每行一项）');
  fireEvent.change(input,{target:{value:'Node A\n'}});expect(input).toHaveValue('Node A\n');

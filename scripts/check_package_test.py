@@ -1,6 +1,6 @@
 import unittest
 
-from check_package import checksum_entries, sha256, verify_service_resources, verify_checksums, verify_identity, verify_notes
+from check_package import checksum_entries, sha256, valid_release_version, verify_service_resources, verify_checksums, verify_identity, verify_notes
 
 
 class PackageChecks(unittest.TestCase):
@@ -19,9 +19,18 @@ class PackageChecks(unittest.TestCase):
         release = {"version": "1.0.0", "build": "1"}
         info = {"CFBundleIdentifier": "com.routepilot.app", "CFBundleShortVersionString": "1.0.0", "CFBundleVersion": "1"}
         verify_identity(info, release)
+        verify_identity({**info, "CFBundleShortVersionString": "1.0.1-beta.2", "CFBundleVersion": "2"}, {"version": "1.0.1-beta.2", "build": "2"})
         for key in info:
             with self.subTest(key=key), self.assertRaises(ValueError):
                 verify_identity({**info, key: "wrong"}, release)
+
+    def test_release_version_format(self):
+        for version in ("1.0.0", "0.0.1", "1.2.3-beta.1", "10.20.30-beta.12"):
+            with self.subTest(version=version):
+                self.assertTrue(valid_release_version(version))
+        for version in ("01.0.0", "1.2", "1.2.3-beta", "1.2.3-beta.0", "1.2.3-beta.01", "1.2.3-rc.1"):
+            with self.subTest(version=version):
+                self.assertFalse(valid_release_version(version))
 
     def test_offline_notes(self):
         def read(html):
