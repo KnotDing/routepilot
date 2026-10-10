@@ -1,0 +1,4 @@
+interface:
+  display_name: "RoutePilot Control"
+  short_description: "Control RoutePilot DNS, BGP, configuration and updates"
+  default_prompt: "Use $routepilot-control to inspect my RoutePilot backend and perform the requested change."

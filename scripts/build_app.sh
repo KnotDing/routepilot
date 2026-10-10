@@ -9,7 +9,7 @@ build_dir=$(mktemp -d "$project_dir/.cache/app-build.XXXXXX")
 trap 'rm -rf "$build_dir"' EXIT
 app_dir="$build_dir/RoutePilot.app"
 mkdir -p "$app_dir/Contents/MacOS" "$app_dir/Contents/Resources/Service/bin" "$app_dir/Contents/Resources/Service/scripts" "$app_dir/Contents/Resources/Service/launchd" .cache/swift-module .cache/AppIcon.iconset
-xcrun swiftc -parse-as-library -swift-version 5 -target "$(uname -m)-apple-macos13.0" -module-cache-path "$project_dir/.cache/swift-module" -framework AppKit -framework WebKit -framework ServiceManagement -framework UserNotifications native/main.swift native/window_frame.swift native/status_icon.swift native/status_preferences.swift native/credentials.swift native/remote_credentials.swift native/notifications.swift native/installer.swift native/localization.swift native/release_updater.swift native/update_assistant.swift native/update_dialog.swift native/remote_update_restart.swift -o "$app_dir/Contents/MacOS/RoutePilot"
+xcrun swiftc -parse-as-library -swift-version 5 -target "$(uname -m)-apple-macos13.0" -module-cache-path "$project_dir/.cache/swift-module" -framework AppKit -framework WebKit -framework ServiceManagement -framework UserNotifications native/main.swift native/window_frame.swift native/status_icon.swift native/status_preferences.swift native/credentials.swift native/remote_credentials.swift native/notifications.swift native/automation.swift native/installer.swift native/localization.swift native/release_updater.swift native/update_assistant.swift native/update_dialog.swift native/remote_update_restart.swift -o "$app_dir/Contents/MacOS/RoutePilot"
 cp native/Info.plist "$app_dir/Contents/Info.plist"
 # Keep the native bundle aligned with the release identity embedded in Go and Vite.
 release_version=$(plutil -extract version raw -o - internal/buildinfo/release.json)
@@ -22,7 +22,11 @@ if ! iconutil -c icns .cache/AppIcon.iconset -o "$app_dir/Contents/Resources/App
   python3 scripts/pack_icon.py .cache/AppIcon.iconset "$app_dir/Contents/Resources/AppIcon.icns"
 fi
 cp bin/surge-controller "$app_dir/Contents/Resources/Service/bin/"
-cp scripts/install_macos.sh scripts/uninstall_macos.sh scripts/update_macos.sh "$app_dir/Contents/Resources/Service/scripts/"
+cp bin/routepilot "$app_dir/Contents/Resources/Service/bin/"
+cp scripts/install_macos.sh scripts/uninstall_macos.sh scripts/update_macos.sh scripts/install_cli.sh "$app_dir/Contents/Resources/Service/scripts/"
+mkdir -p "$app_dir/Contents/Resources/Skills" "$app_dir/Contents/Resources/docs"
+cp -R skills/routepilot-control "$app_dir/Contents/Resources/Skills/"
+cp docs/cli.md "$app_dir/Contents/Resources/docs/"
 cp launchd/com.routepilot.surge-controller.plist "$app_dir/Contents/Resources/Service/launchd/"
 cp -R web/dist-native "$app_dir/Contents/Resources/ReleaseNotes"
 cp README.md "$app_dir/Contents/Resources/README.md"
@@ -30,6 +34,7 @@ cp localization/*.json "$app_dir/Contents/Resources/"
 cp internal/config/notification-events.json "$app_dir/Contents/Resources/"
 cp -R native/en.lproj native/zh-Hans.lproj "$app_dir/Contents/Resources/"
 codesign --force --sign - "$app_dir/Contents/Resources/Service/bin/surge-controller"
+codesign --force --sign - "$app_dir/Contents/Resources/Service/bin/routepilot"
 codesign --force --sign - "$app_dir"
 codesign --verify --deep --strict "$app_dir"
 if [ -d "$project_dir/artifacts/RoutePilot.app" ]; then

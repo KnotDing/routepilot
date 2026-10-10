@@ -1,6 +1,6 @@
 GO ?= go
 
-.PHONY: build test bench verify verify-release native-test ui-test coverage fuzz package-check checksums fmt frontend frontend-test app package clean-artifacts
+.PHONY: build cli test bench verify verify-release native-test ui-test coverage fuzz package-check checksums fmt frontend frontend-test app package clean-artifacts
 frontend: clean-artifacts
 	cd web && npm run build
 clean-artifacts:
@@ -11,6 +11,10 @@ build: frontend
 	mkdir -p bin
 	$(GO) build -trimpath -o bin/surge-controller ./cmd/controller
 	$(GO) build -trimpath -o bin/dns-probe ./cmd/dns-probe
+	$(GO) build -trimpath -o bin/routepilot ./cmd/routepilot
+cli:
+	mkdir -p bin
+	$(GO) build -trimpath -o bin/routepilot ./cmd/routepilot
 test:
 	$(GO) test -race -count=1 ./...
 bench:

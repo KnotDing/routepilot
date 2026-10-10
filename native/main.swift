@@ -87,6 +87,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
     var lastVersionWarningSignature: String?
     var smokeStarted = false
     var smokeDownloadURL: URL?
+    var automationError = ""
     var smoke: Bool { arguments.contains("--smoke-test") }
     func installApplicationMenu() {
         let mainMenu = NSMenu()
@@ -150,6 +151,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
             button.image?.isTemplate = true
             button.toolTip = "RoutePilot · " + L("正在连接…")
             statusIconAnimator = StatusBarIconAnimator(button: button, brand: menuBrandImage)
+        }
+        if !smoke {
+            do { try AutomationIntegration.apply(AppPreferences.current.automation, startup: true) }
+            catch is AutomationConflict { automationError = L("检测到 CLI 或 skill 文件冲突，请到设置中选择覆盖或跳过。") }
+            catch { automationError = error.localizedDescription }
         }
         rebuildMenu()
         timer = Timer.scheduledTimer(withTimeInterval: 3, repeats: true) { [weak self] _ in
@@ -346,16 +352,28 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
         let trusted = message.frameInfo.isMainFrame && origin.protocol == client.base.scheme && origin.host == client.base.host?.trimmingCharacters(in: CharacterSet(charactersIn: "[]")) && origin.port == client.base.port
         if message.name == "routepilotPreferences" {
             guard trusted, let values = message.body as? [String: Any] else { return }
-            func reply(_ ok: Bool) {
+            func reply(_ ok: Bool, extra: [String: Any] = [:]) {
                 guard let id = values["_requestID"] as? String, id.count <= 64,
-                      let data = try? JSONSerialization.data(withJSONObject: ["requestID": id, "ok": ok]),
+                      let data = try? JSONSerialization.data(withJSONObject: extra.merging(["requestID": id, "ok": ok]) { _, value in value }),
                       let json = String(data: data, encoding: .utf8) else { return }
                 webView?.evaluateJavaScript("window.dispatchEvent(new CustomEvent('routepilot-preferences-saved',{detail:" + json + "}));", completionHandler: nil)
             }
             guard let data = try? JSONSerialization.data(withJSONObject: values),
-                  var preferences = try? JSONDecoder().decode(AppPreferences.self, from: data), (1...168).contains(preferences.checkIntervalHours), preferences.statusBar.valid else { reply(false); return }
+                  var preferences = try? JSONDecoder().decode(AppPreferences.self, from: data), (1...168).contains(preferences.checkIntervalHours), preferences.statusBar.valid, preferences.automation.valid else { reply(false); return }
             preferences.automaticInstall = preferences.automaticInstall && preferences.automaticCheck && UpdateAssistant.configured
             let previous = AppPreferences.current
+            if preferences.automation != previous.automation || values["_automation"] as? Bool == true {
+                let choices = values["_automationChoices"] as? [String: String] ?? [:]
+                guard choices.keys.allSatisfy({ ["cli", "codex", "claude"].contains($0) }), choices.values.allSatisfy({ ["overwrite", "skip"].contains($0) }) else { reply(false); return }
+                do { try AutomationIntegration.apply(preferences.automation, choices: choices); automationError = "" }
+                catch let conflict as AutomationConflict {
+                    reply(false, extra: ["code": "automation_conflict", "conflicts": conflict.items, "error": L("检测到同名文件，请选择覆盖或跳过。")]); return
+                } catch {
+                    automationError = error.localizedDescription
+                    configurePreferenceSeed(userContentController)
+                    reply(false, extra: ["error": automationError]); return
+                }
+            }
             AppPreferences.current = preferences
             updateToolTip()
             if preferences.automaticCheck && (!previous.automaticCheck || preferences.automaticDownload != previous.automaticDownload || preferences.updatePrompts != previous.updatePrompts || preferences.automaticInstall != previous.automaticInstall) {
@@ -452,6 +470,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
         preferences["assistantSupported"] = true
         preferences["remoteCredentialsSupported"] = true
         preferences["preferencesSaveAcknowledgement"] = true
+        preferences["automationSupported"] = AutomationIntegration.supported
+        preferences["automationStatus"] = AutomationIntegration.status().merging(["error": automationError]) { _, value in value }
         guard let seed = try? JSONSerialization.data(withJSONObject: preferences), let json = String(data: seed, encoding: .utf8) else { return }
         let source = marker + "window.routepilotNativePreferences=" + json + ";window.dispatchEvent(new Event('routepilot-preferences-changed'));"
         controller.addUserScript(WKUserScript(source: source, injectionTime: .atDocumentStart, forMainFrameOnly: true))
