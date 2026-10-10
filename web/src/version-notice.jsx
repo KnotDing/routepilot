@@ -13,6 +13,6 @@ export function VersionNotice({status,backend=null}){
  return <section className="notice version-notice" role="alert" aria-label={t('版本检查')}>
   <strong>{t(complete?'前后端版本不一致，请更新':'无法确认后台版本，请更新后台服务')}</strong>
   <p>{t('网页界面：{version}（构建 {build}）',{version:release.version,build:release.build})}{complete&&' · '+t('后台：{version}（构建 {build}）',{version:software.version,build:software.build})}</p>
-  <p>{backend?t(status.online_update?'可在下方检查并升级远程后台；本机 App 需单独更新。':'此后台尚未支持在线升级，请先在远程主机手动更新一次，并将本机 App 更新至同一发布版本。'):t('请通过“设置 → 软件更新”在线升级 App 与本机后台；后台更新完成后请刷新页面。')}</p>
+  <p>{t(backend?'请通过“设置 → 软件更新”升级远端完整 App、管理页面和网络服务；运行此窗口的本机 App 需在本机更新。':'请通过“设置 → 软件更新”升级该 Mac 的完整 App、管理页面和网络服务。')}</p>
  </section>;
 }

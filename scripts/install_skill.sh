@@ -1,24 +1,31 @@
 #!/bin/sh
 # Install only the agent skill from the published RoutePilot source tag.
 set -eu
-agent=codex
+agents=
 conflict=overwrite
 while [ "$#" -gt 0 ]; do
   case "$1" in
-    --agent) [ "$#" -ge 2 ] || exit 2; agent=$2; shift 2 ;;
+    --agent)
+      [ "$#" -ge 2 ] || exit 2
+      case "$2" in codex|claude|hermes) ;; *) echo 'Agent must be codex, claude or hermes' >&2; exit 2 ;; esac
+      case " $agents " in *" $2 "*) ;; *) agents="${agents:+$agents }$2" ;; esac
+      shift 2 ;;
     --on-conflict) [ "$#" -ge 2 ] || exit 2; conflict=$2; shift 2 ;;
-    *) echo 'Usage: install_skill.sh [--agent codex|claude] [--on-conflict overwrite|skip]' >&2; exit 2 ;;
+    *) echo 'Usage: install_skill.sh [--agent codex|claude|hermes]... [--on-conflict overwrite|skip]' >&2; exit 2 ;;
   esac
 done
+[ -n "$agents" ] || agents=codex
+case "$conflict" in overwrite|skip) ;; *) echo 'Conflict policy must be overwrite or skip' >&2; exit 2 ;; esac
+command -v curl >/dev/null 2>&1 || { echo 'curl is required' >&2; exit 1; }
+install_agent() (
+agent=$1
 case "$agent" in
   codex) parent="${CODEX_HOME:-$HOME/.codex}/skills" ;;
   claude) parent="$HOME/.claude/skills" ;;
-  *) echo 'Agent must be codex or claude' >&2; exit 2 ;;
+  hermes) parent="${HERMES_HOME:-$HOME/.hermes}/skills" ;;
 esac
-case "$conflict" in overwrite|skip) ;; *) echo 'Conflict policy must be overwrite or skip' >&2; exit 2 ;; esac
 case "$parent" in /*) ;; *) echo 'Skill directory must be absolute' >&2; exit 2 ;; esac
 [ ! -L "$parent" ] || { echo 'Skill parent directory must not be a symlink' >&2; exit 1; }
-command -v curl >/dev/null 2>&1 || { echo 'curl is required' >&2; exit 1; }
 umask 077
 mkdir -p "$parent"
 destination="$parent/routepilot-control"
@@ -38,7 +45,7 @@ cleanup() {
 trap cleanup EXIT
 trap 'exit 1' HUP INT TERM
 mkdir -p "$stage/agents" "$stage/references"
-base='https://gitea.knotding.com/knot/routepilot/raw/tag/v0.6.1/skills/routepilot-control'
+base='https://gitea.knotding.com/knot/routepilot/raw/tag/v0.6.2/skills/routepilot-control'
 for file in SKILL.md agents/openai.yaml references/recipes.md; do
   curl --fail --silent --show-error --location --proto '=https' --proto-redir '=https' \
     "$base/$file" -o "$stage/$file"
@@ -54,5 +61,7 @@ if [ -e "$destination" ] || [ -L "$destination" ]; then
 fi
 mv "$stage" "$destination"
 installed=true
-printf 'Installed RoutePilot v0.6.1 skill: %s\n' "$destination"
+printf 'Installed RoutePilot v0.6.2 skill: %s\n' "$destination"
 [ -z "$backup" ] || printf 'Previous contents backed up to: %s\n' "$backup"
+)
+for agent in $agents; do install_agent "$agent"; done

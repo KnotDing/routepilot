@@ -9,7 +9,7 @@ it('explains App-only status bar settings in browsers',()=>{
  expect(screen.getByLabelText('启用图标动画')).toBeDisabled();
 });
 it('saves animation and selected values together while preserving update preferences',async()=>{
- const postMessage=vi.fn(),notify=vi.fn();window.webkit={messageHandlers:{routepilotPreferences:{postMessage}}};window.routepilotNativePreferences={automaticCheck:false,notificationSound:false};
+ const postMessage=vi.fn(value=>queueMicrotask(()=>window.dispatchEvent(new CustomEvent('routepilot-preferences-saved',{detail:{requestID:value._requestID,ok:true}})))),notify=vi.fn();window.webkit={messageHandlers:{routepilotPreferences:{postMessage}}};window.routepilotNativePreferences={automaticCheck:false,notificationSound:false};
  render(<StatusBarSettings notify={notify}/>);
  fireEvent.click(screen.getByLabelText('启用图标动画'));
  fireEvent.change(screen.getByLabelText('图标旁显示'),{target:{value:'health_value'}});

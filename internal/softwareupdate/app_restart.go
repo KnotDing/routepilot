@@ -101,8 +101,8 @@ func (m *Manager) reconcileAppRestart(update Status, restart appRestartStatus) {
 	}()
 }
 
-// The newly installed backend handles the GUI handoff. This also works when an
-// older update worker installed this release. Rollbacks never restart the App.
+// The newly installed backend handles the GUI handoff after the update worker
+// confirms service readiness and commits the installation.
 func (m *Manager) resumeRemoteApp(initial Status) {
 	if initial.Phase != "restarting" || initial.Target != "v"+buildinfo.Current().Version || time.Since(initial.UpdatedAt) > 10*time.Minute {
 		return

@@ -112,7 +112,7 @@ func TestManagerOffersCompleteAppRepairAtCurrentBackendVersion(t *testing.T) {
 	m.latest.Tag = "v" + buildinfo.Current().Version
 	app := "0.0.1"
 	m.ops.appVersion = func() string { return app }
-	if s := m.Status(); !s.Available || !s.CompleteApplication || s.AppCurrent != "0.0.1" {
+	if s := m.Status(); !s.Available || s.AppCurrent != "0.0.1" {
 		t.Fatal(s)
 	}
 	m.ops.prepare = func(context.Context, release, func() error) error { return nil }

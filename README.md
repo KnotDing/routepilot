@@ -318,7 +318,7 @@ make cli
 ./bin/routepilot help --json
 ```
 
-完整 App 同时携带 CLI 和 `routepilot-control` skill，可在 **设置 → CLI 与 skill** 启用或禁用 CLI、自动安装到 Codex / Claude Code。同名文件提供覆盖或跳过，默认覆盖，原内容自动备份。可按 [CLI 安装与使用说明](docs/cli.md) 安装到 PATH 和 agent 的 skills 目录，然后让 agent 使用 `$routepilot-control` 帮你查状态、改配置。登录只保存私有会话，不保存密码；配置保存与后台应用状态分别反馈。
+完整 App 同时携带 CLI 和 `routepilot-control` skill，可在 **设置 → CLI 与 skill** 启用或禁用 CLI，并通过复选框同时选择自动安装到 Codex、Claude Code、Hermes。同名文件提供覆盖或跳过，默认覆盖，原内容自动备份。可按 [CLI 安装与使用说明](docs/cli.md) 安装到 PATH 和 agent 的 skills 目录，然后让 agent 使用 `$routepilot-control` 帮你查状态、改配置。登录只保存私有会话，不保存密码；配置保存与后台应用状态分别反馈。
 
 ### 一条命令安装 skill
 
@@ -334,6 +334,14 @@ Claude Code 使用：
 curl -fsSL https://gitea.knotding.com/knot/routepilot/raw/branch/main/scripts/install_skill.sh | sh -s -- --agent claude
 ```
 
-安装器从官方仓库下载 **v0.6.1** 的 skill，无需克隆仓库、编译或管理员权限。默认覆盖同名 skill，并将原内容备份到 skills 目录之外的 `routepilot-skill-backups`，具体路径会打印出来；想保留已有内容，在命令末尾使用 `sh -s -- --on-conflict skip`（可与 `--agent claude` 一起传入）。仅安装 skill，不会启用 CLI 或保存登录凭证；使用前请在 RoutePilot **设置 → CLI 与 skill** 启用 CLI，安装完成后让 agent 重新加载 skills。
+Hermes 使用（使用 `$HERMES_HOME/skills`，未设置时为 `~/.hermes/skills`）：
+
+```sh
+curl -fsSL https://gitea.knotding.com/knot/routepilot/raw/branch/main/scripts/install_skill.sh | sh -s -- --agent hermes
+```
+
+同一命令可重复传入 `--agent` 安装到多个 agent，例如 `sh -s -- --agent codex --agent claude --agent hermes`。
+
+安装器从官方仓库下载 **v0.6.2** 的 skill，无需克隆仓库、编译或管理员权限。默认覆盖同名 skill，并将原内容备份到 skills 目录之外的 `routepilot-skill-backups`，具体路径会打印出来；想保留已有内容，在命令末尾使用 `sh -s -- --on-conflict skip`（可与 `--agent claude` 一起传入）。仅安装 skill，不会启用 CLI 或保存登录凭证；使用前请在 RoutePilot **设置 → CLI 与 skill** 启用 CLI，安装完成后让 agent 重新加载 skills。
 
 安装脚本源码：[scripts/install_skill.sh](scripts/install_skill.sh)。

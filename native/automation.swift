@@ -4,15 +4,30 @@ import Darwin
 struct AutomationPreferences: Codable, Equatable {
     var cliEnabled = false
     var automaticSkillInstall = false
-    var skillTarget = "codex"
-    var valid: Bool { ["codex", "claude", "both"].contains(skillTarget) }
-    enum CodingKeys: String, CodingKey { case cliEnabled, automaticSkillInstall, skillTarget }
+    static let agents = ["codex", "claude", "hermes"]
+    var skillTargets = ["codex"]
+    var valid: Bool {
+        skillTargets.allSatisfy { Self.agents.contains($0) } &&
+        Set(skillTargets).count == skillTargets.count && (!automaticSkillInstall || !skillTargets.isEmpty)
+    }
+    enum CodingKeys: String, CodingKey { case cliEnabled, automaticSkillInstall, skillTargets, skillTarget }
     init() {}
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         cliEnabled = try c.decodeIfPresent(Bool.self, forKey: .cliEnabled) ?? false
         automaticSkillInstall = try c.decodeIfPresent(Bool.self, forKey: .automaticSkillInstall) ?? false
-        skillTarget = try c.decodeIfPresent(String.self, forKey: .skillTarget) ?? "codex"
+        if let targets = try c.decodeIfPresent([String].self, forKey: .skillTargets) {
+            skillTargets = targets
+        } else {
+            let legacy = try c.decodeIfPresent(String.self, forKey: .skillTarget) ?? "codex"
+            skillTargets = legacy == "both" ? ["codex", "claude"] : [legacy]
+        }
+    }
+    func encode(to encoder: Encoder) throws {
+        var c = encoder.container(keyedBy: CodingKeys.self)
+        try c.encode(cliEnabled, forKey: .cliEnabled)
+        try c.encode(automaticSkillInstall, forKey: .automaticSkillInstall)
+        try c.encode(skillTargets, forKey: .skillTargets)
     }
 }
 
@@ -44,10 +59,12 @@ enum AutomationIntegration {
         let home = fm.homeDirectoryForCurrentUser
         let resources = Bundle.main.resourceURL ?? Bundle.main.bundleURL
         let codexHome = ProcessInfo.processInfo.environment["CODEX_HOME"].flatMap { $0.hasPrefix("/") ? URL(fileURLWithPath: $0) : nil } ?? home.appendingPathComponent(".codex", isDirectory: true)
+        let hermesHome = ProcessInfo.processInfo.environment["HERMES_HOME"].flatMap { $0.hasPrefix("/") ? URL(fileURLWithPath: $0) : nil } ?? home.appendingPathComponent(".hermes", isDirectory: true)
         return [
             Entry(id: "cli", path: home.appendingPathComponent(".local/bin/routepilot"), source: resources.appendingPathComponent("Service/bin/routepilot")),
             Entry(id: "codex", path: codexHome.appendingPathComponent("skills/routepilot-control"), source: resources.appendingPathComponent("Skills/routepilot-control", isDirectory: true)),
-            Entry(id: "claude", path: home.appendingPathComponent(".claude/skills/routepilot-control"), source: resources.appendingPathComponent("Skills/routepilot-control", isDirectory: true))
+            Entry(id: "claude", path: home.appendingPathComponent(".claude/skills/routepilot-control"), source: resources.appendingPathComponent("Skills/routepilot-control", isDirectory: true)),
+            Entry(id: "hermes", path: hermesHome.appendingPathComponent("skills/routepilot-control"), source: resources.appendingPathComponent("Skills/routepilot-control", isDirectory: true))
         ]
     }
     static var supported: Bool {
@@ -95,7 +112,7 @@ enum AutomationIntegration {
         let previous = try readState()
         var desired: [String: String] = [:]
         for entry in entries {
-            if entry.id == "cli" ? preferences.cliEnabled : preferences.automaticSkillInstall && (preferences.skillTarget == entry.id || preferences.skillTarget == "both") {
+            if entry.id == "cli" ? preferences.cliEnabled : preferences.automaticSkillInstall && preferences.skillTargets.contains(entry.id) {
                 desired[entry.path.path] = entry.source.path
             }
         }

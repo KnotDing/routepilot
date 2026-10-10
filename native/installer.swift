@@ -31,7 +31,7 @@ struct InstallerStage {
             for directory in [stage.service, stage.service.appendingPathComponent("bin"), stage.service.appendingPathComponent("scripts"), stage.service.appendingPathComponent("launchd"), stage.data] {
                 try files.createDirectory(at: directory, withIntermediateDirectories: false, attributes: [.posixPermissions: 0o700])
             }
-            for path in ["bin/surge-controller", "scripts/install_macos.sh", "scripts/update_macos.sh", "launchd/com.routepilot.surge-controller.plist"] {
+            for path in ["bin/surge-controller", "scripts/install_macos.sh", "launchd/com.routepilot.surge-controller.plist"] {
                 let source = sourceService.appendingPathComponent(path)
                 try require(source, type: .typeRegular)
                 let target = stage.service.appendingPathComponent(path)

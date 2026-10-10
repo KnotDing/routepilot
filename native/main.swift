@@ -274,7 +274,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
             activeHealth.append(["name": "Management connection", "state": "UP"])
             serviceNotifications.observe(scope: client.base.absoluteString, name: status["name"] as? String ?? L("本地服务"), health: activeHealth, settings: notificationSettings)
             lastError = ""
-            checkBackendVersion()
+            await checkBackendVersion()
             if smoke && !smokeStarted {
                 smokeStarted = true
                 Task { await runSmoke() }
@@ -283,7 +283,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
             status = [:]; lastError = "需要登录管理服务"; versionWarning = nil
         }
     }
-    func checkBackendVersion() {
+    func checkBackendVersion() async {
         let software = status["software"] as? [String: Any] ?? [:]
         func identity(_ value: Any?) -> String {
             let raw = value as? String ?? (value as? NSNumber)?.stringValue ?? ""
@@ -304,6 +304,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
         }
         let title = complete ? "App 与后台版本不一致" : "后台版本无法确认"
         versionWarning = title
+        // The service is intentionally activated before the GUI handoff. A
+        // modal mismatch warning here makes a background App active and can
+        // cause AppKit to reject the restart helper's normal Quit AppleEvent.
+        if complete,
+           let update = try? await client.call("updates/status") as? [String: Any],
+           version(identity(update["target"])) == version(backendVersion),
+           version(identity(update["app_current"])) == version(backendVersion),
+           ["restarting", "succeeded"].contains(identity(update["phase"])),
+           ["checking", "awaiting_confirmation", "restarting", "deferred", "failed"].contains(identity(update["app_restart"])) {
+            return
+        }
         let signature = [client.base.absoluteString, appVersion, appBuild, backendVersion, backendBuild].joined(separator: "|")
         guard !smoke, lastVersionWarningSignature != signature else { return }
         lastVersionWarningSignature = signature
@@ -311,7 +322,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
         let backendInfo = complete
             ? L("后台：{version}（构建 {build}）", ["version": backendVersion, "build": backendBuild])
             : L("后台未提供完整的版本和构建编号，请更新后台服务。")
-        alert(title, appInfo + "\n" + backendInfo + "\n\n" + L("请将 App 和后台更新到同一发布版本。在“设置 → 软件更新”中在线升级，会同步更新 App 和已安装的本机网络后台。"))
+        alert(title, appInfo + "\n" + backendInfo + "\n\n" + L("请将 App 和后台更新到同一发布版本。在“设置 → 软件更新”中在线升级，会同步更新 App 和已安装的本机网络后台。"), preventsTermination: false)
     }
     var serviceVisualState: StatusBarVisualState {
         let runtimeState = status["state"] as? String ?? ""
@@ -364,7 +375,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
             let previous = AppPreferences.current
             if preferences.automation != previous.automation || values["_automation"] as? Bool == true {
                 let choices = values["_automationChoices"] as? [String: String] ?? [:]
-                guard choices.keys.allSatisfy({ ["cli", "codex", "claude"].contains($0) }), choices.values.allSatisfy({ ["overwrite", "skip"].contains($0) }) else { reply(false); return }
+                guard choices.keys.allSatisfy({ $0 == "cli" || AutomationPreferences.agents.contains($0) }), choices.values.allSatisfy({ ["overwrite", "skip"].contains($0) }) else { reply(false); return }
                 do { try AutomationIntegration.apply(preferences.automation, choices: choices); automationError = "" }
                 catch let conflict as AutomationConflict {
                     reply(false, extra: ["code": "automation_conflict", "conflicts": conflict.items, "error": L("检测到同名文件，请选择覆盖或跳过。")]); return
@@ -467,9 +478,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
               var preferences = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { return }
         preferences["statusBarHealth"] = health.compactMap { $0["name"] as? String }
         preferences["assistantReady"] = UpdateAssistant.configured
-        preferences["assistantSupported"] = true
         preferences["remoteCredentialsSupported"] = true
-        preferences["preferencesSaveAcknowledgement"] = true
         preferences["automationSupported"] = AutomationIntegration.supported
         preferences["automationStatus"] = AutomationIntegration.status().merging(["error": automationError]) { _, value in value }
         guard let seed = try? JSONSerialization.data(withJSONObject: preferences), let json = String(data: seed, encoding: .utf8) else { return }
@@ -1003,8 +1012,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
         }
         return .terminateLater
     }
-    func alert(_ title: String, _ text: String) {
+    func alert(_ title: String, _ text: String, preventsTermination: Bool = true) {
         let dialog = NSAlert(); dialog.messageText = L(title); dialog.informativeText = L(text)
+        dialog.window.preventsApplicationTerminationWhenModal = preventsTermination
         dialog.addButton(withTitle: L("确定"))
         NSApp.activate(ignoringOtherApps: true); dialog.runModal()
     }

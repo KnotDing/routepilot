@@ -37,21 +37,20 @@ const (
 )
 
 type Status struct {
-	Supported           bool      `json:"supported"`
-	Reason              string    `json:"reason,omitempty"`
-	Current             string    `json:"current"`
-	AppCurrent          string    `json:"app_current,omitempty"`
-	CompleteApplication bool      `json:"complete_application"`
-	Latest              string    `json:"latest,omitempty"`
-	ReleaseNotes        string    `json:"release_notes,omitempty"`
-	Available           bool      `json:"available"`
-	Phase               string    `json:"phase"`
-	Target              string    `json:"target,omitempty"`
-	Error               string    `json:"error,omitempty"`
-	CheckedAt           time.Time `json:"checked_at,omitempty"`
-	UpdatedAt           time.Time `json:"updated_at,omitempty"`
-	AppRestart          string    `json:"app_restart,omitempty"`
-	AppRestartError     string    `json:"app_restart_error,omitempty"`
+	Supported       bool      `json:"supported"`
+	Reason          string    `json:"reason,omitempty"`
+	Current         string    `json:"current"`
+	AppCurrent      string    `json:"app_current,omitempty"`
+	Latest          string    `json:"latest,omitempty"`
+	ReleaseNotes    string    `json:"release_notes,omitempty"`
+	Available       bool      `json:"available"`
+	Phase           string    `json:"phase"`
+	Target          string    `json:"target,omitempty"`
+	Error           string    `json:"error,omitempty"`
+	CheckedAt       time.Time `json:"checked_at,omitempty"`
+	UpdatedAt       time.Time `json:"updated_at,omitempty"`
+	AppRestart      string    `json:"app_restart,omitempty"`
+	AppRestartError string    `json:"app_restart_error,omitempty"`
 }
 type release struct {
 	Tag        string `json:"tag_name"`
@@ -223,7 +222,6 @@ func (m *Manager) snapshot() Status {
 			m.reconcileAppRestart(s, restart)
 		}
 	}
-	s.CompleteApplication = true
 	s.Available = newer(s.Latest, s.Current) || m.supported && applicationUpdateAvailable(s.Latest, s.Current, s.AppCurrent)
 	return s
 }

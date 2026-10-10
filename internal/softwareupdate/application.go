@@ -10,8 +10,8 @@ import (
 	"time"
 )
 
-// Both installed components must reach the selected release. In particular,
-// an older App still needs an update after an older backend-only updater ran.
+// Both installed components must reach the selected release. Repair an
+// incomplete installation using the same complete application package.
 func applicationUpdateAvailable(target, backend, app string) bool {
 	if _, err := versionParts(target); err != nil {
 		return false

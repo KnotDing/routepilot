@@ -12,7 +12,7 @@ struct InstallerTests {
         for directory in [service, service.appendingPathComponent("bin"), service.appendingPathComponent("scripts"), service.appendingPathComponent("launchd"), data] {
             try files.createDirectory(at: directory, withIntermediateDirectories: false)
         }
-        let resources = ["bin/surge-controller", "scripts/install_macos.sh", "scripts/update_macos.sh", "launchd/com.routepilot.surge-controller.plist"]
+        let resources = ["bin/surge-controller", "scripts/install_macos.sh", "launchd/com.routepilot.surge-controller.plist"]
         for path in resources { try Data("fixture".utf8).write(to: service.appendingPathComponent(path)) }
         let database = data.appendingPathComponent("controller.sqlite")
         let key = data.appendingPathComponent("controller.sqlite.key")

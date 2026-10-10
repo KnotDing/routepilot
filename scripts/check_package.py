@@ -54,7 +54,7 @@ def verify_notes(read):
 
 
 def verify_service_resources(read):
-    for name in ("bin/surge-controller", "scripts/install_macos.sh", "scripts/update_macos.sh", "scripts/uninstall_macos.sh", "launchd/com.routepilot.surge-controller.plist"):
+    for name in ("bin/surge-controller", "scripts/install_macos.sh", "scripts/uninstall_macos.sh", "launchd/com.routepilot.surge-controller.plist"):
         require(len(read(name)) > 0, "Missing or empty bundled service resource: " + name)
 
 

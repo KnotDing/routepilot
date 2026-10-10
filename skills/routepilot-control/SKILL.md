@@ -27,7 +27,7 @@ Diagnostics and imports wait for an asynchronous job by default. `--no-wait` ret
 
 For DNS classification use the real client IP and connection protocol/port. `dns test` tests rules/decision behavior; it is not a raw DNS wire query. Preserve caches unless the task calls for clearing them; targeted `cache flush --domain NAME` is available, while clearing all requires `--all`. For BGP, inspect `bgp status` and `routing status` for actual publication; TCP diagnostics do not determine route publication.
 
-Full configuration restore (`config import ... --yes`) and software installation (`updates install --version VERSION --yes`) need the user's intended target and authorization. For updates, first `updates check`, verify `supported`, `available`, `latest`, and `complete_application`, then install that checked release. Poll `updates status` after submission. Upgrade updates the entire App on the target host, not the agent's machine. Distinguish service completion from `app_restart: awaiting_confirmation/deferred/failed`; respect target-side restart confirmation, and do not force-kill the App.
+Full configuration restore (`config import ... --yes`) and software installation (`updates install --version VERSION --yes`) need the user's intended target and authorization. For updates, first `updates check`, verify `supported`, `available`, `latest`, and the backend/App versions (`current`, `app_current`), then install that checked release. Poll `updates status` after submission. Upgrade updates the entire App on the target host, not the agent's machine. Distinguish service completion from `app_restart: awaiting_confirmation/deferred/failed`; respect target-side restart confirmation, and do not force-kill the App.
 
 ## Output and failures
 

@@ -16,7 +16,7 @@ const fixture=Function(source.slice(source.indexOf('const settings='),source.ind
    const path=(url.pathname.slice(8)+url.search).replace(/^management\/relay\/preview\//,'');
    let value=fixture(path);
    if(path==='management/backends')value=[{id:'preview',name:'远程预览',url:'http://192.0.2.1:1055'}];
-   if(path==='updates/check')value={complete_application:true,app_current:'0.4.16',current:'0.4.17',latest:'v0.4.18',available:true,supported:true,phase:'idle',release_notes:'## 界面优化\n\n- **Markdown** 渲染更新说明。\n- 紧凑排列开关选项。\n\n查看 [项目发布](https://gitea.knotding.com/knot/routepilot/releases)。\n\n<script>window.untrustedRelease=true</script>\n\n![image](https://example.invalid/image.png)'};
+   if(path==='updates/check')value={app_current:'0.4.16',current:'0.4.17',latest:'v0.4.18',available:true,supported:true,phase:'idle',release_notes:'## 界面优化\n\n- **Markdown** 渲染更新说明。\n- 紧凑排列开关选项。\n\n查看 [项目发布](https://gitea.knotding.com/knot/routepilot/releases)。\n\n<script>window.untrustedRelease=true</script>\n\n![image](https://example.invalid/image.png)'};
    if(path==='settings')value={...value,cache:{...value.cache,optimistic:false,optimistic_responses:false},notifications:{enabled:true,surge:true,bgp:true,dns:true,controller:true,recovery:true,cooldown_seconds:300,webhook_url:'',webhook_configured:false,errors:[]}};
    if(path==='status'){value.online_update=true;value.software={...value.software,...JSON.parse(fs.readFileSync('internal/buildinfo/release.json'))};}
    if(path==='surge/status'){value.snapshot.ipv6_state='disabled';value.snapshot.always_real_ip_count=61;}
@@ -42,7 +42,7 @@ const fixture=Function(source.slice(source.indexOf('const settings='),source.ind
   if(overflow)throw Error(name+' overflows the viewport');
  }
  const pages=['仪表盘','DNS 概览','查询记录','决策缓存','DNS 拦截','本地 DNS','域名覆盖','规则测试','路由','BGP 概览','BGP 邻居','手动路由','健康状态','事件','设置'];
- const categories=['通用','DNS','Surge','路由','BGP','缓存','健康','日志与隐私','安全','软件更新','通知','状态栏','关于'];
+ const categories=['通用','DNS','Surge','路由','BGP','缓存','健康','日志与隐私','安全','软件更新','通知','状态栏','CLI 与 skill','关于'];
  for(const width of [1440,1120,390]){
   await page.setViewportSize({width,height:1000});
   for(const label of pages){await go(label);await check(width+' '+label);}

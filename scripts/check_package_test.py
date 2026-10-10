@@ -32,7 +32,7 @@ class PackageChecks(unittest.TestCase):
                 verify_notes(read(html))
 
     def test_bundled_service_resources(self):
-        files = {name: b"resource" for name in ("bin/surge-controller", "scripts/install_macos.sh", "scripts/update_macos.sh", "scripts/uninstall_macos.sh", "launchd/com.routepilot.surge-controller.plist")}
+        files = {name: b"resource" for name in ("bin/surge-controller", "scripts/install_macos.sh", "scripts/uninstall_macos.sh", "launchd/com.routepilot.surge-controller.plist")}
         verify_service_resources(files.__getitem__)
         for name in files:
             with self.subTest(name=name), self.assertRaises(ValueError):

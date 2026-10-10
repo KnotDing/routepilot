@@ -23,7 +23,7 @@ if ! iconutil -c icns .cache/AppIcon.iconset -o "$app_dir/Contents/Resources/App
 fi
 cp bin/surge-controller "$app_dir/Contents/Resources/Service/bin/"
 cp bin/routepilot "$app_dir/Contents/Resources/Service/bin/"
-cp scripts/install_macos.sh scripts/uninstall_macos.sh scripts/update_macos.sh scripts/install_cli.sh "$app_dir/Contents/Resources/Service/scripts/"
+cp scripts/install_macos.sh scripts/uninstall_macos.sh scripts/install_cli.sh "$app_dir/Contents/Resources/Service/scripts/"
 mkdir -p "$app_dir/Contents/Resources/Skills" "$app_dir/Contents/Resources/docs"
 cp -R skills/routepilot-control "$app_dir/Contents/Resources/Skills/"
 cp docs/cli.md "$app_dir/Contents/Resources/docs/"
