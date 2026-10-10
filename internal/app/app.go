@@ -16,6 +16,8 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"runtime"
+	runtimemetrics "runtime/metrics"
 	"sort"
 	"strings"
 	"surge-controller/internal/api"
@@ -48,6 +50,40 @@ type policy struct {
 	mode          string
 	overrides     []config.Override
 	realIPDomains interface{ MatchAlwaysRealIP(string) (string, bool) }
+}
+
+type goRuntimeStatus struct {
+	Goroutines       uint64 `json:"goroutines"`
+	MaxProcs         int    `json:"max_procs"`
+	HeapObjectsBytes uint64 `json:"heap_objects_bytes"`
+	MemoryTotalBytes uint64 `json:"memory_total_bytes"`
+	GCCycles         uint64 `json:"gc_cycles"`
+	ProcessRSSBytes  uint64 `json:"process_rss_bytes,omitempty"`
+	ProcessRSSError  string `json:"process_rss_error,omitempty"`
+}
+
+func currentGoRuntimeStatus() goRuntimeStatus {
+	samples := []runtimemetrics.Sample{
+		{Name: "/sched/goroutines:goroutines"},
+		{Name: "/memory/classes/heap/objects:bytes"},
+		{Name: "/memory/classes/total:bytes"},
+		{Name: "/gc/cycles/total:gc-cycles"},
+	}
+	runtimemetrics.Read(samples)
+	status := goRuntimeStatus{
+		Goroutines:       samples[0].Value.Uint64(),
+		MaxProcs:         runtime.GOMAXPROCS(0),
+		HeapObjectsBytes: samples[1].Value.Uint64(),
+		MemoryTotalBytes: samples[2].Value.Uint64(),
+		GCCycles:         samples[3].Value.Uint64(),
+	}
+	rss, err := processRSSBytes()
+	if err != nil {
+		status.ProcessRSSError = err.Error()
+	} else {
+		status.ProcessRSSBytes = rss
+	}
+	return status
 }
 
 func (p *policy) update(mode string, overrides []config.Override) {
@@ -1052,7 +1088,7 @@ func (a *App) View(ctx context.Context, key string) (any, error) {
 		return application, nil
 	case "status":
 		p := rt.machine.Plan()
-		return map[string]any{"software": buildinfo.Current(), "online_update": true, "remote_credential_origin_binding": true, "fast_configuration_save": true, "configuration_application": application, "name": name, "mode": mode, "state": p.State, "fake_ip_enabled": p.AllowFakeIP, "queries_per_minute": rt.queryRate.Load(), "queries_per_second": math.Float64frombits(a.queryRateBits.Load()), "surge_restart": a.surgeRecovery.Status(), "counters": rt.dispatcher.Statistics().Snapshot(), "client_statistics": clientStatistics, "cache": map[string]any{"decision": rt.engine.Cache.Stats(), "response": responseCacheStats(rt)}, "warning": rt.Fault(), "uptime_seconds": int(time.Since(rt.started).Seconds())}, nil
+		return map[string]any{"software": buildinfo.Current(), "go_runtime": currentGoRuntimeStatus(), "online_update": true, "remote_credential_origin_binding": true, "fast_configuration_save": true, "configuration_application": application, "name": name, "mode": mode, "state": p.State, "fake_ip_enabled": p.AllowFakeIP, "queries_per_minute": rt.queryRate.Load(), "queries_per_second": math.Float64frombits(a.queryRateBits.Load()), "surge_restart": a.surgeRecovery.Status(), "counters": rt.dispatcher.Statistics().Snapshot(), "client_statistics": clientStatistics, "cache": map[string]any{"decision": rt.engine.Cache.Stats(), "response": responseCacheStats(rt)}, "warning": rt.Fault(), "uptime_seconds": int(time.Since(rt.started).Seconds())}, nil
 	case "health":
 		values := rt.health.Values()
 		sort.Slice(values, func(i, j int) bool { return values[i].Name < values[j].Name })

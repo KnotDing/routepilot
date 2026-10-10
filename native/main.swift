@@ -884,7 +884,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
         guard let closed = notification.object as? NSWindow, closed === window else { return }
         ManagementWindowFrame.remember(closed)
         if !smoke && !quitting { ManagementWindowFrame.isOpen = false }
+        if let webView { ManagementWebViewLifecycle.release(webView, from: closed) }
+        self.webView = nil
+        window = nil
         NSApp.setActivationPolicy(.accessory)
+    }
+    func windowDidMiniaturize(_ notification: Notification) { setManagementWindowVisible(false) }
+    func windowDidDeminiaturize(_ notification: Notification) { setManagementWindowVisible(true) }
+    private func setManagementWindowVisible(_ visible: Bool) {
+        let value = visible ? "true" : "false"
+        webView?.evaluateJavaScript("window.dispatchEvent(new CustomEvent('routepilot-window-visibility',{detail:{visible:\(value)}}))")
     }
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { false }
     func trustedDialog(_ frame: WKFrameInfo) -> Bool {

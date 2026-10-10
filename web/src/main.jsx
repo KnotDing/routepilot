@@ -33,9 +33,28 @@ import {LanguageSelector} from './language';
 import {cacheText} from './cache-i18n';
 import {RoutingPanel,RoutingSettingsFields} from './routing';
 import {ClientsPanel} from './clients';
+import {useWindowVisible} from './window-visibility';
 export {RoutingPanel} from './routing';
 
 const pages=[['Dashboard','仪表盘'],['DNS','DNS 概览'],['Queries','查询记录'],['Cache','决策缓存'],['Clients','客户端'],['Interception','DNS 拦截'],['Hosts','本地 DNS'],['Overrides','域名覆盖'],['Rule','规则测试'],['Routing','路由'],['BGP','BGP 概览'],['Peers','BGP 邻居'],['Routes','手动路由'],['Health','健康状态'],['Events','事件'],['Settings','设置']];
+const pageRequests={
+ Dashboard:['health','bgp/status','routing/status','bgp/peers','events','surge/status'],
+ DNS:['surge/status'],
+ Queries:['dns/queries'],
+ Clients:['dns/clients'],
+ Cache:[],
+ Interception:['health','dns/interception'],
+ Hosts:['dns/hosts'],
+ Overrides:['overrides','surge/status'],
+ Rule:[],
+ Routing:['routing/status'],
+ BGP:['bgp/status'],
+ Peers:['bgp/peers','bgp/status'],
+ Routes:['bgp/routes','bgp/status'],
+ Health:['health','bgp/status','bgp/peers'],
+ Events:['events'],
+ Settings:['dns/interception']
+};
 const descriptions={Dashboard:'查看 DNS 分流、服务健康与路由运行状态',DNS:'查看查询统计与真实 DNS 上游',Queries:'追踪每次 DNS 查询的策略判断和解析结果',Cache:'查看分流决策缓存并按域名清理',Clients:'查看发起 DNS 请求的客户端及其统计信息',Interception:'管理透明 DNS 拦截的目标地址',Hosts:'管理本地 DNS 条目与 Surge Hosts 导入',Overrides:'管理手动域名策略并查看 Surge always-real-ip 条目',Rule:'查看 Surge 对指定连接的规则求值结果',Routing:'查看路由发布、配置状态与本机连通性诊断',BGP:'查看 BGP 引擎、会话汇总和已发布路由',Peers:'配置 BGP 邻居并导出对端 FRR 配置',Routes:'管理由 BGP 发布的手动路由',Health:'查看服务组件的健康状态和最近探测',Events:'查看配置变更、服务状态及运行事件',Settings:'管理 DNS、Surge、路由及应用偏好'};
 const navSections={Dashboard:'总览',DNS:'DNS 与决策',Routing:'路由与连接',Health:'管理'};
 const groups={general:'通用',dns:'DNS',surge:'Surge',routing:'路由',cache:'缓存',health:'健康',logging:'日志与隐私',security:'安全',updates:'软件更新',notifications:'通知',statusbar:'状态栏',automation:'CLI 与 skill',about:'关于'};
@@ -150,21 +169,25 @@ function Workspace({backend,onManage,onLocalSession}){const t=useT();const [sess
   return()=>{alive.current=false;if(window.routepilotActiveBackend?.id===backend?.id)window.routepilotActiveBackend=null};
  },[]);
 
- const refreshing=useRef(false),notificationState=useRef({settings:null,health:[],name:'',failures:0});
+ const refreshing=useRef(false),refreshPending=useRef(false),refreshRef=useRef(null),notificationState=useRef({settings:null,health:[],name:'',failures:0}),visible=useWindowVisible();
  const reportHealth=health=>observeServices({scope:backend?.url||location.origin,name:notificationState.current.name||backend?.name||t('本地服务'),health,settings:notificationState.current.settings||{},remote:Boolean(backend),backendID:backend?.id});
  const refresh=async()=>{
-  if(!session?.authenticated||refreshing.current)return;
+  if(!session?.authenticated||!visible)return;
+  if(refreshing.current){refreshPending.current=true;return}
   refreshing.current=true;
   try{
-   const keys=['status','health','settings','bgp/status','routing/status','bgp/peers','bgp/routes','dns/interception','dns/hosts','overrides','events','dns/cache?limit=0','dns/queries','dns/clients','surge/status'];
-   const optional={'health':[],'bgp/status':{},'routing/status':{},'bgp/peers':[],'bgp/routes':[],'dns/interception':[],'dns/hosts':[],'overrides':[],'events':[],'dns/cache?limit=0':{},'dns/queries':[],'dns/clients':null,'surge/status':{}};
+   const keys=['status','settings',...(pageRequests[page]||[])];
+   const optional={'health':[],'bgp/status':{},'routing/status':{},'bgp/peers':[],'bgp/routes':[],'dns/interception':[],'dns/hosts':[],'overrides':[],'events':[],'dns/queries':[],'dns/clients':null,'surge/status':{}};
    const values=await Promise.all(keys.map(k=>Object.hasOwn(optional,k)?requestOptional(k,optional[k]):request(k)));
    const next=Object.fromEntries(keys.map((k,i)=>[k.split('?')[0],values[i]]));
-   setData(next);setError('');
-   const peers=new Set((next['bgp/peers']||[]).filter(p=>p.enabled&&next['bgp/status']?.enabled).map(p=>'BGP peer '+p.address));
-   const health=(next.health||[]).filter(c=>!c.name.startsWith('BGP peer ')||peers.has(c.name));
-   notificationState.current={settings:next.settings?.notifications,health,name:next.status?.name||backend?.name,failures:0};
-   reportHealth([...health,{name:'Management connection',state:'UP'}]);
+   setData(previous=>({...previous,...next}));setError('');
+   notificationState.current={...notificationState.current,settings:next.settings?.notifications,name:next.status?.name||backend?.name,failures:0};
+   if(next.health){
+    const peers=new Set((next['bgp/peers']||[]).filter(p=>p.enabled&&next['bgp/status']?.enabled).map(p=>'BGP peer '+p.address));
+    const health=next.health.filter(c=>!c.name.startsWith('BGP peer ')||peers.has(c.name));
+    notificationState.current.health=health;
+    reportHealth([...health,{name:'Management connection',state:'UP'}]);
+   }
   }catch(e){
    if(e.status===401){init()}
    else if(e.name!=='AbortError'){
@@ -174,9 +197,13 @@ function Workspace({backend,onManage,onLocalSession}){const t=useT();const [sess
      if(notificationState.current.failures>=3)reportHealth([...notificationState.current.health,{name:'Management connection',state:'DOWN'}]);
     }
    }
-  }finally{refreshing.current=false}
+  }finally{
+   refreshing.current=false;
+   if(refreshPending.current){refreshPending.current=false;queueMicrotask(()=>refreshRef.current?.())}
+  }
  };
- useEffect(()=>{if(!session?.authenticated)return;refresh();const timer=setInterval(refresh,3000);const stream=isRemote()?null:new EventSource('/api/v1/events/stream');stream?.addEventListener('update',refresh);return()=>{clearInterval(timer);stream?.close()}},[session?.authenticated]);
+ refreshRef.current=refresh;
+ useEffect(()=>{if(!session?.authenticated||!visible)return;refresh();const timer=setInterval(refresh,3000);const stream=isRemote()?null:new EventSource('/api/v1/events/stream');stream?.addEventListener('update',refresh);return()=>{clearInterval(timer);stream?.close()}},[session?.authenticated,page,visible]);
  useEffect(()=>{document.documentElement.dataset.theme=data.settings?.general.theme||'system'},[data.settings?.general.theme]);
  const signIn=async e=>{
   e.preventDefault();if(signingIn||initializing.current)return;setSigningIn(true);autoLoginAttempted.current=true;
@@ -193,7 +220,7 @@ function Workspace({backend,onManage,onLocalSession}){const t=useT();const [sess
  const signOut=async()=>{autoLoginAttempted.current=true;try{await request('logout','POST');if(alive.current)await init()}catch(e){if(alive.current)setError(e.message)}};
  if(!session||!session.authenticated)return <div className="login"><AppIcon/><h1>RoutePilot</h1><p>{backend?t('远程后端 · {name}',{name:backend.name}):t('本地服务')}<br/>{backend?.url||location.origin}</p>{session?<form onSubmit={signIn} autoComplete="on"><Field name="username" required autoComplete="username" value={login.username} onChange={v=>setLogin({...login,username:v})}/><Field name="password" required label={t('密码')} autoComplete="current-password" value={login.password} onChange={v=>setLogin({...login,password:v})}/><button className="primary" disabled={signingIn}>{t(signingIn?'正在登录…':'登录')}</button></form>:<p>{t(signingIn?'正在使用已保存的凭证登录…':'正在连接管理服务…')}</p>}{error&&<p role="alert" className="error">{message(error)}</p>}<div className="toolbar"><button disabled={signingIn} onClick={init}>{t("重新连接")}</button>{onManage&&<button onClick={onManage}>{t("管理后端")}</button>}</div></div>;
 
- const status=data.status||{},c=status.counters||{},cache=data['dns/cache']||{},bgp=data['bgp/status']||{},health=data.health||[],events=data.events||[],responseStats=cache.response_stats,cacheTextForLocale=cacheText(currentLocale());
+ const status=data.status||{},c=status.counters||{},cache=data['dns/cache']||{stats:status.cache?.decision,response_stats:status.cache?.response},bgp=data['bgp/status']||{},health=data.health||[],events=data.events||[],responseStats=cache.response_stats,cacheTextForLocale=cacheText(currentLocale());
  const responseMetrics=responseStats&&[['entries',responseStats.entries],['response_capacity',responseStats.capacity],['hits',responseStats.hits],['misses',responseStats.misses],['evictions',responseStats.evictions],['responsePending',responseStats.stale_entries]].map(([label,value])=>[cacheTextForLocale(label),value??0]);
  return <div className="layout"><Navigation pages={pages} sections={navSections} page={page} onSelect={setPage} backend={backend} mode={status.mode||'auto'} onManage={onManage} onSignOut={signOut}/><main><header className="topbar"><div><small>{t("RoutePilot / 管理控制台")}</small><h1>{t(pages.find(p=>p[0]===page)[1])}</h1><p className="page-description">{t(descriptions[page])}</p></div><Badge value={status.state||(error?'DISCONNECTED':'STARTING')}/></header><div className="page-content"><VersionNotice status={data.status} backend={backend}/>{(backend||!nativeApp())&&<BackendUpdate backend={backend} capable={status.online_update} software={status.software} authentication={data.settings?.security?.authentication!==false} onReady={result=>{if(!backend&&!nativeApp()&&result?.phase==='succeeded')location.reload();else refresh()}} target={updateTarget}/>}{status.warning&&<div className="notice">{message(status.warning)}</div>}{error&&<div role="alert" className="notice error">{message(error)}</div>}
  <OperationNotice/><ConfigurationApplyNotice status={status.configuration_application} refresh={refresh} notify={notify}/>{page==='Dashboard'&&<><div className="metrics">{metric(t('每分钟查询'),status.queries_per_minute??0)}{metric('DIRECT',c.Queries?`${Math.round(c.Direct/c.Queries*100)}%`:'—')}{metric('SURGE',c.Queries?`${Math.round(c.Surge/c.Queries*100)}%`:'—')}{metric('REJECT',c.Queries?`${Math.round(c.Reject/c.Queries*100)}%`:'—')}{metric(t('缓存命中'),cache.stats?.hits+cache.stats?.misses?`${Math.round(cache.stats.hits/(cache.stats.hits+cache.stats.misses)*100)}%`:'—')}</div><div className="grid-two"><section className="panel"><h2>{t("服务状态")}</h2><Table rows={health} columns={[{key:'name',label:t('组件'),render:r=>valueLabel(r.name)},{key:'state',label:t('健康'),render:r=><Badge value={r.state}/>},{key:'latency_ms',label:t('延迟 ms')}]}/></section><section className="panel"><h2>{t("DNS 与路由")}</h2><dl><dt>{t("Surge 配置")}</dt><dd>{data['surge/status']?.snapshot?.profile||'—'}</dd><dt>{t("Surge 模式")}</dt><dd>{data['surge/status']?.snapshot?.mode||'—'}</dd><dt>{t("透明拦截")}</dt><dd>{c.Intercepted||0}</dd><dt>{t("直接请求")}</dt><dd>{c.Addressed||0}</dd><dt>Fake-IP</dt><dd><Badge value={status.fake_ip_enabled}/></dd><dt>{t("BGP 已发布 / 上限")}</dt><dd>{bgp.advertised||0} / {bgp.limit||128}</dd></dl><Table rows={bgp.peers||[]} columns={[{key:'address'},{key:'state',render:r=><Badge value={r.state}/>}]}/></section></div><section className="panel"><h2>{t("最近事件")}</h2><EventTable rows={events.slice(0,8)}/></section></>}

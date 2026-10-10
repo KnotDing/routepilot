@@ -9,7 +9,7 @@ const record={context:{client_ip:'192.0.2.3',client_port:53000,original_destinat
 const peer={id:'p',address:'192.0.2.1',asn:65001,local_asn:0,router_id:'',hold_seconds:30,keepalive_seconds:10,port:179,enabled:true,description:''};
 function fixture(path){
  if(path==='session')return {authenticated:true,csrf:'test'};
- if(path==='status')return {state:'HEALTHY',mode:'auto',name:'Controller',fake_ip_enabled:true,queries_per_minute:1,counters:{Queries:1,Direct:0,Surge:1,Reject:0,Unknown:0,Errors:0,Intercepted:1,Addressed:0},software:{name:'RoutePilot',version:'0.4.5',build:'14',os:'darwin',arch:'arm64',go_version:'go1.26.0'}};
+ if(path==='status')return {state:'HEALTHY',mode:'auto',name:'Controller',fake_ip_enabled:true,queries_per_minute:1,counters:{Queries:1,Direct:0,Surge:1,Reject:0,Unknown:0,Errors:0,Intercepted:1,Addressed:0},cache:{decision:{entries:1,hits:1,misses:0},response:{entries:2,stale_entries:1,hits:7,misses:3,evictions:1,capacity:10000}},software:{name:'RoutePilot',version:'0.4.5',build:'14',os:'darwin',arch:'arm64',go_version:'go1.26.0'}};
  if(path==='settings')return settings;
  if(path==='health')return [{name:'Controller',state:'UP',latency_ms:1.49,last_failure:'0001-01-01T00:00:00Z',last_error:''},{name:'Transparent DNS',state:'UP',latency_ms:1.5,last_failure:'2026-10-08T00:00:00Z',last_error:''}];
  if(path==='bgp/status')return {enabled:true,mode:'hybrid',advertised:1,limit:128,peers:[{address:'192.0.2.1',state:'ESTABLISHED',uptime_seconds:100,prefixes:1}],routes:[{prefix:'8.8.8.8/32',kind:'dns-interception',backend:'bgp',next_hop:'192.0.2.2',installed:true,announced:true,route_state:'announced'}]};
@@ -40,6 +40,28 @@ it('localizes every page, settings category, editor and query detail through the
   if(page==='Settings')for(let category=1;category<=document.querySelectorAll('.tabs button').length;category++){fireEvent.click(document.querySelector('.tabs button:nth-child('+category+')'));noUntranslatedText()}
  }
  fireEvent.click(screen.getByRole('button',{name:'Local service · Switch'}));await screen.findByRole('dialog',{name:'Manage backends'});noUntranslatedText();fireEvent.click(screen.getByRole('button',{name:'Add remote backend'}));noUntranslatedText();expect(screen.queryAllByLabelText(/页面语言|Page language/)).toHaveLength(0);
+});
+it('polls page-specific data only and pauses polling while the management window is hidden',async()=>{
+ const fetch=vi.fn(async url=>({ok:true,status:200,json:async()=>fixture(String(url).replace('/api/v1/',''))}));
+ vi.stubGlobal('EventSource',class{addEventListener(){}close(){}});
+ vi.stubGlobal('fetch',fetch);
+ render(<App/>);
+ await screen.findByRole('heading',{level:1,name:'仪表盘'});
+ await waitFor(()=>expect(fetch).toHaveBeenCalled());
+ const dashboardRequests=fetch.mock.calls.map(([url])=>String(url));
+ expect(dashboardRequests.some(url=>url.endsWith('/dns/queries'))).toBe(false);
+ expect(dashboardRequests.some(url=>url.endsWith('/dns/clients'))).toBe(false);
+ expect(dashboardRequests.some(url=>url.includes('/dns/cache'))).toBe(false);
+ fireEvent.click(screen.getByRole('navigation').querySelector('button.active').parentElement.querySelectorAll('button')[4]);
+ await screen.findByRole('heading',{level:1,name:'客户端'});
+ await waitFor(()=>expect(fetch.mock.calls.some(([url])=>String(url).endsWith('/dns/clients'))).toBe(true));
+ expect(fetch.mock.calls.some(([url])=>String(url).endsWith('/dns/queries'))).toBe(false);
+ const requestsBeforeHide=fetch.mock.calls.length;
+ window.dispatchEvent(new CustomEvent('routepilot-window-visibility',{detail:{visible:false}}));
+ await new Promise(resolve=>setTimeout(resolve,3200));
+ expect(fetch).toHaveBeenCalledTimes(requestsBeforeHide);
+ window.dispatchEvent(new CustomEvent('routepilot-window-visibility',{detail:{visible:true}}));
+ await waitFor(()=>expect(fetch.mock.calls.length).toBeGreaterThan(requestsBeforeHide));
 });
 it('formats diagnostics without changing domain names, policy values, or DNS records',()=>{expect(translate('第 {line} 行：{reason}',{line:12,reason:'example.com'},'en')).toBe('Line 12: example.com');expect(message('Surge 有效配置或外部资源已确认更新','en')).toMatch(/changed/);expect(message('Surge evaluation reported context or resolution limitations','zh-CN')).toBe('Surge 求值存在连接上下文或解析限制');expect(message('example.com. 60 IN A 192.0.2.10','zh-CN')).toBe('example.com. 60 IN A 192.0.2.10')});
 it('uses localized diagnostic templates for nested resolver failures',()=>{

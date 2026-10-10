@@ -1,4 +1,5 @@
 import AppKit
+import WebKit
 
 enum ManagementWindowFrame {
     static let name = "RoutePilotManagementWindow"
@@ -19,5 +20,16 @@ enum ManagementWindowFrame {
         // AppKit preserves the normal frame while a window is full screen.
         guard !window.styleMask.contains(.fullScreen) else { return }
         window.saveFrame(usingName: name)
+    }
+}
+
+enum ManagementWebViewLifecycle {
+    static func release(_ webView: WKWebView, from window: NSWindow) {
+        webView.stopLoading()
+        webView.navigationDelegate = nil
+        webView.uiDelegate = nil
+        webView.configuration.userContentController.removeAllScriptMessageHandlers()
+        window.delegate = nil
+        if window.contentView === webView { window.contentView = nil }
     }
 }

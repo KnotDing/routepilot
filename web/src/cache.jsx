@@ -3,17 +3,20 @@ import React,{useEffect,useState} from 'react';
 import {request} from './client';
 import {useLocale} from './locale';
 import {cacheText,cacheInvalidationReason} from './cache-i18n';
+import {useWindowVisible} from './window-visibility';
 const types={1:'A',28:'AAAA',64:'SVCB',65:'HTTPS'};
 export function CachePanel({notify}) {
  const [locale]=useLocale(),t=cacheText(locale);
  const [filters,setFilters]=useState({domain:'',decision:''}),[offset,setOffset]=useState(0),[data,setData]=useState(null),[revision,setRevision]=useState(0),[error,setError]=useState('');
+ const visible=useWindowVisible();
  const limit=50;
  useEffect(()=>{
   let cancelled=false;
   const load=async()=>{try{const query=new URLSearchParams({...filters,offset:String(offset),limit:String(limit)});const next=await request('dns/cache?'+query);if(cancelled)return;setData(next);setError('');if(offset&&offset>=next.total)setOffset(Math.max(0,Math.floor((next.total-1)/limit)*limit))}catch(e){if(!cancelled)setError(e.message)}};
+  if(!visible)return()=>{cancelled=true};
   const initial=setTimeout(load,150),poll=setInterval(load,3000);
   return()=>{cancelled=true;clearTimeout(initial);clearInterval(poll)};
- },[filters.domain,filters.decision,offset,revision]);
+ },[filters.domain,filters.decision,offset,revision,visible]);
  const change=(key,value)=>{setFilters({...filters,[key]:value});setOffset(0)};
  const flush=async()=>{try{await request('dns/cache/flush','POST',{domain:filters.domain.trim()});setRevision(v=>v+1);notify(t(filters.domain.trim()?'domainFlushed':'allFlushed'))}catch(e){notify(e.message,true)}};
  const stats=data?.stats||{},rows=data?.entries||[],total=data?.total||0,ttl=data?.ttl||{};

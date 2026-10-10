@@ -28,9 +28,10 @@ func TestAboutStatusExposesBackendRelease(t *testing.T) {
 		t.Fatal(err)
 	}
 	var status struct {
-		Software buildinfo.Info `json:"software"`
-		State    string         `json:"state"`
-		Cache    map[string]any `json:"cache"`
+		Software buildinfo.Info  `json:"software"`
+		State    string          `json:"state"`
+		Cache    map[string]any  `json:"cache"`
+		Go       goRuntimeStatus `json:"go_runtime"`
 	}
 	if err := json.Unmarshal(raw, &status); err != nil {
 		t.Fatal(err)
@@ -40,5 +41,11 @@ func TestAboutStatusExposesBackendRelease(t *testing.T) {
 	}
 	if status.Cache["decision"] == nil || status.Cache["response"] == nil {
 		t.Fatalf("cache metrics missing from status: %+v", status.Cache)
+	}
+	if status.Go.Goroutines == 0 || status.Go.MaxProcs != runtime.GOMAXPROCS(0) || status.Go.MemoryTotalBytes < status.Go.HeapObjectsBytes {
+		t.Fatalf("invalid Go runtime metrics: %+v", status.Go)
+	}
+	if status.Go.ProcessRSSBytes == 0 || status.Go.ProcessRSSError != "" {
+		t.Fatalf("invalid process RSS metrics: %+v", status.Go)
 	}
 }

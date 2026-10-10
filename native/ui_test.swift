@@ -60,6 +60,18 @@ struct NativeUITests {
         func window()->NSWindow{let value=NSWindow(contentRect:NSRect(x:0,y:0,width:1150,height:780),styleMask:[.titled,.closable,.resizable],backing:.buffered,defer:false);value.isReleasedWhenClosed=false;value.minSize=NSSize(width:420,height:480);return value}
         let first=window();ManagementWindowFrame.restore(first,name:name);first.setContentSize(NSSize(width:720,height:520));ManagementWindowFrame.remember(first,name:name);let previous=first.frame;first.close()
         let second=window();ManagementWindowFrame.restore(second,name:name);try nativeCheck(abs(second.frame.width-previous.width)<1 && abs(second.frame.height-previous.height)<1,"management frame did not restore");second.close()
-        print("PASS native UI: offline Markdown in real WKWebView, async choices, failure fallback, horizontal actions, window frame restoration")
+        weak var releasedWebView:WKWebView?
+        let host=window()
+        var view:WKWebView?=WKWebView(frame:.zero,configuration:WKWebViewConfiguration())
+        if let webView=view {
+            host.contentView=webView;releasedWebView=webView
+            ManagementWebViewLifecycle.release(webView,from:host)
+            try nativeCheck(host.contentView==nil && webView.window==nil && webView.navigationDelegate==nil && webView.uiDelegate==nil,"closed management window retained WebView resources")
+        }
+        view=nil
+        host.close()
+        try await Task.sleep(nanoseconds:100_000_000)
+        try nativeCheck(releasedWebView==nil,"closed management window retained its WebView")
+        print("PASS native UI: offline Markdown in real WKWebView, async choices, failure fallback, horizontal actions, frame restoration, WebView release")
     }
 }
