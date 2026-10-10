@@ -15,6 +15,9 @@ type responseCacheSnapshot struct {
 	Version int                              `json:"version"`
 	Scope   string                           `json:"scope"`
 	Pools   [][]resolver.ResponseCacheRecord `json:"pools,omitempty"`
+	// This flag is never serialized: ordinary caches may be handed to a new
+	// runtime during configuration application, but not restored from disk.
+	inMemory bool
 }
 
 func responseCacheScope(d config.Document) string {
@@ -41,11 +44,11 @@ func (rt *Runtime) responsePools() []*resolver.Real {
 	return append(pools, rt.policyResolvers...)
 }
 
-func (rt *Runtime) responseSnapshot() responseCacheSnapshot {
+func (rt *Runtime) responseSnapshot(persistent bool) responseCacheSnapshot {
 	rt.decisionMu.Lock()
 	defer rt.decisionMu.Unlock()
-	snapshot := responseCacheSnapshot{Version: 1, Scope: rt.responseScope}
-	if rt.settings.Settings.Cache.OptimisticResponses {
+	snapshot := responseCacheSnapshot{Version: 1, Scope: rt.responseScope, inMemory: !persistent}
+	if !persistent || rt.settings.Settings.Cache.OptimisticResponses {
 		for _, pool := range rt.responsePools() {
 			snapshot.Pools = append(snapshot.Pools, pool.ResponseSnapshot())
 		}
@@ -54,7 +57,8 @@ func (rt *Runtime) responseSnapshot() responseCacheSnapshot {
 }
 
 func (rt *Runtime) restoreResponses(snapshot *responseCacheSnapshot) {
-	if snapshot == nil || snapshot.Version != 1 || snapshot.Scope != rt.responseScope || !rt.settings.Settings.Cache.OptimisticResponses {
+	if snapshot == nil || snapshot.Version != 1 || snapshot.Scope != rt.responseScope ||
+		(!rt.settings.Settings.Cache.OptimisticResponses && !snapshot.inMemory) {
 		return
 	}
 	pools := rt.responsePools()
@@ -75,7 +79,7 @@ func (a *App) saveResponseCache() error {
 	if rt == nil {
 		return nil
 	}
-	snapshot := rt.responseSnapshot()
+	snapshot := rt.responseSnapshot(true)
 	a.mu.RLock()
 	current := rt == a.runtime
 	a.mu.RUnlock()

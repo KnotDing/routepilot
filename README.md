@@ -6,49 +6,40 @@
 
 **给 DNS 选路，让网关跟上。**
 
-RoutePilot 是一款 macOS 状态栏应用，搭配 DNS 控制器和内置 GoBGP。它向 Surge 查询分流策略，为请求选择真实 DNS 或 Fake-IP，再把受管理的路由发布给网关。React 管理界面随 Go 后台一起打包，配置保存在 SQLite。
+RoutePilot 是一款 macOS 状态栏应用：向 Surge 查询分流策略，为 DNS 请求选择真实解析或 Fake-IP，再通过内置 GoBGP 把受管理的路由发布给网关。
 
-你负责决定网络怎么走，RoutePilot 负责让 DNS、路由和运行状态对得上。它不会自动修改 Surge、客户端 DNS 或网关配置。
+从状态栏看运行情况，在管理窗口调整配置，也可以让 AI agent 通过 CLI 帮你打理网络。React 管理界面随 Go 后台一起打包，配置与持久化数据保存在 SQLite。
 
-[📦 下载最新版本](https://gitea.knotding.com/knot/routepilot/releases) · [初始设置](#第一次出航) · [远程管理](docs/remote-management.md) · [架构说明](docs/architecture.md)
+[📦 下载最新版本](https://gitea.knotding.com/knot/routepilot/releases) · [🚀 快速开始](#quick-start) · [🤖 安装 skill](#agent-skill) · [📚 文档导航](#documentation)
 
-## 能做什么？
+## ✨ 能做什么？
 
-| 场景 | RoutePilot 的做法 |
+| 功能 | 一句话了解 |
 | --- | --- |
-| DNS 分流 | 根据 Surge 策略选择真实地址或 Fake-IP，支持策略专用 UDP / TCP / DoT / DoH 上游 |
-| 路由发布 | 支持 BGP、Static、Hybrid；发布固定 Fake-IP、DNS 拦截前缀和显式配置的手动路由 |
-| 规则维护 | URL 导入先预览；可定时更新，单独同步 IPv4、IPv6 或两者 |
-| 本地解析 | 手动配置域名与通配符，或从 Surge 的 `[Host]` 导入静态映射 |
-| 看清现场 | DNS 查询详情、路由发布状态、健康监控、缓存、事件及独立连通性诊断 |
-| 管理多台后端 | 中英文、明暗主题、本地和远程切换，本机登录凭证可选钥匙串或本地文件保存 |
-| 更新与统计 | 自动检查 Release，在线升级；前后端版本不一致时提醒，DNS 累计统计重启后继续累加 |
+| DNS 分流 | 根据 Surge 策略选择真实地址或 Fake-IP，支持 UDP / TCP / DoT / DoH 和策略专用上游 |
+| 路由发布 | BGP、Static、Hybrid 三种模式，管理 Fake-IP、DNS 拦截前缀与手动路由 |
+| 规则维护 | URL 导入先预览，定时同步 IPv4、IPv6 或两者，支持批量删除 |
+| 本地解析 | 自定义域名、通配符和 TTL，也可导入 Surge `[Host]` 静态映射 |
+| 缓存与统计 | 持久化累计 DNS 统计和稳定决策，响应缓存可开启持久化与乐观刷新 |
+| 状态与告警 | 流动图标、可选状态栏指标、健康检查、异常通知与 Webhook |
+| 远程与升级 | 一处切换多台后端，保存登录凭证，在线升级完整 App 与网络服务 |
+| AI agent 控制 | JSON CLI 与 `routepilot-control` skill，支持多种 agent 集成 |
 
-## 三步打开驾驶舱
+<a id="quick-start"></a>
 
-1. 从 [Releases](https://gitea.knotding.com/knot/routepilot/releases) 下载 **RoutePilot-macos-arm64.dmg**，将 **RoutePilot.app** 拖入 Applications。目前发布包面向 Apple Silicon，最低支持 macOS 13。
-2. 启动 App，从状态栏打开管理窗口。默认管理地址为 `http://127.0.0.1:1055`；已有本机后台时直接连接，避免重复启动。
-3. 按下面的初始设置配置网络。需要透明 DNS / PF 时，在状态栏选择 **安装网络后台服务**，通过 macOS 管理员授权安装常驻服务。
+## 🚀 快速开始
 
-打开管理窗口时，App 使用普通应用模式，提供 Dock 图标、应用菜单、编辑快捷键和窗口菜单；关闭窗口后恢复状态栏模式，后台继续运行。退出 App 会清理自己启动的子进程；独立安装的网络服务继续运行。
+1. 从 [Releases](https://gitea.knotding.com/knot/routepilot/releases) 下载 **RoutePilot-macos-arm64.dmg**，将 **RoutePilot.app** 拖入 `/Applications`。目前发布包面向 **Apple Silicon，macOS 13 及以上**。
+2. 启动 App，从状态栏打开管理窗口。默认管理地址为 `http://127.0.0.1:1055`，也能通过浏览器访问；已有本机后台时直接连接。
+3. 按下面的步骤配置 Surge、DNS 和路由。需要透明 DNS / PF 时，在状态栏菜单安装**网络后台服务**，首次安装需管理员授权。
 
-> 发布包使用 ad-hoc 签名，尚未使用 Developer ID 签名或 Apple 公证。
+管理窗口会记住尺寸；关闭窗口后 App 继续在状态栏运行。退出 App 会停止它自己启动的后台子进程，独立安装的常驻网络服务继续运行。
 
-## 第一次出航
+> 发布包目前使用 ad-hoc 签名，尚未使用 Developer ID 签名或 Apple 公证。
 
-先把网络路径准备好，再打开 Fake-IP 门禁。
+## 🗺️ 第一次配置
 
-| 步骤 | 配置与确认 |
-| --- | --- |
-| ① DNS 出口 | 在「设置 → DNS」填写实际物理出口接口、已分配的 IPv4 / IPv6 源地址、网关和真实上游池。上游填写字面 IP 与端口，DoT 另填证书名称，DoH 填 HTTPS URL。 |
-| ② Surge | 核对 CLI、Fake-IP DNS、Fake-IP 网段和各地址族下一跳。后台以 root 运行时，CLI 会降权到桌面用户，也可指定 Surge 所属用户。 |
-| ③ 防止回流 | 在网关配置高优先级源策略，让 Controller 上游流量走不含拦截路由的 WAN 路径。固定本机出口接口不能替代网关策略；验证后再确认绕行。 |
-| ④ 设置 → 路由 | 选择 BGP、Static 或 Hybrid。BGP 配置全局 ASN、Router ID 和邻居；邻居可复用全局值。Fake-IP 下一跳是 Surge，DNS 拦截下一跳是 Controller。 |
-| ⑤ 透明拦截 | 添加解析器前缀，填写实际接收接口与具体监听地址（建议端口 1054）。需要 PF 权限，根规则必须可到达 `com.apple/*`；应用仅管理自身锚点。 |
-| ⑥ 切换流量 | 正式切换前关闭 Surge 的全量 `hijack-dns = *:53`，保留原有 `dns-server`。客户端请求必须先经过正常网关；仅更改上游 DNS 无法改变已被 Surge 抢先接收的包路径。 |
-| ⑦ 核对网关 | BGP 邻居达到 ESTABLISHED、路由进入 Adj-RIB-Out 并经过稳定等待后，再核对网关 RIB / FIB 和实际包路径。Static 则需在网关手动安装并确认。 |
-
-典型透明 DNS 部署的关系如下：
+先理顺包的路径，再开启透明拦截。RoutePilot 不会自动修改 Surge、客户端 DNS 或网关配置。
 
 ```mermaid
 flowchart LR
@@ -59,127 +50,165 @@ flowchart LR
     R -.->|BGP 发布受管理前缀| G
 ```
 
-IPv4 透明 UDP / TCP DNS 和回流防护已有 Docker macvlan、真实 macOS PF 与抓包证据。**IPv6 实际 PF / WAN 路径尚未验收，默认关闭。** 解析器前缀路由会影响该地址的全部流量，而透明入口只处理 UDP / TCP 53；部署时还要考虑该地址上的 DoH / DoT 等流量。
-
-详细部署步骤与验证边界见 [验收指南](docs/phase-2-acceptance.md)、[实测记录](docs/phase-2-docker-evidence.md) 和 [十五项不变量](docs/acceptance.md)。
-
-## 路由，选适合你的方式
-
-| 模式 | 谁负责安装路由 | 适合的场景 |
-| --- | --- | --- |
-| **BGP** | RoutePilot 向邻居发布受管理路由 | 网关支持 BGP，希望随会话状态撤销路由 |
-| **Static** | 你在外部网关配置静态路由 | 不使用 BGP，愿意自行维护路由与故障切换 |
-| **Hybrid** | Fake-IP 与 DNS 拦截分别选择后端 | 需要组合两种方式 |
-
-Static 页面上的确认是你的声明，安装状态显示「未知（外部）」；RoutePilot 不安装或自动验证这些路由。修改前缀、下一跳或模式会清除旧确认。静态 DNS 拦截还需单独开启持久拦截许可，并准备外部故障切换：Controller 停止后，外部静态路由仍可能指向这台 Mac。
-
-路由表展示实际发布或配置状态；TCP 连通性探测放在独立诊断区域，只证明 **Mac 到指定 Fake-IP / 端口** 的连通性。它不能证明 LAN、网关 RIB / FIB 或故障切换已就绪，也不会改变静态路由确认。
-
-Surge 不可用时停止新 Fake-IP 并回退真实 DNS；已发行地址保留 TTL / 宽限期。Controller 健康时保留 DNS 拦截路由。BGP 会话消失后，网关应撤销发布的路由。路由配置单独更新；更换 BGP 后端前等待已发行 Fake-IP 的 TTL 排空。
-
-**DNS 查询不会生成单 IP BGP 路由。** 手动路由默认健康绑定为 None，也可绑定 Controller、Surge 或 DNS。邻居页面提供 FRR 预览与导出。
-
-[路由配置详解](docs/routing-backends.md) · [FRR 配置导出](docs/frr-export.md)
-
-## 把日常维护交给规则
-
-### URL 路由列表：导入一次，持续跟进
-
-「手动路由 → 从 URL 导入」接受公开 HTTP / HTTPS 文本，每行一个 IPv4 / IPv6 地址或规范 CIDR，支持 `#` 注释。
-
-先预览，再选择前缀或地址族，设置各地址族下一跳、健康绑定、MED、本地优先级和 Communities。普通地址转为 `/32` 或 `/128`；重复、已有和无效行会在预览中列出。
-
-可保存为手动快照，也可每 **1 / 6 / 12 小时、每天或每周** 自动更新，并选择仅 IPv4、仅 IPv6 或两者。新增和移除的前缀同步到该来源管理的路由；停止更新会保留当前路由并转为手动条目。列表上限为 1 MiB、8192 行和 1024 个新目的地址。抓取由当前选中的后端完成，远程模式同样可用。
-
-### 本地 DNS：给熟悉的域名一个固定落点
-
-支持多个 IPv4 / IPv6 地址、TTL、精确域名和 `*` / `?` 通配符。手动条目优先；`*.example.com` 不匹配根域名。缺少查询地址族或遇到 HTTPS / SVCB 时返回空成功响应。
-
-Surge `[Host]` 导入是快照，重新导入替换旧快照并保留手动条目。别名、脚本、远程资源等不支持的条目会列出跳过原因；不执行脚本、不读取 `/etc/hosts`，也不导入 Fake-IP 网段映射。
-
-<details>
-<summary>展开：策略 DNS、规则求值与决策缓存</summary>
-
-#### 策略专用 DNS
-
-在「设置 → DNS」按 Surge `final_policy` 或 `policy` 名称精确配置上游，`final_policy` 优先。支持多个 UDP、TCP、DoT、DoH 上游，命中时优先返回真实解析结果。
-
-失败后可选择其他上游、Surge、全局真实 DNS 或不回退。超时、连接错误、SERVFAIL 会触发备用；NXDOMAIN 和正常空响应不会。主上游和备用各有独立超时预算，查询详情记录实际服务器、状态、耗时、缓存与失败原因。Surge 备用仍受 Fake-IP 路由与健康门禁约束。
-
-#### 规则求值和 always-real-ip
-
-Surge 规则需要真实地址且解析尚未完成或失败时，Controller 最多补做一次 `surge-cli dns lookup` 并重新求值，全部步骤共用求值时限。补查使用 Surge 内部解析管线；失败仍按 UNKNOWN 处理。
-
-每 5 秒同步 Surge 的 `always-real-ip`，支持顺序匹配、通配符和 `-` 排除项。命中后绕过 Surge 分类，使用配置的真实 DNS 上游；显式本地 DNS 仍优先。读取失败保留最后确认列表，自动同步条目在页面中只读。
-
-AUTO 对复杂或动态规则保守归入 UNKNOWN / SURGE。可在「设置 → Surge」关闭「DIRECT 保守判断」，采用成功求值的内置 DIRECT 结果；此选择不保证未来连接仍匹配相同策略。求值失败、超时或带底层链的结果不会因此直连。FORCE_DIRECT 是显式覆盖；FORCE_SURGE 仍受健康与路由门禁控制。
-
-#### 决策缓存
-
-DIRECT、SURGE、REJECT 默认长期保留，直到确认 Surge 配置、临时规则、代理组结构或外部资源版本变化；UNKNOWN 与求值错误按短 TTL 重试。可独立设置读取失败、策略组选择变化时的失效行为，也可恢复按 TTL 定时过期。
-
-DIRECT、SURGE、REJECT 的有效决策每 5 秒保存到 SQLite，正常停止时保存最终值。重启后确认 Surge 配置摘要，再恢复仍有效的条目；开启定时过期时保留原始过期时间，不因重启延长。UNKNOWN 和求值错误不跨重启保留。手动清理同步更新持久化缓存，配置变化与容量限制继续生效；强制结束可能丢失最近尚未保存的条目。决策缓存不改变 DNS 响应 TTL 或健康门禁。缓存页支持全量搜索、分页和最近失效原因。
-
-</details>
-
-## 本地、远程，都在同一个驾驶舱
-
-顶部「本地服务 · 切换」可添加与切换远程后端，页面明确显示当前连接。查询、配置、缓存和 FRR 导出都发往选中的服务。
-
-App 会按菜单栏选择的“本地文件”或“macOS 钥匙串”保存远程登录凭证。每个连接 ID 与管理地址分别保存，不覆盖本地后台凭证；再次访问、重启 App 或会话过期时自动登录。密码失效时清除该连接在当前存储中的凭证并提示重新登录，不循环尝试；主动退出后当前页面停留在登录界面。
-
-本地凭证文件位于 `~/Library/Application Support/RoutePilot/Credentials`，目录权限 0700、文件权限 0600。密码不会写入连接配置、导出备份或网页 localStorage。移除连接或更换地址会清除当前存储中的旧凭证；切换存储方式不读取或迁移另一份存储。此功能需同时更新 App 与本机后台，更新后每个远程连接先成功登录一次即可保存。普通浏览器仍使用自身密码管理器。
-
-远程管理需要开启认证并配置允许网段；**HTTP 和 HTTPS 均支持，TLS 可选。** 允许网段应包含本地 Controller 访问远端时使用的出口地址。App 的 macOS 本地网络权限与后端允许网段是两项独立设置。
-
-App 和网页会比较前后端版本与构建编号；不一致或后端缺少版本信息时提醒更新。在线升级会同步更新 App 和已安装的本机网络服务，无需单独点击后台更新。若先手动替换了 App，检查更新仍会识别低版本本机后台并通过同一升级流程补齐。更改管理监听后，本机恢复入口仍为 `http://127.0.0.1:1055`。
-
-通过浏览器直接打开管理地址时，也可在 **设置 → 软件更新** 检查并升级该后台所在 Mac 的完整 App、管理页面和网络服务。升级需要启用管理认证及标准安装的后台服务；不依赖 App 内嵌页面，也不会更新浏览器所在设备。升级完成后直连页面自动刷新。软件已是最新版时，其他页面不显示升级横幅。
-
-在 **设置 → 软件更新** 中可控制自动检查、检查间隔、自动下载、自动安装和新版本提示。默认每 12 小时检查、开启提示、关闭自动下载与安装。偏好保存在本机 App，切换远程后端也不会改变。
-
-检查到新版本后，只打开一个升级窗口：**跳过该版本 / 稍后升级 / 立即升级**，更新说明默认折叠。跳过的版本不会再自动下载、安装或提示，手动检查仍能重新查看。
-
-把 App 放到 `/Applications` 后，可在 **设置 → 软件更新** 启用**更新助手**：首次需一次管理员授权，之后升级 App 和标准安装的本机网络服务无需重复输入管理员密码。助手是常驻的 root launchd 服务，只允许安装项目官方最新正式 Release；通信端点仅对授权的本机用户开放，不接受任意命令、上传程序或自定义下载地址。设置中可停用并移除助手，同时关闭自动安装。自动安装需主动开启，会短暂重启本机 DNS / BGP 服务。
-
-自动下载只准备并校验安装包，缓存在 `~/Library/Caches/RoutePilot/Updates`；助手从官方 HTTPS Release 获取 SHA256SUMS，重新验证缓存内容后才使用。更新包还会校验代码签名、App 身份和程序版本。更新保留配置、数据库和密钥；服务未就绪时尝试恢复旧程序，回退不撤销数据库迁移。发布仓库是升级信任源，目前的临时代码签名不等同于开发者身份签名。
-
-远程软件有独立的在线升级入口：访问时检查最新 Release，在页面内确认后由远端下载完整 App 包、校验并同步更新远端 App、管理页面和网络服务。未安装 App 时安装到 `/Applications`，不会以 root 启动界面；正在运行的远端 App 会先收到通知：管理窗口可见或 App 处于前台时，由远端用户确认是否重启；仅后台运行时自动重启。选择稍后重启可继续使用旧界面，手动重新打开后加载新版本。首次需在远端安装支持在线升级的后台；发布制品统一为 DMG、ZIP 和 SHA256SUMS，不再提供独立后台安装包。目前支持标准安装的 macOS Apple Silicon launchd 服务，详见[远程管理说明](docs/remote-management.md)。
-
-### 异常会提醒，恢复也可以报个平安
-
-在 **设置 → 通知** 中启用当前后端的服务通知，在“发送通知的异常”中逐项选择：Surge CLI / API / Fake-IP DNS、BGP 引擎 / 邻居 / Fake-IP 路由、真实 DNS / DNS 监听器 / 透明拦截 / DNS 拦截路由、控制器 / 数据库 / 管理连接，以及指定 Surge 策略组 / 节点，共 16 项。支持按组勾选、全选和取消全部；系统通知与 Webhook 使用同一份选择，取消全部时不发送异常或恢复通知。旧配置保留原有类别的选择范围。告警使用健康探测的连续失败阈值，已禁用的组件不触发；可开启恢复通知，并设置持续异常的重复提醒间隔，`0` 表示只提醒状态变化。
-
-- **App 系统通知**：另外启用“本机系统通知”并允许 macOS 通知权限。本机后台由 App 持续监控；登录并查看远程后端后，关闭管理窗口仍会监控当前远程连接，直到切换后端、退出 App 或会话失效。浏览器通知需要页面保持打开。
-- **后台 Webhook**：填写接收通知的 HTTP(S) 地址，当前后端独立发送 JSON POST，包含 `title`、`body`、`backend`、`state`（`DOWN` / `UP`）、`components`、`at`。页面或 App 关闭后仍能推送；推送异步执行、失败最多尝试 3 次，不阻塞 DNS 或健康探测。地址加密保存，日志与导出备份不包含推送密钥。
-
-远程后端需更新到支持通知的版本。Webhook 依赖后台进程和网络仍然可用；整个后台失联时，由连接它的 App 提醒。首次启动后尚未读到通知设置时，App 不会猜测告警偏好。
-
-[远程管理说明](docs/remote-management.md)
-
-## 数据放在哪里？
-
-| 内容 | 保存方式 |
+| 步骤 | 配置与确认 |
 | --- | --- |
-| App 启动的用户后台 | `~/Library/Application Support/RoutePilot` |
+| ① DNS 出口 | 在「设置 → DNS」填写物理出口接口、已分配的源地址、网关和真实上游。UDP / TCP 填 IP 与端口；DoT 另填证书名称，DoH 填 HTTPS URL。 |
+| ② Surge | 核对 CLI、Fake-IP DNS、Fake-IP 网段和各地址族下一跳。常驻后台以 root 运行时，CLI 降权到桌面用户，也可指定 Surge 用户。 |
+| ③ 防止回流 | 在网关设置高优先级源策略，让 Controller 的上游请求走不含拦截路由的 WAN 路径。固定本机出口接口不能替代网关策略，验证后再确认绕行。 |
+| ④ 路由 | 在「设置 → 路由」选择后端和分流模式。BGP 邻居可复用全局 ASN、Router ID；Fake-IP 下一跳指向 Surge，DNS 拦截下一跳指向 Controller。 |
+| ⑤ 透明拦截 | 添加解析器前缀、实际接收接口和具体监听地址（建议端口 1054）。需要 PF 权限，根规则须可到达 `com.apple/*`；应用仅管理自己的锚点。 |
+| ⑥ 切换流量 | 关闭 Surge 的全量 `hijack-dns = *:53`，保留原有 `dns-server`。客户端请求应先经过正常网关；仅更改上游 DNS 无法改变被 Surge 抢先接收的路径。 |
+| ⑦ 核对结果 | 检查 BGP 邻居、Adj-RIB-Out、稳定等待，以及网关 RIB / FIB 和实际包路径；Static 模式需在网关手动安装并确认。 |
+
+### 路由模式怎么选？
+
+| 模式 | 路由由谁安装 | 适合的场景 |
+| --- | --- | --- |
+| **BGP** | RoutePilot 向邻居发布 | 网关支持 BGP，希望路由随会话状态撤销 |
+| **Static** | 你在外部网关配置 | 不使用 BGP，自行维护静态路由与故障切换 |
+| **Hybrid** | Fake-IP 与 DNS 拦截分别选择 | 需要组合两种方式 |
+
+Static 的确认表示用户已完成外部配置，RoutePilot 不自动安装或验证。静态 DNS 拦截还需开启持久拦截许可，并准备外部故障切换。路由表显示发布或配置状态；独立 TCP 诊断只检查 Mac 到指定地址的连通性。
+
+DNS 查询不会生成单 IP BGP 路由。Surge 不可用时停止新 Fake-IP、回退真实 DNS；已发行地址保留 TTL / 宽限期，切换路由后端前需要等待排空。
+
+**部署边界：** IPv4 透明 UDP / TCP DNS 已有 macOS PF 与抓包验证；IPv6 的实际 PF / WAN 路径尚未验收，默认关闭。解析器前缀路由影响该地址的全部流量，透明入口仅处理 UDP / TCP 53，还需考虑 DoH / DoT 等流量。
+
+更多配置见 [路由后端说明](docs/routing-backends.md) 和 [透明 DNS 部署指南](docs/phase-2-acceptance.md)。
+
+## 🎛️ 日常使用
+
+### 规则导入一次，后续自动跟进
+
+在 **手动路由 → 从 URL 导入** 中，提供公开 HTTP(S) 文本，每行一个 IP 或 CIDR，支持 `#` 注释。预览会列出无效、重复和已有条目，再选择地址族、下一跳及路由属性。
+
+支持每 **1 / 6 / 12 小时、每天或每周** 自动更新，可单独同步 IPv4、IPv6 或两者。新增与移除的前缀只作用于该来源管理的路由；停止更新会保留当前条目。远程模式由选中的后端抓取列表。
+
+### DNS 行为按需调整
+
+- **本地 DNS**：支持多个 IPv4 / IPv6 地址、TTL、精确域名与通配符；手动条目优先。Surge `[Host]` 导入为快照，重新导入保留手动条目，不执行脚本或导入 Fake-IP 映射。
+- **策略专用 DNS**：按 Surge 的 `final_policy` 或 `policy` 名称配置上游与失败回退。超时、连接错误、SERVFAIL 可触发备用，NXDOMAIN 和正常空响应不触发。
+- **AAAA 回落**：Surge 关闭 IPv6 时，可沿用分流规则、返回成功空响应，或直接查询真实上游。回落优先于本地 Hosts 和 `always-real-ip`；Surge 状态未知时沿用原有规则。
+- **分流模式**：在「设置 → 路由」选择自动分流、强制直连或全部交给 Surge；总览旁显示当前模式。
+
+### 缓存：先响应，再刷新 ⚡
+
+**设置 → 缓存** 提供两个独立开关，默认关闭：
+
+| 选项 | 开启后的行为 |
+| --- | --- |
+| 乐观决策缓存 | 确认 Surge 配置或外部资源变化后，先使用旧决策，再后台重新求值；刷新失败或 UNKNOWN 时保留旧值并重试 |
+| 乐观响应缓存 | TTL 到期后仍保留上游响应，先返回旧响应，再后台查询；成功后替换，失败时保留并重试。定期持久化，重启也恢复过期响应 |
+
+稳定的 DIRECT / SURGE / REJECT 决策会持久化；UNKNOWN 与求值错误不跨重启保留。响应缓存保留原始过期时间，过期响应向客户端返回 30 秒 TTL；手动清理、容量限制和不适用配置仍会使缓存失效。乐观缓存不改变 Fake-IP 的路由与健康门禁。 关闭乐观响应缓存并应用成功时，只清理已过期响应，保留 TTL 内的响应及其原始过期时间；关闭状态下不做响应缓存持久化。
+
+配置校验并保存成功后，页面立即反馈；服务重启、路由调整和安全等待在后台执行。页面另行显示应用进度与失败原因，支持重新应用。**“已保存”与“已生效”分别展示，避免把等待误认为保存失败。**
+
+## 📊 把运行状态放在眼前
+
+在 **设置 → 状态栏** 中选择图标动画和附加指标：
+
+- 每个流动的包只走一个分支，按 DIRECT / SURGE 比例随机分配；每秒 DNS 请求越多，动画越快。
+- 可显示每秒 / 每分钟 DNS 请求数、累计请求与错误、分流或错误占比、BGP 路由数与容量占比、运行时间。
+- 健康检查支持从现有检查项中选择状态、耗时、连续失败或成功次数。
+
+状态栏数据来自**本机后台**，切换远程页面不改变来源。异常、离线、需要登录时使用对应状态图标；缺失指标显示 `—`。可以关闭动画，也会遵循 macOS“减少动态效果”设置。
+
+### 异常提醒，恢复也报个平安 🔔
+
+在 **设置 → 通知** 选择需要提醒的异常，例如 Surge API / DNS、BGP 邻居、DNS 监听器或指定策略组 / 节点。连续失败阈值用于容忍短暂抖动，可开启恢复通知和重复提醒。
+
+| 通知方式 | 使用方式 |
+| --- | --- |
+| App 系统通知 | 允许 macOS 通知权限，监控本机及当前已登录的远程连接；关闭管理窗口后仍可监控 |
+| 后台 Webhook | 后端向配置的 HTTP(S) 地址发送 JSON；App 或页面关闭后仍能推送 |
+
+Webhook 依赖后台和网络仍可用；后台整个失联时，由连接它的 App 提醒。普通浏览器通知需要保持页面打开。
+
+**设置 → Surge → Surge 异常重启** 可选 HTTP API、Surge DNS、指定策略组或节点作为恢复依据。支持连续失败次数、异常持续时间、启动宽限、冷却期与每小时上限，通过 CLI 的 `restart-engine` 重启引擎。此功能需主动启用，重启会中断 Surge 现有连接。
+
+## 🌍 本地、远程，一个管理窗口
+
+在**侧栏底部**查看连接、添加或切换远程后端、退出登录；手机端从导航抽屉进入。状态、配置、查询与缓存操作都发往当前选中的服务。
+
+远程服务需开启认证，并将本地 Controller 的出口地址加入允许的管理网段。**支持 HTTP 和 HTTPS，TLS 可选**；使用 HTTPS 时证书须受本机信任。后端网段限制与 macOS 本地网络权限分别管理。
+
+### 保存凭证，下次直接进入
+
+App 菜单的 **应用偏好 → 登录凭证保存方式** 可选 macOS 钥匙串或本地文件，两者均支持本机和远程登录。远程凭证按连接 ID 与地址分别保存，密码不写入连接配置、导出备份或网页存储。
+
+升级后重新打开管理窗口，会恢复此前选择的连接，并使用已保存凭证自动登录；未保存或凭证失效时才需要手动输入。两种存储独立，切换不会迁移凭证，需在所选方式下登录一次。普通浏览器使用自己的密码管理器。
+
+### 更新完整应用，不再分开升级
+
+**设置 → 软件更新** 支持自动检查、自动下载、自动安装与更新提示；升级窗口提供**跳过该版本 / 稍后升级 / 立即升级**，可展开 Markdown 更新说明。
+
+- **本机升级**：同步更新 App、管理页面与已安装的网络服务。App 放在 `/Applications` 后可启用更新助手，首次管理员授权后避免每次升级重复输入密码。
+- **远程升级**：由目标 Mac 下载、校验并安装完整应用。浏览器直连管理页也能发起升级，更新的是后台所在 Mac；需要认证及标准安装的后台服务。
+- **远端重启**：先通知使用者；App 在前台或管理窗口可见时由远端确认，只有后台运行时自动重启。
+
+更新保留配置、数据库和凭证，短暂重启网络服务。安装包校验 SHA256、代码签名、应用身份与版本；服务未就绪时尝试恢复旧程序。App 与后台版本不一致时会提示更新。
+
+详细设置见 [远程管理与升级](docs/remote-management.md)。
+
+<a id="agent-skill"></a>
+
+## 🤖 让 AI agent 帮你掌舵
+
+`routepilot` CLI 支持状态、DNS 决策、缓存、BGP、路由、配置和完整 App 升级，默认输出 JSON。本机与远程后台使用同一套管理认证接口。
+
+在 **设置 → CLI 与 skill** 启用 CLI，并将 `~/.local/bin` 加入 PATH：
+
+```sh
+routepilot status
+routepilot help --json
+```
+
+App 可自动安装 `routepilot-control` skill，通过复选框同时选择多个 agent：**Codex、Claude Code、Hermes、Cursor、GitHub Copilot、Gemini CLI、OpenCode、Windsurf / Devin Desktop、Cline、Roo Code、Kilo Code、Antigravity、OpenClaw、Qwen Code、Amp、Pi**。同名内容可覆盖或跳过，默认覆盖并备份原内容。
+
+### 一条命令安装 skill
+
+让 AI agent 执行以下命令，默认安装到 Codex：
+
+```sh
+curl -fsSL https://gitea.knotding.com/knot/routepilot/raw/branch/main/scripts/install_skill.sh | sh
+```
+
+安装到 Claude Code 或 Hermes，也可同时指定多个 agent：
+
+```sh
+# Claude Code
+curl -fsSL https://gitea.knotding.com/knot/routepilot/raw/branch/main/scripts/install_skill.sh | sh -s -- --agent claude
+
+# Hermes
+curl -fsSL https://gitea.knotding.com/knot/routepilot/raw/branch/main/scripts/install_skill.sh | sh -s -- --agent hermes
+
+# 同时安装到多个 agent
+curl -fsSL https://gitea.knotding.com/knot/routepilot/raw/branch/main/scripts/install_skill.sh | sh -s -- --agent codex --agent cursor --agent gemini
+```
+
+安装器从官方仓库获取 **v0.6.5** 的 skill，无需克隆、编译或管理员权限。默认覆盖并备份；追加 `--on-conflict skip` 可保留现有内容。安装 skill 不会启用 CLI 或保存登录凭证，使用前请在 App 设置中启用 CLI，并让 agent 重新加载 skills。
+
+[CLI 使用与安装目录](docs/cli.md) · [安装脚本源码](scripts/install_skill.sh)
+
+## 💾 数据与凭证
+
+| 内容 | 保存位置或方式 |
+| --- | --- |
+| App 启动的用户后台数据 | `~/Library/Application Support/RoutePilot` |
 | 常驻服务配置与数据库 | `/var/db/surge-controller` |
-| 常驻服务程序 | `/usr/local/libexec/surge-controller` |
-| 服务日志 | `/var/log/surge-controller/service.log`，由运维按需轮转 |
-| 原生 App 本机登录凭证 | 默认 macOS 钥匙串，也可选用户目录中的本地文件；内嵌 WebKit 使用非持久数据存储 |
-| 配置、重要事件、DNS 累计统计、稳定决策缓存、乐观响应缓存 | SQLite；事件和缓存有容量上限，缓存包含域名与客户端地址 |
+| 常驻服务程序与日志 | `/usr/local/libexec/surge-controller`、`/var/log/surge-controller/service.log` |
+| 登录凭证 | macOS 钥匙串，或 `~/Library/Application Support/RoutePilot/Credentials` |
+| 配置、事件、累计统计、稳定决策及乐观响应缓存 | SQLite，事件和缓存有容量上限 |
 | 逐条 DNS 查询历史 | 有界内存，不写入数据库或服务日志 |
 
-DNS 累计统计每 5 秒保存，正常停止时保存最终值；重启和修改 DNS 配置后继续累加。强制结束或断电可能丢失最近一个保存周期的增量。每分钟查询速率按当前运行时计算。
+累计统计和持久化缓存定期保存，正常停止时保存最终值；强制结束可能丢失最近尚未保存的增量。缓存可能包含域名与客户端地址。
 
-在菜单栏的 **登录凭证保存方式 → 本地文件** 中切换，然后通过 **登录状态栏控制** 或内嵌管理页面重新登录一次。本地凭证保存在 `~/Library/Application Support/RoutePilot/Credentials/login.json`，目录权限为 `0700`、文件权限为 `0600`；更新 App 后继续使用，无需钥匙串授权。文件以明文保存，仅通过文件权限限制其他用户访问；同一用户运行的其他程序仍可能读取它。两种方式独立保存，切换不读取或迁移旧凭证；如不再需要旧的钥匙串项，可在“钥匙串访问”中删除 RoutePilot 的 `controller-login` 项。此选项用于本机后台，不会保存远程后端密码。
+本地凭证文件以明文保存，目录权限 `0700`、文件权限 `0600`，同一用户的其他程序仍可能读取。数据库目录与密钥也限制权限；配置导出不包含密码哈希或 API token，迁移机器需重新配置相关凭据。不要让两个实例共用数据库。
 
-数据库目录使用 0700，数据库与加密密钥使用 0600。密码以 bcrypt 保存，Surge API token 以 AES-GCM 保存；配置导出不含 token 或密码哈希，迁移机器需重新输入凭据。不要让两个实例共用数据库。显式诊断 journal 可记录域名与客户端地址，使用后按需删除。
+## 🛠️ 从源码运行
 
-REST `/api/v1`、SSE 和 Prometheus `/metrics` 共用管理网络边界；认证开启后要求会话，写操作始终要求 CSRF，并限制 Host / 跨来源访问以防 DNS rebinding。
-
-## 从源码起航
-
-需要 **Go 1.26+、Node.js 22.12+、npm**。原生 App 另需 Apple Command Line Tools；实际 PF 与固定接口出口仅支持 macOS。
+需要 **Go 1.26+、Node.js 22.12+、npm**；原生 App 另需 Apple Command Line Tools。实际 PF 与固定接口出口仅支持 macOS。
 
 ```sh
 go mod download
@@ -188,160 +217,40 @@ make build
 bin/surge-controller serve --database /ABSOLUTE/PRIVATE/DIRECTORY/controller.sqlite
 ```
 
-| 命令 | 产物或用途 |
+| 命令 | 用途 |
 | --- | --- |
-| `make build` | 前端与 `bin/surge-controller`、`bin/dns-probe` |
-| `make app` | 原生 App、ZIP 和 DMG |
-| `make package` | 完整 App 的 DMG 和 ZIP 安装包 |
-| `make verify` | 前端测试、Go race 测试、go vet 和构建 |
+| `make build` | 构建前端、后台、DNS 探测工具和 CLI |
+| `make cli` | 单独构建 CLI |
+| `make app` / `make package` | 构建完整 App、DMG 和 ZIP |
+| `make clean-artifacts` | 清除历史构建产物；构建前也会自动清理 |
+| `make verify` | 前端测试、Go race 测试、go vet 与构建 |
 
-构建前自动清除 `artifacts/` 中的旧 App、DMG、ZIP、后台归档、校验文件和遗留打包目录。打包临时目录位于 `.cache/`，退出时清理，输出目录仅保留本次发布产物。也可执行 `make clean-artifacts` 单独清理生成文件。
+默认仅开放本机管理，BGP 与透明拦截关闭。未配置出口接口和源地址时，Fake-IP 门禁保持关闭。
 
-默认仅开放本机管理，BGP 和透明拦截关闭。未配置出口接口与源地址时会显示告警，Fake-IP 门禁保持关闭。
+常驻服务可用 [安装脚本](scripts/install_macos.sh) 安装、[移除脚本](scripts/uninstall_macos.sh) 移除；移除保留数据库、密钥和日志。推送版本标签后，[Gitea Release 工作流](.gitea/workflows/release.yaml) 在 Apple Silicon 的 `macos-arm64` Runner 上构建并上传 **DMG、ZIP、SHA256SUMS**。
 
-### Surge 异常恢复与状态栏
+## 🧰 遇到问题，从这里查起
 
-在 **设置 → Surge → Surge 异常重启** 中主动启用恢复。可选择 HTTP API、Surge DNS、指定策略组或节点；策略名称与 Surge 配置精确对应，组和节点通过指定 URL 发起 HTTP HEAD 探测，2xx / 3xx 为成功。
-
-默认需要同一条件 **连续失败 5 次且持续 15 秒**，启动后宽限 60 秒；每次尝试冷却 300 秒，每小时最多 3 次，失败尝试也占用次数。各项均可调整，成功探测会清零对应失败记录。使用 Surge CLI 的 `restart-engine` 重启引擎，现有连接会中断、Surge 自身缓存与临时规则会清理；CLI 不支持或不响应时记录失败，不强制结束进程。记录可在设置与事件中查看，策略组与节点也可单独选择异常通知。后台关闭后不继续检查。Surge DNS 的可用性检查接受真实地址、成功空响应和 NXDOMAIN；它独立于 Fake-IP 路由的健康门禁，不会因真实地址不在 Fake-IP 网段而重启。
-
-在 **设置 → 状态栏** 中控制本机 App 的图标动画与旁边显示的数据。默认仅显示图标，动画按每秒 DNS 请求数平滑加速，最低保持原速度、最高四倍；每个包仍按 DIRECT / SURGE 比例随机选择一个分支。可以显示每秒或每分钟 DNS 请求数、累计请求或错误、DIRECT / SURGE / REJECT / UNKNOWN / 错误占比、BGP 路由数或容量占比、运行时间，也可从现有健康检查项的下拉菜单中选择状态、耗时、连续失败或成功次数。请求占比按累计 DNS 请求总数计算，BGP 容量占比按已发布路由数与路由上限计算。数据来自本机后台，远程页面切换不会改变来源；离线或组件不存在时显示 `—`。macOS“减少动态效果”会关闭动画。
-
-### Gitea 自动发布
-
-推送 `vMAJOR.MINOR.PATCH` 标签后，[Release 工作流](.gitea/workflows/release.yaml) 自动构建并上传 DMG、ZIP 和统一 SHA256SUMS。
-
-仓库需启用 Actions，Runner 使用 `macos-arm64` 标签并在 Apple Silicon 主机执行，预装上述构建工具及 Python 3、jq。Docker Runner 无法直接构建使用 AppKit / WebKit 的 macOS App。
-
-### 常驻服务安装与移除
-
-也可通过脚本安装：
-
-```sh
-sudo sh scripts/install_macos.sh
-sudo launchctl print system/com.routepilot.surge-controller
-```
-
-LaunchDaemon 开机启动，异常退出自动重启，使用 root 获取 PF 与相关端口权限，CLI 子进程降权到 Surge 用户。安装器拒绝覆盖已有实例；App 安装时会先停止用户子进程并迁移配置，避免两个实例同时运行。
-
-```sh
-sudo sh scripts/uninstall_macos.sh
-```
-
-移除停止服务、清理校验过的自身 PF 资源并删除程序与 plist，保留数据库、密钥和日志。更新网络服务会短暂中断 DNS，失败时尝试恢复旧程序。PF 所有权变化或旧进程仍存活时会拒绝清理，需保留记录排查。
-
-## 遇到风浪时
-
-| 现象 | 从这里查起 |
+| 现象 | 优先检查 |
 | --- | --- |
 | DNS 未启动 | 页面告警、出口接口、源地址、端口占用和服务权限 |
-| 透明 DNS 超时 | PF 原始目的查找、接收接口 / 桥、网关源策略和物理出口抓包 |
-| Fake-IP 门禁关闭 | Surge CLI / API / DNS 健康、路由后端、静态确认或 BGP 发布、稳定等待 |
-| BGP 路由没到网关 | 邻居会话、Adj-RIB-Out、下一跳及网关 RIB / FIB |
-| `management client network is not allowed` | 远端允许网段是否包含本地 Controller 的出口地址 |
-| 前后端版本不一致 | App、实际连接的后台服务是否都已更新 |
-| Surge CLI 不可达 | Surge 用户、运行状态与本地 IPC；沙箱访问失败不代表 Surge 已停止 |
-| PF 清理被拒绝 | 自身锚点所有权及旧进程；不要全局关闭或 flush PF |
+| 透明 DNS 超时 | 接收接口、PF 规则、网关源策略与实际出口路径 |
+| Fake-IP 门禁关闭 | Surge 健康、路由后端、静态确认或 BGP 发布、稳定等待 |
+| BGP 路由没到网关 | 邻居会话、Adj-RIB-Out、下一跳与网关 RIB / FIB |
+| `management client network is not allowed` | 目标后台允许网段是否包含本地 Controller 的出口地址 |
+| 前后端版本不一致 | App 与实际连接的后台是否都已更新 |
+| Surge CLI 不可达 | Surge 用户、运行状态和本地 IPC |
+| PF 清理被拒绝 | 自身锚点所有权与旧进程；不要全局关闭或 flush PF |
 
-非透明开发诊断可单独运行，它不启动 BGP，也不开放 Fake-IP 门禁：
+<a id="documentation"></a>
 
-```sh
-bin/surge-controller --mode=force-direct --development-system-egress \
-  --listen=127.0.0.1:1053 --upstream=udp://1.1.1.1:53
-dig @127.0.0.1 -p 1053 example.com A
-dig +tcp @127.0.0.1 -p 1053 example.com A
-```
+## 📚 继续探索
 
-更多原理与部署边界：[架构说明](docs/architecture.md) · [工程规格](docs/engineering-specification.md) · [透明 DNS 验收指南](docs/phase-2-acceptance.md)
-
-### 发布前先过一遍检查
-
-```sh
-npm --prefix web ci
-npm --prefix web exec -- playwright install chromium
-make verify-release
-make coverage
-make fuzz
-```
-
-统一检查覆盖前后端竞态与交互测试、真实 WKWebView 更新说明、手机布局，以及 App / DMG / ZIP 的版本、内置服务资源和校验和。Gitea 发布工作流会先通过这些检查再上传资产。真实 PF、独立网关、升级权限和长期运行还需要部署验收，检查范围与记录见[正式发布准备](docs/release-readiness.md)。
-
-### AAAA 查询回落
-
-在 **设置 → DNS → 转发参数** 中选择 Surge 关闭 IPv6 时的 AAAA 行为：
-
-- **沿用原有分流规则**（默认）：保持已有解析行为。
-- **拦截 AAAA**：返回成功空响应（NODATA），客户端可继续查询 A 记录。
-- **直接查询上游**：跳过 Hosts、Surge 规则与 Fake-IP，使用 RoutePilot 配置的真实 DNS 上游；查询 AAAA 记录不要求上游地址本身是 IPv6。
-
-后台每约 5 秒从 Surge 有效配置同步 `[General] ipv6`。未设置该项按 Surge 默认的 `false` 处理（[官方说明](https://manual.nssurge.com/profile/general.html)），不使用 `ipv6-vif` 推断。Surge 不可用、读取失败或状态过期时沿用原有规则。DNS 概览和查询详情可查看检测状态及回落原因。配置随备份导出、重启恢复，也支持在远程后台设置。
-
-### 配置保存与决策缓存
-
-所有配置提交（设置、路由后端、条目增删改、批量删除、备份恢复、路由导入和 URL 自动更新规则）都在校验并成功落盘后立即返回“已保存”。服务重启、路由调整与安全等待由后台工作线程串行执行；连续提交会继续应用最新保存的配置。页面单独显示后台应用进度，失败时保留已保存配置，提示原因并提供重新应用按钮。切换本机管理监听地址会在后台应用完成后重新连接。
-
-URL 下载预览、Surge Hosts 导入、规则测试、连通性探测、缓存清理和检查更新以后台任务执行，页面立即显示处理状态，完成后展示实际结果。保存应用偏好会等待本机存储确认，通知授权与更新检查随后执行。详细入口检查见[提交响应检查](docs/submission-responsiveness.md)。访问旧后台时仍使用兼容接口；完整的快速提交需要更新访问端、本机中转后台与远程后台。
-
-单独修改 AAAA 回落策略直接热更新，不重建 DNS 或 BGP，也不清空决策缓存；其优先级高于本地 Hosts 和 `always-real-ip`。其他 DNS 配置需要重建时，会保留有效缓存快照，确认 Surge 规则版本一致后恢复，原始 TTL 不延长。影响规则判断的配置变更按原有范围校验与失效策略处理，不复用不适用的缓存。后台另外加密保存最后成功运行的配置，重启时若新配置无法启用，可恢复之前的运行配置并保留失败提示。
-
-### 乐观缓存：先响应，再刷新
-
-在 **设置 → 缓存** 中可以独立开启：
-
-- **乐观决策缓存**：确认 Surge 有效配置或外部资源更新后，将旧决策标记为待刷新。下次查询先使用缓存，再在后台重新求值，成功后替换；失败或 UNKNOWN 时保留旧值并稍后重试。未访问的条目不触发批量求值，后台刷新限制并发并合并相同查询。待刷新标记随决策一起持久化，重启后确认配置再恢复。
-- **乐观响应缓存**：同样在配置更新后保留仍在 TTL 内的上游响应，命中时先响应，再后台查询对应上游池，成功后替换；网络故障、SERVFAIL 等刷新失败时保留旧响应。开启后默认上游与策略专用上游池的响应会定期保存到本机数据库，正常退出前再保存一次。重启后恢复仍有效的响应，并在首次命中时后台刷新；原始保存时间与 TTL 保留，停机时间也计入缓存年龄，不会延长 DNS 有效期。关闭选项、手动清理或变更查询配置后，不会恢复被清理或不适用的旧响应。
-
-两项默认关闭，关闭时沿用立即失效的方式。开启后，后台刷新完成前会沿用旧决策或响应；手动清理、TTL、容量淘汰，以及独立设置的读取失败和策略组切换失效行为仍然生效。乐观响应缓存覆盖默认上游与策略专用上游池，不改变 Fake-IP 的路由和健康检查。
-
-### 表单与状态栏菜单
-
-必填输入统一显示“必填”标记，空值使用醒目背景；启用认证、透明拦截、BGP、自动规则更新或 TLS 后，对应的必填项即时变化。DNS 概览将真实上游与 IPv6 / 规则同步拆为独立区域，窄窗口和手机自动纵向排列。
-
-状态栏首先提供 **打开管理窗口**，直接提供 **检查更新** 和 **登录时启动**；其余归入 **本机服务状态、本机 DNS、本机后台、应用偏好**。菜单里的 DNS 操作针对本机后台，远程后端在管理窗口中操作。未连接时不展示旧的健康统计；已登录时隐藏重复登录入口，本机后台只保留首次安装、重新连接和日志入口。连接地址在管理窗口配置，更新助手在 **设置 → 软件更新** 配置。
-
-状态栏图标直接区分状态：正常使用 RoutePilot 标志，异常显示警告三角，后台离线显示叉号圆圈，连接或处理中显示循环箭头，需要登录时显示锁。图标保持固定宽度，自动适配深浅色菜单栏；悬停可查看具体异常组件。
-
-
-### v0.5.1 发布评估
-
-当前版本继续使用 0.x：IPv6 的真实 PF 入口与独立网关 WAN 绕行仍未验收，在线升级的真实环境异常恢复和长期运行验证尚未完整闭环。自动化回归与可复现的局部验证不能替代这些部署验证，因此本次不宣称达到 1.0 的正式稳定版本门槛。
-
-界面公共操作集中到固定位置：语言在“设置 → 通用”，分流模式在“设置 → 路由”中调整，侧栏“总览”旁仅显示当前模式，当前后端连接、切换与退出在侧栏底部；手机端在导航抽屉内操作。状态栏流动动画中每个包只走一个出口：上支 DIRECT、下支 SURGE，根据本机后台累计 DIRECT / SURGE 查询数量按比例随机选择；尚无统计时等概率选择，比例变化从下一个包起生效。连接/应用配置时旋转，异常、离线或需要登录时使用静态状态图标；尊重 macOS“减少动态效果”设置。动画速度不代表实时流量大小。
-
-## 🤖 让 AI agent 帮你掌舵
-
-RoutePilot 提供 `routepilot` CLI：状态、DNS 决策、缓存、BGP、路由、配置和完整 App 升级都能从命令行操作。本机与远程后台使用同一套认证接口，默认输出 JSON，适合自动化。
-
-```sh
-make cli
-./bin/routepilot status
-./bin/routepilot help --json
-```
-
-完整 App 同时携带 CLI 和 `routepilot-control` skill，可在 **设置 → CLI 与 skill** 启用或禁用 CLI，并通过复选框同时选择自动安装到 Codex、Claude Code、Hermes、Cursor、GitHub Copilot、Gemini CLI、OpenCode、Windsurf / Devin Desktop、Cline、Roo Code、Kilo Code、Antigravity、OpenClaw、Qwen Code、Amp 和 Pi，共 16 种 agent。同名文件提供覆盖或跳过，默认覆盖，原内容自动备份。可按 [CLI 安装与使用说明](docs/cli.md) 安装到 PATH 和 agent 的 skills 目录，然后让 agent 使用 `$routepilot-control` 帮你查状态、改配置。登录只保存私有会话，不保存密码；配置保存与后台应用状态分别反馈。
-
-### 一条命令安装 skill
-
-让 AI agent 执行下面的命令，即可安装到 Codex（使用 `$CODEX_HOME/skills`，未设置时为 `~/.codex/skills`）：
-
-```sh
-curl -fsSL https://gitea.knotding.com/knot/routepilot/raw/branch/main/scripts/install_skill.sh | sh
-```
-
-Claude Code 使用：
-
-```sh
-curl -fsSL https://gitea.knotding.com/knot/routepilot/raw/branch/main/scripts/install_skill.sh | sh -s -- --agent claude
-```
-
-Hermes 使用（使用 `$HERMES_HOME/skills`，未设置时为 `~/.hermes/skills`）：
-
-```sh
-curl -fsSL https://gitea.knotding.com/knot/routepilot/raw/branch/main/scripts/install_skill.sh | sh -s -- --agent hermes
-```
-
-同一命令可重复传入 `--agent` 安装到多个 agent，例如 `sh -s -- --agent codex --agent cursor --agent gemini`。全部标识与安装目录见 [支持的 agent](docs/cli.md#支持的-agent)。
-
-安装器从官方仓库下载 **v0.6.4** 的 skill，无需克隆仓库、编译或管理员权限。默认覆盖同名 skill，并将原内容备份到 skills 目录之外的 `routepilot-skill-backups`，具体路径会打印出来；想保留已有内容，在命令末尾使用 `sh -s -- --on-conflict skip`（可与 `--agent claude` 一起传入）。仅安装 skill，不会启用 CLI 或保存登录凭证；使用前请在 RoutePilot **设置 → CLI 与 skill** 启用 CLI，安装完成后让 agent 重新加载 skills。
-
-安装脚本源码：[scripts/install_skill.sh](scripts/install_skill.sh)。
+| 文档 | 内容 |
+| --- | --- |
+| [架构说明](docs/architecture.md) | DNS、Surge、路由与管理层如何配合 |
+| [路由配置](docs/routing-backends.md) · [FRR 导出](docs/frr-export.md) | 后端模式、下一跳和邻居配置 |
+| [远程管理](docs/remote-management.md) | 认证、连接、完整应用升级与通知 |
+| [CLI 与 skill](docs/cli.md) | 命令、agent 安装目录与自动化示例 |
+| [透明 DNS 部署](docs/phase-2-acceptance.md) · [实测记录](docs/phase-2-docker-evidence.md) | 网络路径、部署步骤与验证边界 |
+| [工程规格](docs/engineering-specification.md) · [运行不变量](docs/acceptance.md) | 实现约束与故障处理原则 |

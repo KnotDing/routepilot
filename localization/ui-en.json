@@ -857,5 +857,9 @@
   "检测到 CLI 或 skill 文件冲突，请到设置中选择覆盖或跳过。": "CLI or skill file conflicts detected. Choose Overwrite or Skip in Settings.",
   "检测到同名文件，请选择覆盖或跳过。": "A file with this name already exists. Choose Overwrite or Skip.",
   "请通过“设置 → 软件更新”升级远端完整 App、管理页面和网络服务；运行此窗口的本机 App 需在本机更新。": "Upgrade the complete remote App, management page and network service in Settings → Software updates. Update the local App running this window on its own Mac.",
-  "请通过“设置 → 软件更新”升级该 Mac 的完整 App、管理页面和网络服务。": "Upgrade the complete App, management page and network service on that Mac in Settings → Software updates."
+  "请通过“设置 → 软件更新”升级该 Mac 的完整 App、管理页面和网络服务。": "Upgrade the complete App, management page and network service on that Mac in Settings → Software updates.",
+  "保存的本机登录凭证已失效，请重新登录一次": "Saved local credentials are no longer valid. Sign in again.",
+  "本机登录凭证操作超时，请重试": "The local credential operation timed out. Try again.",
+  "正在恢复已保存的登录状态…": "Restoring your saved login…",
+  "无法读取本机会话，请重新连接本机服务": "Unable to read the local session. Reconnect to the local service."
 }

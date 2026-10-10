@@ -13,7 +13,7 @@ import {OverridesTable} from './overrides';
 import {Navigation} from './navigation';
 import {CachePanel} from './cache';
 import {Backends} from './backends';
-import {remoteCredentialsSupported,restoreRemoteLogin,saveRemoteCredential} from './credentials';
+import {remoteCredentialsSupported,restoreRemoteLogin,restoreLocalLogin,rememberManagementBackend,saveRemoteCredential} from './credentials';
 import {About} from './about';
 import {AppPreferencesPanel,observeServices,nativeApp} from './app-preferences';
 import {NotificationErrors} from './notification-errors';
@@ -157,11 +157,39 @@ function Workspace({backend,onManage,onLocalSession}){const t=useT();const [sess
 }
 export function App(){const t=useT();
  const [localSession,setLocalSession]=useState(null),[backend,setBackend]=useState(null),[revision,setRevision]=useState(0),[manage,setManage]=useState(false),[error,setError]=useState('');
- useEffect(()=>{let cancelled=false;(async()=>{try{const session=await localRequest('session');if(cancelled)return;setLocalCSRF(session.csrf);setLocalSession(session);if(session.authenticated){const profiles=await localRequest('management/backends');const id=sessionStorage.getItem('routepilot.backend');const saved=(profiles||[]).find(p=>p.id===id);if(saved){selectBackend(saved.id);setBackend(saved);setRevision(v=>v+1)}}}catch(e){if(!cancelled)setError(e.message)}})();return()=>{cancelled=true}},[]);
- useEffect(()=>{let reconnecting=false;const expired=async()=>{if(reconnecting)return;reconnecting=true;window.webkit?.messageHandlers?.routepilotServiceHealth?.postMessage({clear:true});selectBackend('');setBackend(null);setRevision(v=>v+1);setManage(false);sessionStorage.removeItem('routepilot.backend');try{const s=await localRequest('session');setLocalCSRF(s.csrf);setLocalSession(s)}catch(e){setError(e.message)}finally{reconnecting=false}};window.addEventListener('routepilot-local-session-expired',expired);return()=>window.removeEventListener('routepilot-local-session-expired',expired)},[]);
- const switchTo=next=>{window.webkit?.messageHandlers?.routepilotServiceHealth?.postMessage({clear:true});selectBackend(next?.id||'');setBackend(next);setRevision(v=>v+1);setManage(false);if(next)sessionStorage.setItem('routepilot.backend',next.id);else sessionStorage.removeItem('routepilot.backend')};
- if(!localSession)return <div className="login"><h1>RoutePilot</h1><p>{message(error)||t('正在连接本地管理服务…')}</p></div>;
- return <><Workspace key={revision} backend={backend} onLocalSession={session=>setLocalSession(session)} onManage={localSession.authenticated?()=>setManage(true):undefined}/>{manage&&<Backends active={backend} onSelect={switchTo} onClose={()=>setManage(false)}/>}</>;
+ const localSessionWithCredentials=async()=>{
+  let session=await localRequest('session');setLocalCSRF(session.csrf);setError('');
+  if(!session.authenticated){
+   try{const restored=await restoreLocalLogin();if(restored.session){session={...session,...restored.session};setLocalCSRF(session.csrf)}}catch(e){if(e.retryable)throw e;setError(e.message)}
+  }
+  return session;
+ };
+ const savedBackend=async session=>{
+  if(!session.authenticated)return null;
+  const profiles=await localRequest('management/backends'),saved=window.routepilotNativePreferences?.managementBackend;
+  const sessionID=sessionStorage.getItem('routepilot.backend'),id=sessionID||saved?.id;
+  const selected=(profiles||[]).find(profile=>profile.id===id&&(sessionID||profile.url===saved?.url));
+  if(id&&!selected){sessionStorage.removeItem('routepilot.backend');rememberManagementBackend(null)}
+  return selected||null;
+ };
+ useEffect(()=>{
+  let cancelled=false,timer,attempts=0;
+  const bootstrap=async()=>{
+   try{
+    const session=await localSessionWithCredentials();if(cancelled)return;
+    const selected=await savedBackend(session);if(cancelled)return;
+    selectBackend(selected?.id||'');rememberManagementBackend(selected);setBackend(selected);setRevision(v=>v+1);setLocalSession(session);
+   }catch(e){if(!cancelled){setError(e.message);if(++attempts<6)timer=setTimeout(bootstrap,3000)}}
+  };
+  bootstrap();return()=>{cancelled=true;clearTimeout(timer)};
+ },[]);
+ useEffect(()=>{let reconnecting=false;const expired=async()=>{
+  if(reconnecting)return;reconnecting=true;window.webkit?.messageHandlers?.routepilotServiceHealth?.postMessage({clear:true});selectBackend('');setBackend(null);setLocalSession(null);setManage(false);setError('');
+  try{const session=await localSessionWithCredentials(),selected=await savedBackend(session);selectBackend(selected?.id||'');setBackend(selected);setRevision(v=>v+1);setLocalSession(session)}catch(e){setError(e.message)}finally{reconnecting=false}
+ };window.addEventListener('routepilot-local-session-expired',expired);return()=>window.removeEventListener('routepilot-local-session-expired',expired)},[]);
+ const switchTo=next=>{window.webkit?.messageHandlers?.routepilotServiceHealth?.postMessage({clear:true});selectBackend(next?.id||'');setBackend(next);setRevision(v=>v+1);setManage(false);rememberManagementBackend(next);if(next)sessionStorage.setItem('routepilot.backend',next.id);else sessionStorage.removeItem('routepilot.backend')};
+ if(!localSession)return <div className="login"><h1>RoutePilot</h1><p>{t(window.routepilotNativePreferences?.localCredentialsSupported?'正在恢复已保存的登录状态…':'正在连接本地管理服务…')}</p>{error&&<p role="alert" className="error">{message(error)}</p>}<button onClick={()=>location.reload()}>{t('重新连接')}</button></div>;
+ return <>{error&&<div role="alert" className="notice error">{message(error)}</div>}<Workspace key={revision} backend={backend} onLocalSession={session=>{setLocalSession(session);if(session.authenticated)setError('')}} onManage={localSession.authenticated?()=>setManage(true):undefined}/>{manage&&<Backends active={backend} onSelect={switchTo} onClose={()=>setManage(false)}/>}</>;
 }
 function EventTable({rows}){const t=useT();return <Table rows={rows} columns={[{key:'at',label:t('时间'),render:r=>new Date(r.at).toLocaleString(currentLocale())},{key:'severity',label:t('级别'),render:r=><Badge value={r.severity}/>},{key:'message',label:t('事件'),render:r=>message(r.message)}]}/>}
 if(document.getElementById('root'))createRoot(document.getElementById('root')).render(<App/>);

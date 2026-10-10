@@ -59,7 +59,7 @@ func NewReal(t UpstreamTransport, endpoints []ResolverEndpoint, preserve bool, c
 	if t == nil || capacity < 1 {
 		return nil, errors.New("invalid real resolver configuration")
 	}
-	r := &Real{transport: t, PreserveOriginal: preserve, Cache: cache.New[string, response](capacity), now: time.Now}
+	r := &Real{transport: t, PreserveOriginal: preserve, now: time.Now}
 	for _, e := range endpoints {
 		if err := e.Validate(); err != nil {
 			return nil, err
@@ -87,6 +87,7 @@ func NewReal(t UpstreamTransport, endpoints []ResolverEndpoint, preserve bool, c
 	}
 	r.ctx, r.cancel = context.WithCancel(option.Context)
 	r.optimistic, r.refreshTimeout, r.refreshLimit = option.Enabled, option.Timeout, min(option.Workers, 256)
+	r.Cache = cache.New[string, response](capacity, cache.Options{RetainExpired: r.optimistic})
 	r.refreshing = make(map[string]bool)
 
 	return r, nil
@@ -140,13 +141,23 @@ func (r *Real) Resolve(ctx context.Context, req model.ResolveRequest) (*dns.Msg,
 			m := v.Msg.Copy()
 			m.Id = q.Id
 			m.Question = append([]dns.Question(nil), q.Question...)
-			age := uint32(r.now().Sub(v.Stored) / time.Second)
+			now := r.now()
+			age := uint32(max(0, now.Sub(v.Stored)/time.Second))
+			expired := !now.Before(v.Stored.Add(ResponseTTL(v.Msg)))
+			if expired {
+				// Expired DNSSEC data must not retain an authenticated-data claim.
+				m.AuthenticatedData = false
+			}
 			for _, section := range [][]dns.RR{m.Answer, m.Ns, m.Extra} {
 				for _, rr := range section {
 					if rr.Header().Rrtype == dns.TypeOPT {
 						continue
 					}
-					if rr.Header().Ttl > age {
+					if expired {
+						// Serve-stale responses get a short client TTL (RFC 8767).
+						// This does not change the cache's original expiry.
+						rr.Header().Ttl = 30
+					} else if rr.Header().Ttl > age {
 						rr.Header().Ttl -= age
 					} else {
 						rr.Header().Ttl = 0
@@ -213,7 +224,8 @@ func (r *Real) exchange(ctx context.Context, req model.ResolveRequest, endpoints
 	return nil, fmt.Errorf("real resolver failed: %w", last)
 }
 
-// Configuration changes can retain valid responses for a background refresh.
+// Configuration changes can retain responses, including expired responses,
+// for a background refresh.
 // Response TTLs and query/resolver partitions remain unchanged.
 func (r *Real) ConfigurationChanged(reason string, optimistic bool) {
 	if optimistic {

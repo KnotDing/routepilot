@@ -441,6 +441,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
         }
         if message.name == "routepilotCredentials" {
             if trusted, let values = message.body as? [String: String], values["action"] != nil {
+                if values["action"] == "local-login" { Task { await handleLocalCredentials(values) }; return }
+                if values["action"] == "select" { recordManagementSelection(values); return }
                 Task { await handleRemoteCredentials(values) }
                 return
             }
@@ -490,6 +492,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
         preferences["statusBarHealth"] = notificationHealth.compactMap { $0["name"] as? String }
         preferences["assistantReady"] = UpdateAssistant.configured
         preferences["remoteCredentialsSupported"] = true
+        preferences["localCredentialsSupported"] = true
+        preferences["managementBackend"] = UserDefaults.standard.dictionary(forKey: "managementBackend")
         preferences["automationSupported"] = AutomationIntegration.supported
         preferences["automationStatus"] = AutomationIntegration.status().merging(["error": automationError]) { _, value in value }
         guard let seed = try? JSONSerialization.data(withJSONObject: preferences), let json = String(data: seed, encoding: .utf8) else { return }

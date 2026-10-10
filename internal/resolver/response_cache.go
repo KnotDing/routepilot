@@ -19,9 +19,6 @@ type ResponseCacheRecord struct {
 }
 
 func (r *Real) ResponseSnapshot() []ResponseCacheRecord {
-	if !r.optimistic {
-		return nil
-	}
 	records := r.Cache.Snapshot()
 	out := make([]ResponseCacheRecord, 0, len(records))
 	for _, record := range records {
@@ -38,16 +35,14 @@ func (r *Real) ResponseSnapshot() []ResponseCacheRecord {
 	return out
 }
 
-// Restore never extends a DNS deadline. All restored responses start stale so
-// the first hit responds immediately and schedules a refresh against its pool.
+// Restore keeps original DNS deadlines, including expired responses when
+// optimistic caching is enabled. Optimistic restores start stale for background
+// refresh; ordinary restores retain only unexpired responses as fresh entries.
 func (r *Real) RestoreResponses(records []ResponseCacheRecord) int {
-	if !r.optimistic {
-		return 0
-	}
 	now := r.now()
 	values := make([]cache.Record[string, response], 0, len(records))
 	for _, record := range records {
-		if record.Stored.IsZero() || record.Stored.After(now) || !now.Before(record.ExpiresAt) {
+		if record.Stored.IsZero() || record.Stored.After(now) || !record.ExpiresAt.After(record.Stored) {
 			continue
 		}
 		// Keys begin with an endpoint partition followed by a zero-ID DNS query.
@@ -73,11 +68,11 @@ func (r *Real) RestoreResponses(records []ResponseCacheRecord) int {
 		if deadline := record.Stored.Add(ttl); expiry.After(deadline) {
 			expiry = deadline
 		}
-		if !now.Before(expiry) {
+		if !r.optimistic && !now.Before(expiry) {
 			continue
 		}
 		values = append(values, cache.Record[string, response]{Key: key,
-			Value: response{Msg: msg, Stored: record.Stored, Endpoint: record.Endpoint}, ExpiresAt: expiry, Stale: true})
+			Value: response{Msg: msg, Stored: record.Stored, Endpoint: record.Endpoint}, ExpiresAt: expiry, Stale: r.optimistic})
 	}
 	return r.Cache.Restore(values)
 }

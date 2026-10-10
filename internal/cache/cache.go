@@ -39,6 +39,11 @@ type Stats struct {
 	LastInvalidationAt     time.Time `json:"last_invalidation_at"`
 	LastInvalidationReason string    `json:"last_invalidation_reason"`
 }
+type Options struct {
+	// RetainExpired keeps bounded entries past expiry for stale-while-revalidate.
+	// Expired entries are reported as stale; their original deadlines are kept.
+	RetainExpired bool
+}
 type Cache[K comparable, V any] struct {
 	mu                      sync.Mutex
 	items                   map[K]*list.Element
@@ -50,15 +55,22 @@ type Cache[K comparable, V any] struct {
 	invalidations           uint64
 	lastInvalidationAt      time.Time
 	lastInvalidationReason  string
+	retainExpired           bool
 }
 
-func New[K comparable, V any](capacity int) *Cache[K, V] {
+func New[K comparable, V any](capacity int, options ...Options) *Cache[K, V] {
 	if capacity < 1 {
 		panic("cache capacity must be positive")
 	}
 	c := &Cache[K, V]{items: make(map[K]*list.Element), order: list.New(), capacity: capacity, now: time.Now}
+	if len(options) > 0 {
+		c.retainExpired = options[0].RetainExpired
+	}
 	c.generation.Store(1)
 	return c
+}
+func (c *Cache[K, V]) retained(now, expiry time.Time) bool {
+	return c.retainExpired || validExpiry(now, expiry)
 }
 func (c *Cache[K, V]) Generation() uint64 { return c.generation.Load() }
 func (c *Cache[K, V]) Get(k K) (V, bool) {
@@ -72,10 +84,11 @@ func (c *Cache[K, V]) GetState(k K) (V, bool, bool, uint64) {
 	defer c.mu.Unlock()
 	if e, ok := c.items[k]; ok {
 		v := e.Value.(entry[K, V])
-		if v.generation == c.Generation() && validExpiry(c.now(), v.expiry) {
+		now := c.now()
+		if v.generation == c.Generation() && c.retained(now, v.expiry) {
 			c.order.MoveToFront(e)
 			c.hits.Add(1)
-			return v.value, true, v.stale, v.generation
+			return v.value, true, v.stale || !validExpiry(now, v.expiry), v.generation
 		}
 		c.remove(e)
 	}
@@ -148,7 +161,7 @@ func (c *Cache[K, V]) MarkStale(keep func(V) bool) uint64 {
 	generation := c.generation.Add(1)
 	for _, e := range c.items {
 		v := e.Value.(entry[K, V])
-		if v.generation != old || !validExpiry(c.now(), v.expiry) || !keep(v.value) {
+		if v.generation != old || !c.retained(c.now(), v.expiry) || !keep(v.value) {
 			c.remove(e)
 		} else {
 			v.generation, v.stale = generation, true
@@ -169,7 +182,7 @@ func (c *Cache[K, V]) FlushValuesWhere(match func(K, V) bool, reason string) {
 	g := c.invalidate(reason)
 	for k, e := range c.items {
 		v := e.Value.(entry[K, V])
-		if v.generation != old || !validExpiry(c.now(), v.expiry) || match(k, v.value) {
+		if v.generation != old || !c.retained(c.now(), v.expiry) || match(k, v.value) {
 			c.remove(e)
 		} else {
 			v.generation = g
@@ -184,9 +197,9 @@ func (c *Cache[K, V]) Stats() Stats {
 	now := c.now()
 	for _, e := range c.items {
 		v := e.Value.(entry[K, V])
-		if v.generation == c.Generation() && validExpiry(now, v.expiry) {
+		if v.generation == c.Generation() && c.retained(now, v.expiry) {
 			n++
-			if v.stale {
+			if v.stale || !validExpiry(now, v.expiry) {
 				stale++
 			}
 		}
@@ -200,7 +213,7 @@ func (c *Cache[K, V]) Values(limit int) []V {
 	return values
 }
 
-// Snapshot returns valid entries from least to most recently used.
+// Snapshot returns retained entries from least to most recently used.
 func (c *Cache[K, V]) Snapshot() []Record[K, V] {
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -208,8 +221,8 @@ func (c *Cache[K, V]) Snapshot() []Record[K, V] {
 	now, generation := c.now(), c.Generation()
 	for e := c.order.Back(); e != nil; e = e.Prev() {
 		v := e.Value.(entry[K, V])
-		if v.generation == generation && validExpiry(now, v.expiry) {
-			out = append(out, Record[K, V]{v.key, v.value, v.expiry, v.stale})
+		if v.generation == generation && c.retained(now, v.expiry) {
+			out = append(out, Record[K, V]{v.key, v.value, v.expiry, v.stale || !validExpiry(now, v.expiry)})
 		}
 	}
 	return out
@@ -223,14 +236,14 @@ func (c *Cache[K, V]) Restore(records []Record[K, V]) int {
 	now, generation := c.now(), c.Generation()
 	for _, e := range c.items {
 		v := e.Value.(entry[K, V])
-		if v.generation != generation || !validExpiry(now, v.expiry) {
+		if v.generation != generation || !c.retained(now, v.expiry) {
 			c.remove(e)
 		}
 	}
 	restored := 0
 	for i := len(records) - 1; i >= 0 && c.order.Len() < c.capacity; i-- {
 		r := records[i]
-		if !validExpiry(now, r.ExpiresAt) {
+		if !c.retained(now, r.ExpiresAt) {
 			continue
 		}
 		if _, exists := c.items[r.Key]; exists {
@@ -250,7 +263,7 @@ func (c *Cache[K, V]) Page(offset, limit int, match func(V) bool) ([]V, int) {
 	total := 0
 	for e := c.order.Front(); e != nil; e = e.Next() {
 		v := e.Value.(entry[K, V])
-		if v.generation == c.Generation() && validExpiry(now, v.expiry) && (match == nil || match(v.value)) {
+		if v.generation == c.Generation() && c.retained(now, v.expiry) && (match == nil || match(v.value)) {
 			if total >= offset && len(out) < limit {
 				out = append(out, v.value)
 			}

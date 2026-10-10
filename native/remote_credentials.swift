@@ -17,6 +17,59 @@ extension AppDelegate {
         guard webView === view, let page = view.url else { return false }
         return page.scheme == base.scheme && page.host == base.host && page.port == base.port && client.base == base
     }
+    func recordManagementSelection(_ values: [String: String]) {
+        guard let id = values["backendID"] else { return }
+        if id.isEmpty { UserDefaults.standard.removeObject(forKey: "managementBackend"); return }
+        guard (1...64).contains(id.count), id.allSatisfy({ $0.isASCII && ($0.isLetter || $0.isNumber || $0 == "-" || $0 == "_") }),
+              let address = values["backendURL"], credentialOrigin(address) != nil else { return }
+        // The page resolves this ID and address against current profiles before
+        // restoration; this stores a selection, never credentials or sessions.
+        UserDefaults.standard.set(["id": id, "url": address], forKey: "managementBackend")
+        UserDefaults.standard.synchronize()
+    }
+    func handleLocalCredentials(_ values: [String: String]) async {
+        guard let view = webView, let requestID = values["requestID"], (1...80).contains(requestID.count),
+              requestID.allSatisfy({ $0.isASCII && ($0.isLetter || $0.isNumber || $0 == "-") }) else { return }
+        let base = client.base, selectedStore = CredentialVault.storage
+        var reply: [String: Any] = ["requestID": requestID]
+        do {
+            guard credentialPage(view, base: base) else { return }
+            let loginClient = ControllerClient(base)
+            if !(try await loginClient.establish()) {
+                if let credential = CredentialVault.load(from: selectedStore) {
+                    _ = try await loginClient.call("login", method: "POST", body: ["username": credential.username, "password": credential.password])
+                } else {
+                    reply["missing"] = true
+                }
+            }
+            guard credentialPage(view, base: base) else { return }
+            if reply["missing"] == nil {
+                for cookie in loginClient.session.configuration.httpCookieStorage?.cookies(for: base) ?? [] {
+                    client.session.configuration.httpCookieStorage?.setCookie(cookie)
+                    await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+                        view.configuration.websiteDataStore.httpCookieStore.setCookie(cookie) { continuation.resume() }
+                    }
+                }
+                guard credentialPage(view, base: base) else { return }
+                reply["session"] = try await view.callAsyncJavaScript("""
+                    const response = await fetch('/api/v1/session', {credentials:'same-origin'});
+                    if (!response.ok) throw new Error('无法读取本机会话，请重新连接本机服务');
+                    return await response.json();
+                    """, arguments: [:], in: nil, contentWorld: .page)
+                Task { await refresh() }
+            }
+        } catch let failure as AppFailure where failure.statusCode == 401 {
+            CredentialVault.delete(from: selectedStore)
+            reply["error"] = L("保存的本机登录凭证已失效，请重新登录一次")
+        } catch {
+            reply["error"] = error.localizedDescription
+            // A transient reconnect must not turn into a password prompt.
+            reply["retryable"] = true
+        }
+        guard credentialPage(view, base: base), let data = try? JSONSerialization.data(withJSONObject: reply),
+              let json = String(data: data, encoding: .utf8) else { return }
+        _ = try? await view.evaluateJavaScript("window.dispatchEvent(new CustomEvent('routepilot-credentials-result',{detail:" + json + "}));")
+    }
     func handleRemoteCredentials(_ values: [String: String]) async {
         guard let view = webView, let action = values["action"], ["save", "login", "forget"].contains(action),
               let requestID = values["requestID"], (1...80).contains(requestID.count), requestID.allSatisfy({ $0.isASCII && ($0.isLetter || $0.isNumber || $0 == "-") }),

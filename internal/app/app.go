@@ -923,7 +923,7 @@ func (a *App) activateConfiguration(ctx context.Context, d config.Document) erro
 		if e := previous.close(ctx, true); e != nil {
 			return e
 		}
-		responses := previous.responseSnapshot()
+		responses := previous.responseSnapshot(false)
 		next, e := a.build(d, &decisions, &responses)
 		if e != nil {
 			restored, re := a.build(old, &decisions, &responses)

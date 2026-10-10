@@ -90,11 +90,12 @@ func (rt *Runtime) observeDecisionRevision(snapshot surge.Snapshot, err error) (
 			if !optimistic {
 				rt.engine.Cache.FlushReason(reason)
 			}
-			if rt.real != nil {
-				rt.real.ConfigurationChanged(reason, optimisticResponses)
-			}
-			for _, upstream := range rt.policyResolvers {
-				upstream.ConfigurationChanged(reason, optimisticResponses)
+			// First confirmation is not a confirmed configuration change. Keep
+			// unexpired responses handed over when optimistic caching was disabled.
+			if !confirmed || previousDigest != "" || optimisticResponses {
+				for _, pool := range rt.responsePools() {
+					pool.ConfigurationChanged(reason, optimisticResponses)
+				}
 			}
 		}
 	}
