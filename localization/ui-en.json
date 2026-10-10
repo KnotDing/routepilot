@@ -813,6 +813,7 @@
   "请先在“设置 → 安全”启用管理认证，再进行在线升级。": "Enable management authentication in Settings → Security before installing an online update.",
   "CLI 与 skill": "CLI and skill",
   "CLI 与 AI agent skill": "CLI and AI agent skill",
+  "安装状态": "Installation status",
   "设置作用于运行此管理窗口的本机 App，不会修改当前查看的远程后台或浏览器设备。": "These settings apply to the local App running this management window, not the remote backend or browser device.",
   "请更新完整 App，以使用 CLI 和 skill 管理功能。": "Update the complete App to manage CLI and skill installation.",
   "请在 RoutePilot App 中启用 CLI 和自动安装 skill。": "Enable CLI and automatic skill installation in the RoutePilot App.",

@@ -77,7 +77,9 @@ func (rt *Runtime) observeDecisionRevision(snapshot surge.Snapshot, err error) (
 	c := rt.settings.Settings.Cache
 	configurationChanged := confirmed && previousDigest != "" && snapshot.Digest != previousDigest
 	optimistic := c.Optimistic && configurationChanged
-	optimisticResponses := c.OptimisticResponses && configurationChanged
+	// Initial confirmation must retain responses restored at startup. They
+	// already carry stale flags and are refreshed on their first request.
+	optimisticResponses := c.OptimisticResponses && confirmed && (configurationChanged || previousDigest == "")
 	selected := func(_ classifier.Key, value model.DecisionResult) bool {
 		return value.Decision == model.Direct && c.InvalidateDirectOnSelectionChange || value.Decision == model.Reject && c.InvalidateRejectOnSelectionChange
 	}

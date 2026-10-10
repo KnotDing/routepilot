@@ -39,6 +39,9 @@ func (a *App) persistStatistics(ctx context.Context, last dnsserver.CounterSnaps
 			if err := a.saveDecisionCache(); err != nil {
 				slog.Error("Decision cache persistence failed", "error", err)
 			}
+			if err := a.saveResponseCache(); err != nil {
+				slog.Error("Response cache persistence failed", "error", err)
+			}
 		}
 	}
 }

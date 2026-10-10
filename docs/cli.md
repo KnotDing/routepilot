@@ -6,7 +6,39 @@ CLI 通过同一套管理 API 控制运行中的 RoutePilot，支持本机和远
 
 进入 **设置 → CLI 与 skill**，启用 CLI 后安装到 `~/.local/bin/routepilot`；请把这个目录加入 PATH。关闭 CLI 后移除 App 管理的命令行入口，并拒绝同一用户运行 CLI 发起的控制请求，包括通过绝对路径启动。帮助和版本查询仍可使用；独立源码 CLI 在没有 App 管理开关时正常工作。这个开关管理本机 CLI，不改变后台 HTTP API 的认证设置。
 
-勾选 **自动安装 AI agent skill**，通过复选框同时选择 Codex、Claude Code、Hermes 中的任意多个。Codex 使用 `$CODEX_HOME/skills`（未设置时 `~/.codex/skills`），Claude Code 使用 `~/.claude/skills`，Hermes 使用 `$HERMES_HOME/skills`（未设置时 `~/.hermes/skills`）；环境变量以运行本机 App 时的值为准。安装的是指向 App 内资源的链接，完整 App 更新后 CLI 和 skill 会同步使用新版本。取消某个 agent 或关闭自动安装并保存，会移除对应的 App 管理集成并恢复覆盖前的内容。旧版本的 Codex、Claude Code 或两者选择自动迁移为对应勾选项。
+勾选 **自动安装 AI agent skill**，通过复选框同时选择下面的任意多个 agent。安装的是指向 App 内资源的链接，完整 App 更新后 CLI 和 skill 会同步使用新版本。取消某个 agent 或关闭自动安装并保存，会移除对应的 App 管理集成并恢复覆盖前的内容。安装状态单独显示实际安装、跳过和当前选择的目标。
+
+### 支持的 agent
+
+一键安装脚本的 `--agent` 使用下表标识；安装目录内的 skill 名称均为 `routepilot-control`。目录按各项目的 skill 文档配置，使用用户级安装，不修改项目文件。
+
+| Agent | `--agent` 标识 | 默认 skills 目录 |
+| --- | --- | --- |
+| Codex | `codex` | `~/.codex/skills` |
+| Claude Code | `claude` | `~/.claude/skills` |
+| Hermes | `hermes` | `~/.hermes/skills` |
+| [Cursor](https://cursor.com/docs/skills) | `cursor` | `~/.cursor/skills` |
+| [GitHub Copilot](https://docs.github.com/en/copilot/concepts/agents/about-agent-skills) | `copilot` | `~/.copilot/skills` |
+| [Gemini CLI](https://geminicli.com/docs/cli/skills/) | `gemini` | `~/.gemini/skills` |
+| [OpenCode](https://opencode.ai/docs/skills/) | `opencode` | `~/.config/opencode/skills` |
+| [Windsurf / Devin Desktop](https://docs.devin.ai/desktop/cascade/skills) | `windsurf` | `~/.codeium/windsurf/skills` |
+| [Cline](https://docs.cline.bot/customization/skills) | `cline` | `~/.cline/skills` |
+| [Roo Code](https://roocodeinc.github.io/Roo-Code/features/skills/) | `roo` | `~/.roo/skills` |
+| [Kilo Code](https://kilo.ai/docs/customize/skills) | `kilo` | `~/.kilo/skills` |
+| [Antigravity](https://www.antigravity.google/docs/skills) | `antigravity` | `~/.gemini/config/skills` |
+| [OpenClaw](https://docs.openclaw.ai/skills) | `openclaw` | `~/.openclaw/skills` |
+| [Qwen Code](https://qwenlm.github.io/qwen-code-docs/zh/users/features/skills/) | `qwen` | `~/.qwen/skills` |
+| [Amp](https://ampcode.com/docs/customize/skills) | `amp` | `~/.config/amp/skills` |
+| [Pi](https://github.com/earendil-works/pi/blob/main/packages/coding-agent/src/config.ts) | `pi` | `~/.pi/agent/skills` |
+
+Codex、Hermes 和 Pi 分别支持 `$CODEX_HOME`、`$HERMES_HOME` 和 `$PI_CODING_AGENT_DIR` 自定义根目录，skill 安装到该目录的 `skills` 子目录；请使用绝对路径。环境变量以运行本机 App 时的值为准。
+
+同时安装示例：
+
+```sh
+curl -fsSL https://gitea.knotding.com/knot/routepilot/raw/branch/main/scripts/install_skill.sh \
+  | sh -s -- --agent codex --agent cursor --agent gemini
+```
 
 已有同名文件、目录或其他链接时，设置会列出冲突并提供 **覆盖 / 跳过**，默认选择覆盖。覆盖前将原内容完整移到 CLI 配置目录下的 `backups`，禁用对应集成时恢复原内容；跳过不会覆盖已有内容，设置中显示跳过状态。重新保存可再次处理被跳过的冲突。自动启动时不会未经选择覆盖新的冲突，可在设置中处理。
 

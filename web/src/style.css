@@ -491,3 +491,8 @@ label[data-missing=true] > :is(input,textarea,select):not(:disabled),.form-grid 
 
 .settings-section{margin-top:24px;padding-top:20px;border-top:1px solid var(--border,#dbe3f0)}
 .plain-fieldset{border:0;margin:0;padding:0;min-width:0}
+.automation-settings .automation-actions{margin:24px 0 0}
+.automation-installations{margin:28px 0 20px;padding-top:20px;border-top:1px solid var(--border)}
+.automation-installations h3{margin:0 0 12px;font-size:14px}
+.automation-installations dl{margin:0}
+.automation-installations code{overflow-wrap:anywhere}

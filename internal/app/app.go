@@ -105,6 +105,7 @@ type Runtime struct {
 	decisionMu                                       sync.Mutex
 	decisionRevision                                 decisionRevision
 	decisionScope                                    string
+	responseScope                                    string
 	pendingDecisions                                 *decisionCacheSnapshot
 	routingMu                                        sync.RWMutex
 	routingWake                                      chan struct{}
@@ -137,40 +138,42 @@ type Runtime struct {
 	latencySum                                       atomic.Uint64
 }
 type App struct {
-	surgeRecovery      surge.Recovery
-	queryRateBits      atomic.Uint64
-	notifications      *notifications.Manager
-	notificationCancel context.CancelFunc
-	notificationDone   chan struct{}
-	cachePersistMu     sync.Mutex
-	savedCacheDigest   [32]byte
-	dnsCounters        dnsserver.Counters
-	statsCancel        context.CancelFunc
-	statsDone          chan struct{}
-	queryRateDone      chan struct{}
-	ruleTests          chan struct{}
-	lockFile           *os.File
-	eventRetention     atomic.Int64
-	logLevel           slog.LevelVar
-	mu                 sync.RWMutex
-	transition         sync.Mutex
-	saveMu             sync.Mutex
-	applied            config.Document
-	application        ApplicationStatus
-	applyWake          chan struct{}
-	applyCancel        context.CancelFunc
-	applyDone          chan struct{}
-	config             config.Document
-	runtime            *Runtime
-	store              *database.Store
-	bus                *events.Bus
-	security           *security.Manager
-	remote             *remote.Manager
-	control            *api.API
-	ctx                context.Context
-	dir                string
-	webChanged         chan struct{}
-	closing            atomic.Bool
+	surgeRecovery       surge.Recovery
+	queryRateBits       atomic.Uint64
+	notifications       *notifications.Manager
+	notificationCancel  context.CancelFunc
+	notificationDone    chan struct{}
+	cachePersistMu      sync.Mutex
+	savedCacheDigest    [32]byte
+	responsePersistMu   sync.Mutex
+	savedResponseDigest [32]byte
+	dnsCounters         dnsserver.Counters
+	statsCancel         context.CancelFunc
+	statsDone           chan struct{}
+	queryRateDone       chan struct{}
+	ruleTests           chan struct{}
+	lockFile            *os.File
+	eventRetention      atomic.Int64
+	logLevel            slog.LevelVar
+	mu                  sync.RWMutex
+	transition          sync.Mutex
+	saveMu              sync.Mutex
+	applied             config.Document
+	application         ApplicationStatus
+	applyWake           chan struct{}
+	applyCancel         context.CancelFunc
+	applyDone           chan struct{}
+	config              config.Document
+	runtime             *Runtime
+	store               *database.Store
+	bus                 *events.Bus
+	security            *security.Manager
+	remote              *remote.Manager
+	control             *api.API
+	ctx                 context.Context
+	dir                 string
+	webChanged          chan struct{}
+	closing             atomic.Bool
 }
 
 const managementRecoveryAddress = "127.0.0.1:1055"
@@ -235,16 +238,21 @@ func Open(ctx context.Context, path string) (*App, error) {
 		savedDecisions = decisionCacheSnapshot{}
 	}
 	var rt *Runtime
+	var savedResponses responseCacheSnapshot
+	if err := store.LoadStatistics(ctx, "response_cache", &savedResponses); err != nil {
+		slog.Warn("Saved response cache could not be loaded; starting empty", "error", err)
+		savedResponses = responseCacheSnapshot{}
+	}
 	if d.Settings.Security.TLSCert != "" {
 		_, e = tls.LoadX509KeyPair(d.Settings.Security.TLSCert, d.Settings.Security.TLSKey)
 	}
 	if e == nil {
-		rt, e = a.build(d, &savedDecisions)
+		rt, e = a.build(d, &savedDecisions, &savedResponses)
 	}
 	if e != nil {
 		original := e
 		if previous, loadErr := store.LoadActiveConfiguration(ctx); loadErr == nil && previous.Version != 0 {
-			if restored, restoreErr := a.build(previous, &savedDecisions); restoreErr == nil {
+			if restored, restoreErr := a.build(previous, &savedDecisions, &savedResponses); restoreErr == nil {
 				rt, e = restored, nil
 				a.mu.Lock()
 				a.applied = previous
@@ -305,7 +313,7 @@ func (a *App) Configuration() config.Document {
 	defer a.mu.RUnlock()
 	return a.config.Clone()
 }
-func (a *App) build(d config.Document, saved ...*decisionCacheSnapshot) (rt *Runtime, err error) {
+func (a *App) build(d config.Document, saved *decisionCacheSnapshot, responses *responseCacheSnapshot) (rt *Runtime, err error) {
 	if err = d.Validate(); err != nil {
 		return nil, err
 	}
@@ -354,8 +362,9 @@ func (a *App) build(d config.Document, saved ...*decisionCacheSnapshot) (rt *Run
 	rt.policy = &policy{engine: rt.engine, realIPDomains: rt.adapter}
 	rt.policy.update(s.General.Mode, d.Overrides)
 	rt.decisionScope = decisionCacheScope(d)
-	if len(saved) > 0 && saved[0] != nil && (saved[0].Version == 1 || saved[0].Version == 2) && saved[0].Scope == rt.decisionScope && saved[0].Digest != "" {
-		copy := *saved[0]
+	rt.responseScope = responseCacheScope(d)
+	if saved != nil && (saved.Version == 1 || saved.Version == 2) && saved.Scope == rt.decisionScope && saved.Digest != "" {
+		copy := *saved
 		rt.pendingDecisions = &copy
 	}
 	rt.hosts = localdns.New(d.Hosts)
@@ -415,6 +424,9 @@ func (a *App) build(d config.Document, saved ...*decisionCacheSnapshot) (rt *Run
 			}
 			rt.dispatcher.PolicyDNS = append(rt.dispatcher.PolicyDNS, binding)
 		}
+		// Restore before opening listeners: a request during startup can use the
+		// retained response while its bounded background refresh runs.
+		rt.restoreResponses(responses)
 		ingresses := []dnsserver.Ingress{}
 		for _, b := range s.DNS.Listeners {
 			ingresses = append(ingresses, dnsserver.Ingress{Bind: netip.MustParseAddrPort(b)})
@@ -556,6 +568,9 @@ func (a *App) monitor(ctx context.Context, rt *Runtime) {
 			if reason != "" || restored > 0 {
 				if err := a.saveDecisionCache(); err != nil {
 					slog.Error("Decision cache persistence failed", "error", err)
+				}
+				if err := a.saveResponseCache(); err != nil {
+					slog.Error("Response cache persistence failed", "error", err)
 				}
 			}
 			return e == nil
@@ -908,9 +923,10 @@ func (a *App) activateConfiguration(ctx context.Context, d config.Document) erro
 		if e := previous.close(ctx, true); e != nil {
 			return e
 		}
-		next, e := a.build(d, &decisions)
+		responses := previous.responseSnapshot()
+		next, e := a.build(d, &decisions, &responses)
 		if e != nil {
-			restored, re := a.build(old, &decisions)
+			restored, re := a.build(old, &decisions, &responses)
 			if re == nil {
 				a.mu.Lock()
 				a.runtime = restored
@@ -987,6 +1003,14 @@ func (a *App) activateConfiguration(ctx context.Context, d config.Document) erro
 		if hostsChanged || policyChanged {
 			a.runtime.decisionMu.Unlock()
 		}
+		if responseCacheScope(old) != responseCacheScope(d) {
+			a.runtime.decisionMu.Lock()
+			a.runtime.responseScope = responseCacheScope(d)
+			for _, pool := range a.runtime.responsePools() {
+				pool.Cache.FlushReason("DNS 查询配置已更新")
+			}
+			a.runtime.decisionMu.Unlock()
+		}
 		if old.Settings.General.Mode != d.Settings.General.Mode {
 			a.runtime.machine.SetMode(d.Settings.General.Mode)
 		}
@@ -1001,6 +1025,9 @@ func (a *App) activateConfiguration(ctx context.Context, d config.Document) erro
 		slog.Error("Configuration applied, but decision cache persistence failed", "error", err)
 	}
 	a.event("INFO", "configuration", "Configuration applied")
+	if err := a.saveResponseCache(); err != nil {
+		slog.Error("Configuration applied, but response cache persistence failed", "error", err)
+	}
 	return nil
 }
 func (a *App) View(ctx context.Context, key string) (any, error) {
@@ -1116,6 +1143,9 @@ func (a *App) Flush(ctx context.Context, domain string) error {
 	}
 	a.mu.RUnlock()
 	if err := a.saveDecisionCache(); err != nil {
+		return err
+	}
+	if err := a.saveResponseCache(); err != nil {
 		return err
 	}
 	a.event("INFO", "cache_flush", "DNS caches invalidated")
@@ -1363,6 +1393,7 @@ func (a *App) Close() error {
 		statsErr = a.saveDNSStatistics(a.dnsCounters.Snapshot())
 	}
 	cacheErr := a.saveDecisionCache()
+	responseErr := a.saveResponseCache()
 	if a.notificationCancel != nil {
 		a.notificationCancel()
 		<-a.notificationDone
@@ -1372,7 +1403,7 @@ func (a *App) Close() error {
 	} else {
 		a.event("INFO", "shutdown", "Controller stopped; managed routing resources released; external static routes unchanged")
 	}
-	e := errors.Join(runtimeErr, statsErr, cacheErr, a.store.Close())
+	e := errors.Join(runtimeErr, statsErr, cacheErr, responseErr, a.store.Close())
 	if a.lockFile != nil {
 		_ = syscall.Flock(int(a.lockFile.Fd()), syscall.LOCK_UN)
 		_ = a.lockFile.Close()

@@ -36,6 +36,23 @@ enum RemoteUpdateRestart {
         }
     }
 
+    static func managementOpen(_ apps: [NSRunningApplication]) -> Bool {
+        if UserDefaults.standard.object(forKey: ManagementWindowFrame.openKey) != nil {
+            return ManagementWindowFrame.isOpen
+        }
+        // A running App may predate window-state recording. Its visible main
+        // window can still be restored on the first upgrade to this version.
+        guard let windows = CGWindowListCopyWindowInfo([.optionOnScreenOnly, .excludeDesktopElements], kCGNullWindowID) as? [[String: Any]] else { return false }
+        let pids = Set(apps.map { $0.processIdentifier })
+        return windows.contains { window in
+            guard let pid = window[kCGWindowOwnerPID as String] as? NSNumber, pids.contains(pid.int32Value),
+                  (window[kCGWindowLayer as String] as? NSNumber)?.intValue == 0,
+                  let bounds = window[kCGWindowBounds as String] as? [String: Any],
+                  let width = bounds["Width"] as? NSNumber, let height = bounds["Height"] as? NSNumber else { return false }
+            return width.doubleValue >= 420 && height.doubleValue >= 480
+        }
+    }
+
     static func report(_ phase: String, _ error: String? = nil) {
         var value = ["phase": phase]
         if let error { value["error"] = error }
@@ -82,6 +99,7 @@ enum RemoteUpdateRestart {
         // process is excluded by launch time and is never stopped.
         apps = applications(before: before)
         guard !apps.isEmpty else { report("not_running"); return }
+        let reopenManagement = managementOpen(apps)
         report("restarting")
         for app in apps where !app.terminate() {
             report("failed", "Remote App refused to quit; reopen RoutePilot on the remote Mac")
@@ -102,7 +120,8 @@ enum RemoteUpdateRestart {
         do {
             let configuration = NSWorkspace.OpenConfiguration()
             configuration.createsNewApplicationInstance = true
-            configuration.activates = false
+            configuration.activates = reopenManagement
+            configuration.arguments = reopenManagement ? ["--open-management"] : []
             let app = try await NSWorkspace.shared.openApplication(at: URL(fileURLWithPath: installedPath), configuration: configuration)
             guard app.processIdentifier != getpid(), !app.isTerminated else {
                 report("failed", "Remote App did not relaunch; reopen RoutePilot on the remote Mac")

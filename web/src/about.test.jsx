@@ -24,9 +24,9 @@ it('handles older backends without inventing their version and supports English'
 });
 it('opens About without a settings form and preserves unsaved edits across tabs',()=>{
  const fetch=vi.fn();vi.stubGlobal('fetch',fetch);
- render(<Settings settings={{general:{name:'Controller'}}} refresh={()=>{}} notify={()=>{}}/>);
- fireEvent.change(screen.getByLabelText('名称'),{target:{value:'Unsaved name'}});
+ render(<Settings settings={{general:{name:'Controller',theme:'system'}}} refresh={()=>{}} notify={()=>{}}/>);
+ fireEvent.change(screen.getByLabelText('主题'),{target:{value:'dark'}});
  fireEvent.click(screen.getByRole('button',{name:'关于'}));
  expect(screen.getByRole('region',{name:'网页界面'})).toBeInTheDocument();expect(screen.queryByRole('button',{name:'保存设置'})).not.toBeInTheDocument();expect(fetch).not.toHaveBeenCalled();
- fireEvent.click(screen.getByRole('button',{name:'通用'}));expect(screen.getByLabelText('名称')).toHaveValue('Unsaved name');
+ fireEvent.click(screen.getByRole('button',{name:'通用'}));expect(screen.getByLabelText('主题')).toHaveValue('dark');
 });

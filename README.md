@@ -166,7 +166,7 @@ App 和网页会比较前后端版本与构建编号；不一致或后端缺少�
 | 常驻服务程序 | `/usr/local/libexec/surge-controller` |
 | 服务日志 | `/var/log/surge-controller/service.log`，由运维按需轮转 |
 | 原生 App 本机登录凭证 | 默认 macOS 钥匙串，也可选用户目录中的本地文件；内嵌 WebKit 使用非持久数据存储 |
-| 配置、重要事件、DNS 累计统计、稳定决策缓存 | SQLite；事件和缓存有容量上限，缓存包含域名与客户端地址 |
+| 配置、重要事件、DNS 累计统计、稳定决策缓存、乐观响应缓存 | SQLite；事件和缓存有容量上限，缓存包含域名与客户端地址 |
 | 逐条 DNS 查询历史 | 有界内存，不写入数据库或服务日志 |
 
 DNS 累计统计每 5 秒保存，正常停止时保存最终值；重启和修改 DNS 配置后继续累加。强制结束或断电可能丢失最近一个保存周期的增量。每分钟查询速率按当前运行时计算。
@@ -289,7 +289,7 @@ URL 下载预览、Surge Hosts 导入、规则测试、连通性探测、缓存�
 在 **设置 → 缓存** 中可以独立开启：
 
 - **乐观决策缓存**：确认 Surge 有效配置或外部资源更新后，将旧决策标记为待刷新。下次查询先使用缓存，再在后台重新求值，成功后替换；失败或 UNKNOWN 时保留旧值并稍后重试。未访问的条目不触发批量求值，后台刷新限制并发并合并相同查询。待刷新标记随决策一起持久化，重启后确认配置再恢复。
-- **乐观响应缓存**：同样在配置更新后保留仍在 TTL 内的上游响应，命中时先响应，再后台查询对应上游池，成功后替换；网络故障、SERVFAIL 等刷新失败时保留旧响应。记录 TTL 会随缓存年龄递减，到期仍需重新查询；响应缓存不跨重启保留。
+- **乐观响应缓存**：同样在配置更新后保留仍在 TTL 内的上游响应，命中时先响应，再后台查询对应上游池，成功后替换；网络故障、SERVFAIL 等刷新失败时保留旧响应。开启后默认上游与策略专用上游池的响应会定期保存到本机数据库，正常退出前再保存一次。重启后恢复仍有效的响应，并在首次命中时后台刷新；原始保存时间与 TTL 保留，停机时间也计入缓存年龄，不会延长 DNS 有效期。关闭选项、手动清理或变更查询配置后，不会恢复被清理或不适用的旧响应。
 
 两项默认关闭，关闭时沿用立即失效的方式。开启后，后台刷新完成前会沿用旧决策或响应；手动清理、TTL、容量淘汰，以及独立设置的读取失败和策略组切换失效行为仍然生效。乐观响应缓存覆盖默认上游与策略专用上游池，不改变 Fake-IP 的路由和健康检查。
 
@@ -318,7 +318,7 @@ make cli
 ./bin/routepilot help --json
 ```
 
-完整 App 同时携带 CLI 和 `routepilot-control` skill，可在 **设置 → CLI 与 skill** 启用或禁用 CLI，并通过复选框同时选择自动安装到 Codex、Claude Code、Hermes。同名文件提供覆盖或跳过，默认覆盖，原内容自动备份。可按 [CLI 安装与使用说明](docs/cli.md) 安装到 PATH 和 agent 的 skills 目录，然后让 agent 使用 `$routepilot-control` 帮你查状态、改配置。登录只保存私有会话，不保存密码；配置保存与后台应用状态分别反馈。
+完整 App 同时携带 CLI 和 `routepilot-control` skill，可在 **设置 → CLI 与 skill** 启用或禁用 CLI，并通过复选框同时选择自动安装到 Codex、Claude Code、Hermes、Cursor、GitHub Copilot、Gemini CLI、OpenCode、Windsurf / Devin Desktop、Cline、Roo Code、Kilo Code、Antigravity、OpenClaw、Qwen Code、Amp 和 Pi，共 16 种 agent。同名文件提供覆盖或跳过，默认覆盖，原内容自动备份。可按 [CLI 安装与使用说明](docs/cli.md) 安装到 PATH 和 agent 的 skills 目录，然后让 agent 使用 `$routepilot-control` 帮你查状态、改配置。登录只保存私有会话，不保存密码；配置保存与后台应用状态分别反馈。
 
 ### 一条命令安装 skill
 
@@ -340,8 +340,8 @@ Hermes 使用（使用 `$HERMES_HOME/skills`，未设置时为 `~/.hermes/skills
 curl -fsSL https://gitea.knotding.com/knot/routepilot/raw/branch/main/scripts/install_skill.sh | sh -s -- --agent hermes
 ```
 
-同一命令可重复传入 `--agent` 安装到多个 agent，例如 `sh -s -- --agent codex --agent claude --agent hermes`。
+同一命令可重复传入 `--agent` 安装到多个 agent，例如 `sh -s -- --agent codex --agent cursor --agent gemini`。全部标识与安装目录见 [支持的 agent](docs/cli.md#支持的-agent)。
 
-安装器从官方仓库下载 **v0.6.2** 的 skill，无需克隆仓库、编译或管理员权限。默认覆盖同名 skill，并将原内容备份到 skills 目录之外的 `routepilot-skill-backups`，具体路径会打印出来；想保留已有内容，在命令末尾使用 `sh -s -- --on-conflict skip`（可与 `--agent claude` 一起传入）。仅安装 skill，不会启用 CLI 或保存登录凭证；使用前请在 RoutePilot **设置 → CLI 与 skill** 启用 CLI，安装完成后让 agent 重新加载 skills。
+安装器从官方仓库下载 **v0.6.3** 的 skill，无需克隆仓库、编译或管理员权限。默认覆盖同名 skill，并将原内容备份到 skills 目录之外的 `routepilot-skill-backups`，具体路径会打印出来；想保留已有内容，在命令末尾使用 `sh -s -- --on-conflict skip`（可与 `--agent claude` 一起传入）。仅安装 skill，不会启用 CLI 或保存登录凭证；使用前请在 RoutePilot **设置 → CLI 与 skill** 启用 CLI，安装完成后让 agent 重新加载 skills。
 
 安装脚本源码：[scripts/install_skill.sh](scripts/install_skill.sh)。

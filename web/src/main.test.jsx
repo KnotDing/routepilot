@@ -56,18 +56,18 @@ it('defaults DIRECT conservatism on and saves an explicit opt-out',async()=>{
 
 it('keeps routing configuration in settings and preserves it when saving other categories',async()=>{
  const routing={mode:'hybrid',fake_ip_backend:'static',dns_backend:'bgp',static_fake_ip_configured:true};
- const settings={general:{web_listen:'127.0.0.1:1055',name:'Controller'},routing,security:{tls_cert:''}};
+ const settings={general:{web_listen:'127.0.0.1:1055',name:'Controller',theme:'system'},routing,security:{tls_cert:''}};
  const fetch=vi.fn(async(url,options)=>({ok:true,status:200,json:async()=>({settings:JSON.parse(options.body)})}));
  vi.stubGlobal('fetch',fetch);
  render(<Settings settings={settings} refresh={()=>{}} notify={()=>{}}/>);
  expect(screen.getByRole('button',{name:'路由',exact:true})).toBeInTheDocument();
  expect(screen.queryByLabelText('路由模式')).not.toBeInTheDocument();
- fireEvent.change(screen.getByLabelText('名称'),{target:{value:'Updated'}});
+ fireEvent.change(screen.getByLabelText('主题'),{target:{value:'dark'}});
  fireEvent.click(screen.getByRole('button',{name:'保存设置'}));
  await waitFor(()=>expect(fetch).toHaveBeenCalledTimes(1));
  const saved=JSON.parse(fetch.mock.calls[0][1].body);
  expect(saved.routing).toEqual(routing);
- expect(saved.general.name).toBe('Updated');
+ expect(saved.general.theme).toBe('dark');
 });
 
 it('shows configured DIRECT separately from confirmed connection context',()=>{

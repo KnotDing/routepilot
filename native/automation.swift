@@ -4,7 +4,7 @@ import Darwin
 struct AutomationPreferences: Codable, Equatable {
     var cliEnabled = false
     var automaticSkillInstall = false
-    static let agents = ["codex", "claude", "hermes"]
+    static let agents = ["codex", "claude", "hermes", "cursor", "copilot", "gemini", "opencode", "windsurf", "cline", "roo", "kilo", "antigravity", "openclaw", "qwen", "amp", "pi"]
     var skillTargets = ["codex"]
     var valid: Bool {
         skillTargets.allSatisfy { Self.agents.contains($0) } &&
@@ -60,12 +60,29 @@ enum AutomationIntegration {
         let resources = Bundle.main.resourceURL ?? Bundle.main.bundleURL
         let codexHome = ProcessInfo.processInfo.environment["CODEX_HOME"].flatMap { $0.hasPrefix("/") ? URL(fileURLWithPath: $0) : nil } ?? home.appendingPathComponent(".codex", isDirectory: true)
         let hermesHome = ProcessInfo.processInfo.environment["HERMES_HOME"].flatMap { $0.hasPrefix("/") ? URL(fileURLWithPath: $0) : nil } ?? home.appendingPathComponent(".hermes", isDirectory: true)
+        let piHome = ProcessInfo.processInfo.environment["PI_CODING_AGENT_DIR"].flatMap { $0.hasPrefix("/") ? URL(fileURLWithPath: $0) : nil } ?? home.appendingPathComponent(".pi/agent", isDirectory: true)
+        let skill = resources.appendingPathComponent("Skills/routepilot-control", isDirectory: true)
+        let locations: [(String, URL)] = [
+            ("codex", codexHome.appendingPathComponent("skills")),
+            ("claude", home.appendingPathComponent(".claude/skills")),
+            ("hermes", hermesHome.appendingPathComponent("skills")),
+            ("cursor", home.appendingPathComponent(".cursor/skills")),
+            ("copilot", home.appendingPathComponent(".copilot/skills")),
+            ("gemini", home.appendingPathComponent(".gemini/skills")),
+            ("opencode", home.appendingPathComponent(".config/opencode/skills")),
+            ("windsurf", home.appendingPathComponent(".codeium/windsurf/skills")),
+            ("cline", home.appendingPathComponent(".cline/skills")),
+            ("roo", home.appendingPathComponent(".roo/skills")),
+            ("kilo", home.appendingPathComponent(".kilo/skills")),
+            ("antigravity", home.appendingPathComponent(".gemini/config/skills")),
+            ("openclaw", home.appendingPathComponent(".openclaw/skills")),
+            ("qwen", home.appendingPathComponent(".qwen/skills")),
+            ("amp", home.appendingPathComponent(".config/amp/skills")),
+            ("pi", piHome.appendingPathComponent("skills"))
+        ]
         return [
             Entry(id: "cli", path: home.appendingPathComponent(".local/bin/routepilot"), source: resources.appendingPathComponent("Service/bin/routepilot")),
-            Entry(id: "codex", path: codexHome.appendingPathComponent("skills/routepilot-control"), source: resources.appendingPathComponent("Skills/routepilot-control", isDirectory: true)),
-            Entry(id: "claude", path: home.appendingPathComponent(".claude/skills/routepilot-control"), source: resources.appendingPathComponent("Skills/routepilot-control", isDirectory: true)),
-            Entry(id: "hermes", path: hermesHome.appendingPathComponent("skills/routepilot-control"), source: resources.appendingPathComponent("Skills/routepilot-control", isDirectory: true))
-        ]
+        ] + locations.map { Entry(id: $0.0, path: $0.1.appendingPathComponent("routepilot-control"), source: skill) }
     }
     static var supported: Bool {
         guard let cli = entries.first, let skill = entries.last else { return false }

@@ -167,6 +167,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
         releaseTimer = Timer.scheduledTimer(withTimeInterval: 60 * 60, repeats: true) { [weak self] _ in
             Task { @MainActor in await self?.checkReleaseUpdate(silent: true) }
         }
+        ManagementWindowFrame.isOpen = false
+        if arguments.contains("--open-management") && !smoke { openManagement() }
         if smoke {
             DispatchQueue.main.asyncAfter(deadline: .now() + 25) { [weak self] in
                 guard let self = self, !self.smokeStarted else { return }
@@ -760,6 +762,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
             let launch = Process()
             launch.executableURL = URL(fileURLWithPath: "/usr/bin/open")
             launch.arguments = ["-n", UpdateAssistant.appPath]
+            if let window, window.isVisible || window.isMiniaturized {
+                ManagementWindowFrame.remember(window)
+                launch.arguments! += ["--args", "--open-management"]
+            }
             try launch.run()
             NSApp.terminate(nil)
         } catch {
@@ -859,10 +865,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
         }
         NSApp.activate(ignoringOtherApps: true)
         window?.makeKeyAndOrderFront(nil)
+        if !smoke { ManagementWindowFrame.isOpen = true }
     }
     func windowWillClose(_ notification: Notification) {
         guard let closed = notification.object as? NSWindow, closed === window else { return }
         ManagementWindowFrame.remember(closed)
+        if !smoke && !quitting { ManagementWindowFrame.isOpen = false }
         NSApp.setActivationPolicy(.accessory)
     }
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { false }
@@ -997,8 +1005,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
         timer?.invalidate()
         releaseTimer?.invalidate()
+        quitting = true
         guard let process = child, process.isRunning else { return .terminateNow }
-        quitting = true; process.terminate()
+        process.terminate()
         // Allow Go to drain DNS replies, withdraw BGP and release its PF lease.
         DispatchQueue.main.asyncAfter(deadline: .now() + 25) { [weak self] in
             guard let self = self, self.child?.isRunning == true else { return }
