@@ -97,6 +97,13 @@ func main() {
 		}
 		return
 	}
+	if len(os.Args) == 2 && os.Args[1] == "replace-service" {
+		if err := softwareupdate.ReplaceService(); err != nil {
+			slog.Error("backend replacement failed", "error", err)
+			os.Exit(1)
+		}
+		return
+	}
 	if len(os.Args) > 1 && os.Args[1] == "cleanup-pf" {
 		fs := flag.NewFlagSet("cleanup-pf", flag.ExitOnError)
 		dir := fs.String("state-directory", "/var/db/surge-controller", "private service state directory")

@@ -29,7 +29,7 @@ RoutePilot 是一款 macOS 状态栏应用：向 Surge 查询分流策略，为 
 
 ## 🚀 快速开始
 
-1. 从 [Releases](https://gitea.knotding.com/knot/routepilot/releases) 下载 **RoutePilot-macos-arm64.dmg**，将 **RoutePilot.app** 拖入 `/Applications`。目前发布包面向 **Apple Silicon，macOS 13 及以上**。DMG/ZIP 拖放用于首次安装；已有安装请从 App 的“设置 → 软件更新”执行完整升级，手动替换 App 不会更新已安装的常驻网络后台。
+1. 从 [Releases](https://gitea.knotding.com/knot/routepilot/releases) 下载 **RoutePilot-macos-arm64.dmg**，将 **RoutePilot.app** 拖入 `/Applications`。目前发布包面向 **Apple Silicon，macOS 13 及以上**。DMG/ZIP 拖放用于首次安装；已有安装请从 App 的“设置 → 软件更新”执行完整升级，手动替换 App 不会更新已安装的常驻网络后台。手动替换后若 App 与后台版本不一致，App 启动时会提示用 App 携带的后台覆盖本机网络后台以修复。
 2. 启动 App，从状态栏打开管理窗口。默认管理地址为 `http://127.0.0.1:1055`，也能通过浏览器访问；已有本机后台时直接连接。
 3. 按下面的步骤配置 Surge、DNS 和路由。需要透明 DNS / PF 时，在状态栏菜单安装**网络后台服务**，首次安装需管理员授权。
 

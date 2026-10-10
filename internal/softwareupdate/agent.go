@@ -27,6 +27,10 @@ const agentSocket = "/var/run/com.routepilot.updater.sock"
 const agentPlist = "/Library/LaunchDaemons/com.routepilot.update-agent.plist"
 const appTarget = "/Applications/RoutePilot.app"
 
+// Protocol 2 adds the fixed-source "repair" action that overwrites the
+// installed network service with the backend bundled in the installed App.
+const agentProtocolVersion = 2
+
 type agentConfig struct {
 	UID int `json:"uid"`
 }
@@ -280,7 +284,7 @@ func (a *agent) view(ctx context.Context) agentStatus {
 	s.Current = appVersion(ctx)
 	s.Latest = a.latest.Tag
 	s.Available = assistantUpdateAvailable(ctx, s.Latest)
-	return agentStatus{Status: s, Ready: true, ProtocolVersion: 1}
+	return agentStatus{Status: s, Ready: true, ProtocolVersion: agentProtocolVersion}
 }
 func (a *agent) serve(ctx context.Context, c *net.UnixConn) {
 	_ = c.SetDeadline(time.Now().Add(25 * time.Second))
@@ -342,6 +346,32 @@ func (a *agent) serve(ctx context.Context, c *net.UnixConn) {
 				updateCtx, cancel := context.WithTimeout(ctx, 8*time.Minute)
 				defer cancel()
 				err := a.install(updateCtx, r)
+				a.mu.Lock()
+				defer a.mu.Unlock()
+				a.busy = false
+				if err != nil {
+					a.state.Phase = "failed"
+					a.state.Error = err.Error()
+				} else {
+					a.state.Phase = "succeeded"
+					a.state.Error = ""
+				}
+				a.persist()
+			}()
+		}
+	case "repair":
+		if a.busy {
+			failure = errors.New("An App update is already in progress")
+		} else {
+			a.busy = true
+			a.state.Phase = "validating"
+			a.state.Target = "v" + appVersion(ctx)
+			a.state.Error = ""
+			a.persist()
+			go func() {
+				repairCtx, cancel := context.WithTimeout(ctx, 3*time.Minute)
+				defer cancel()
+				err := RepairService(repairCtx)
 				a.mu.Lock()
 				defer a.mu.Unlock()
 				a.busy = false

@@ -328,7 +328,57 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
         let backendInfo = complete
             ? L("后台：{version}（构建 {build}）", ["version": backendVersion, "build": backendBuild])
             : L("后台未提供完整的版本和构建编号，请更新后台服务。")
-        alert(title, appInfo + "\n" + backendInfo + "\n\n" + L("请在“设置 → 软件更新”中执行完整升级，以同步更新 App 和已安装的本机网络后台。通过 DMG/ZIP 手动替换 App 不会更新后台；测试版请使用“检查 Beta 版本更新”修复。"), preventsTermination: false)
+        let summary = appInfo + "\n" + backendInfo
+        guard child == nil, FileManager.default.fileExists(atPath: "/Library/LaunchDaemons/com.routepilot.surge-controller.plist") else {
+            alert(title, summary + "\n\n" + L("请在“设置 → 软件更新”中执行完整升级，以同步更新 App 和已安装的本机网络后台。通过 DMG/ZIP 手动替换 App 不会更新后台；测试版请使用“检查 Beta 版本更新”修复。"), preventsTermination: false)
+            return
+        }
+        let dialog = NSAlert()
+        dialog.messageText = L(title)
+        dialog.informativeText = summary + "\n\n" + L("要用 App 携带的后台覆盖正在运行的本机网络后台吗？覆盖会短暂中断网络服务。")
+        dialog.window.preventsApplicationTerminationWhenModal = false
+        dialog.addButton(withTitle: L("覆盖后台服务"))
+        dialog.addButton(withTitle: L("稍后"))
+        NSApp.activate(ignoringOtherApps: true)
+        if dialog.runModal() == .alertFirstButtonReturn {
+            Task { await repairBackendService() }
+        }
+    }
+    func repairBackendService() async {
+        guard !stopping else { return }
+        stopping = true
+        rebuildMenu()
+        defer { stopping = false; rebuildMenu() }
+        do {
+            if Bundle.main.bundleURL.path == UpdateAssistant.appPath, UpdateAssistant.configured,
+               let assistant = try? await UpdateAssistant.request("status"), (assistant.protocolVersion ?? 0) >= 2 {
+                _ = try await UpdateAssistant.request("repair")
+                let deadline = Date().addingTimeInterval(3 * 60)
+                var state = try await UpdateAssistant.request("status")
+                while state.phase != "succeeded" && state.phase != "failed" {
+                    guard Date() < deadline else { throw AppFailure(message: L("等待后台覆盖完成超时，请检查网络服务状态后重试")) }
+                    try await Task.sleep(nanoseconds: 1_000_000_000)
+                    state = try await UpdateAssistant.request("status")
+                }
+                guard state.phase == "succeeded" else { throw AppFailure(message: state.error ?? L("后台覆盖失败")) }
+                _ = try? await UpdateAssistant.request("refresh-agent")
+            } else {
+                try await replaceServiceWithBundledBackend()
+            }
+            alert("后台服务已覆盖", L("本机网络后台已替换为 App 携带的版本。"), preventsTermination: false)
+        } catch {
+            alert("后台服务未覆盖", error.localizedDescription + "\n\n" + L("请在“设置 → 软件更新”中执行完整升级，以同步更新 App 和已安装的本机网络后台。通过 DMG/ZIP 手动替换 App 不会更新后台；测试版请使用“检查 Beta 版本更新”修复。"), preventsTermination: false)
+        }
+        reconnect()
+    }
+    @MainActor func replaceServiceWithBundledBackend() async throws {
+        let executable = Bundle.main.resourceURL!.appendingPathComponent("Service/bin/surge-controller")
+        let command = shellQuote(executable.path) + " replace-service"
+        let escaped = command.replacingOccurrences(of: "\\", with: "\\\\").replacingOccurrences(of: "\"", with: "\\\"")
+        var failure: NSDictionary?
+        guard NSAppleScript(source: "do shell script \"\(escaped)\" with administrator privileges")?.executeAndReturnError(&failure) != nil else {
+            throw AppFailure(message: failure?[NSAppleScript.errorMessage] as? String ?? L("后台覆盖失败"))
+        }
     }
     var serviceVisualState: StatusBarVisualState {
         let runtimeState = status["state"] as? String ?? ""
