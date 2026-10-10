@@ -328,7 +328,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
         let backendInfo = complete
             ? L("后台：{version}（构建 {build}）", ["version": backendVersion, "build": backendBuild])
             : L("后台未提供完整的版本和构建编号，请更新后台服务。")
-        alert(title, appInfo + "\n" + backendInfo + "\n\n" + L("请将 App 和后台更新到同一发布版本。在“设置 → 软件更新”中在线升级，会同步更新 App 和已安装的本机网络后台。"), preventsTermination: false)
+        alert(title, appInfo + "\n" + backendInfo + "\n\n" + L("请在“设置 → 软件更新”中执行完整升级，以同步更新 App 和已安装的本机网络后台。通过 DMG/ZIP 手动替换 App 不会更新后台；测试版请使用“检查 Beta 版本更新”修复。"), preventsTermination: false)
     }
     var serviceVisualState: StatusBarVisualState {
         let runtimeState = status["state"] as? String ?? ""
@@ -393,7 +393,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
             }
             AppPreferences.current = preferences
             updateToolTip()
-            if preferences.automaticCheck && (!previous.automaticCheck || preferences.updatePrompts != previous.updatePrompts || preferences.automaticInstall != previous.automaticInstall || preferences.checkIntervalHours != previous.checkIntervalHours) {
+            if preferences.automaticCheck && (!previous.automaticCheck || preferences.updatePrompts != previous.updatePrompts || preferences.automaticInstall != previous.automaticInstall || preferences.checkBetaUpdates != previous.checkBetaUpdates || preferences.checkIntervalHours != previous.checkIntervalHours) {
                 UserDefaults.standard.removeObject(forKey: "releaseUpdateLastCheck")
             }
             configurePreferenceSeed(userContentController)
@@ -722,7 +722,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
             if beta {
                 latest = try await ReleaseUpdater.latestBeta()
             } else {
-                latest = try await ReleaseUpdater.latest()
+                latest = try await ReleaseUpdater.latest(includingBeta: preferences.checkBetaUpdates)
                 if scheduledInstallDay == nil {
                     UserDefaults.standard.set(Date(), forKey: "releaseUpdateLastCheck")
                 }
@@ -730,7 +730,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
             let appVersion = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? ""
             let backendVersion = (status["software"] as? [String: Any])?["version"] as? String ?? ""
             let repairLocalService = child == nil && FileManager.default.fileExists(atPath: "/Library/LaunchDaemons/com.routepilot.surge-controller.plist") && ReleaseUpdater.needsBackendUpdate(latest, app: appVersion, backend: backendVersion)
-            availableRelease = (beta ? ReleaseUpdater.newerBeta(latest, current: appVersion) : ReleaseUpdater.newer(latest, current: appVersion)) || repairLocalService ? latest : nil
+            availableRelease = ReleaseUpdater.newerAvailable(latest, current: appVersion) || repairLocalService ? latest : nil
             releaseDownloadError = ""
             publishReleaseUpdateStatus()
             if let scheduledInstallDay {

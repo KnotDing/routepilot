@@ -11,6 +11,9 @@ struct LocalizationTests {
         }
         precondition(translated("检查更新", "en") == "Check for updates")
         precondition(translated("检查Beta版本更新", "en") == "Check for beta updates")
+        precondition(translated("自动检查 Beta 版本", "en") == "Check for beta updates automatically")
+        precondition(translated("启用“自动检查 Beta 版本”后，自动检查会同时比较正式版与最新 Beta；Beta 遵循更新提示、自动安装和计划时间设置。测试版可能包含未完成的功能。", "en") == "When enabled, automatic checks compare the latest stable release with the latest beta. Beta updates follow your update prompts, automatic installation, and scheduled time settings. Beta builds may contain unfinished features.")
+        precondition(translated("请在“设置 → 软件更新”中执行完整升级，以同步更新 App 和已安装的本机网络后台。通过 DMG/ZIP 手动替换 App 不会更新后台；测试版请使用“检查 Beta 版本更新”修复。", "en") == "Use the full upgrade in Settings → Software Updates to update the App and installed local network service together. Replacing the App manually from a DMG/ZIP does not update the service; for a beta, use Check for beta updates to repair it.")
         precondition(translated("自动更新时间（本地时间）", "en") == "Automatic update time (local time)")
         precondition(translated("自动检查仍按设置的检查周期独立运行；发现更新后会立即下载并校验，可手动立即安装。启用自动安装后，RoutePilot App 运行期间每天到达设定的本地时间时还会自动安装。若 Mac 在该时间休眠或 App 未运行，当天不会延迟补装。", "en") == "Automatic checks continue on their independent interval. Detected updates are downloaded and verified immediately, and can be installed manually right away. With automatic installation enabled, updates are installed daily at this local time while the App is running. If the Mac is asleep or the App is not running then, the update is not installed later that day.")
         precondition(translated("立即安装", "en") == "Install now")

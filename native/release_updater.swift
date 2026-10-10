@@ -33,14 +33,40 @@ enum ReleaseUpdater {
     static let repository = "https://gitea.knotding.com/knot/routepilot"
     private static let host = "gitea.knotding.com"
 
-    static func latest() async throws -> GiteaRelease {
+    static func latest(includingBeta: Bool = false) async throws -> GiteaRelease {
         let data = try await releaseData(path: "releases/latest")
         let release = try JSONDecoder().decode(GiteaRelease.self, from: data)
         guard release.draft != true, release.prerelease != true, stableVersion(release.tagName) != nil else {
             throw AppFailure(message: "更新服务返回了无效的正式版本信息")
         }
+        guard includingBeta else { return release }
+        let betaData = try await releaseData(path: "releases?limit=50")
+        guard let releases = try? JSONDecoder().decode([GiteaRelease].self, from: betaData) else {
+            throw AppFailure(message: "Beta 更新服务返回了无效版本信息")
+        }
+        return preferredRelease(stable: release, beta: newestBeta(in: releases))
+    }
 
-        return release
+    static func isBeta(_ release: GiteaRelease) -> Bool {
+        release.prerelease == true && betaVersion(release.tagName) != nil
+    }
+
+    static func isStable(_ release: GiteaRelease) -> Bool {
+        release.prerelease != true && stableVersion(release.tagName) != nil
+    }
+
+    static func isValidUpdateRelease(_ release: GiteaRelease) -> Bool {
+        !((release.draft ?? false)) && (isBeta(release) || isStable(release))
+    }
+
+    static func preferredRelease(stable: GiteaRelease, beta: GiteaRelease?) -> GiteaRelease {
+        guard let beta, isValidUpdateRelease(beta), isNewer(beta.tagName, than: stable.tagName) else { return stable }
+        return beta
+    }
+
+    static func newerAvailable(_ release: GiteaRelease, current: String) -> Bool {
+        guard isValidUpdateRelease(release) else { return false }
+        return isNewer(release.tagName, than: current)
     }
 
     static func latestBeta() async throws -> GiteaRelease {
