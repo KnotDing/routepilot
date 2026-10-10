@@ -62,13 +62,13 @@
 
 ```text
 ## 项目交接
-- 目标与验收条件：维护 RoutePilot 正式版；保持 IPv6 透明 DNS“未验证”的明确声明与默认关闭，远程 API 变更需兼容不同版本后端。
-- 当前状态：v1.0.0 已正式发布；版本提交为 `578c51dc460b0a022da3b12ae2228167060cceec`，标签 `v1.0.0` 已推送，Gitea Release 已提供 DMG、ZIP、SHA256SUMS。
-- 已完成：v0.6.10（commit 6d33ec2742c2d3f012f0550bfc26371f21bd797d）与 v1.0.0 发布；v1.0.0 本地门禁、Gitea 回归工作流及 Release 工作流通过，三个下载资产均可访问。用户确认本地实例实际使用 BGP，本机 App 和远程后台升级已多次实测。IPv4 透明 DNS/PF 的隔离 macvlan 验收见 `docs/phase-2-docker-evidence.md`。
-- 修改文件及目的：更新 `internal/buildinfo/release.json`、`scripts/install_skill.sh` 至 v1.0.0；在 `README.md` 和 `docs/acceptance.md` 明确 IPv6 透明 DNS未验证；新增 `.gitea/release-notes/v1.0.0.md`；保留此前用户要求的验收文档更新、两份旧 readiness 文档删除及 v0.5.3 文档链接修正。
-- 验证：v1.0.0 `make verify-release`、`make fuzz`、`git diff --check` 通过；前端 79 项测试、Go race tests、vet、原生 UI 检查通过。`artifacts/package-verification.json` 报告版本 1.0.0 和包完整性检查通过。DMG、ZIP、SHA256SUMS 下载均返回 HTTP 200。
-- 未解决问题、风险或重要约束：真实 IPv6 PF/WAN 路径未验证，IPv6 透明拦截默认关闭；App 使用 ad-hoc 签名而非 Developer ID/公证。用户报告的 BGP 与升级实测无详细矩阵归档，不要将主流程描述为未实测，也不要推断所有边缘场景均覆盖。Surge 策略与缓存使用有界轮询同步。
-- 下一步行动与依赖：没有未完成的 v1.0.0 发布步骤。后续若准备启用 IPv6 透明 DNS，先完成真实 PF 入口与网关 WAN/回程路径隔离验收并归档证据。
+- 目标与验收条件：维护 RoutePilot；保持 IPv6 透明 DNS“未验证”的明确声明与默认关闭，远程 API 变更需兼容不同版本后端。
+- 当前状态：正式版基线仍为 `v1.0.0`；测试版 `v1.0.1-beta.1` 已作为 Gitea prerelease 发布。发布提交 `ad5c69d8dcd4612256bb5d71b5244ceede1bfd5a`、标签已推送，Release workflow #55 成功，DMG、ZIP、SHA256SUMS 均可下载。
+- 已完成：v0.6.10、v1.0.0 正式版及 v1.0.1-beta.1 测试版发布。Beta 增加独立的自动检查周期与计划安装时间、发现更新后立即下载和手动提前安装；移除服务端配置名称、状态 API 名称及通知/Webhook 名称字段，旧配置 `general.name` 仍可读取但不再写出。用户确认本地实例实际使用 BGP，本机 App 和远程后台升级已多次实测。IPv4 透明 DNS/PF 的隔离 macvlan 验收见 `docs/phase-2-docker-evidence.md`。
+- 修改文件及目的：Beta 发布版本写入 `internal/buildinfo/release.json`，新增 `.gitea/release-notes/v1.0.1-beta.1.md`；README、远程管理说明及 Webhook schema 已同步；`scripts/install_skill.sh` 保持稳定版 v1.0.0，不指向 Beta。
+- 验证：相关 Go 包测试通过；Web 测试 22 个文件、82 项通过；`make native-test` 和 `python3 scripts/check_package_test.py` 通过；JSON 检查及 `git diff --check` 通过。Gitea Release workflow #55（Beta 精简打包及 package-check）成功；Release 标记 prerelease，三项资产链接均返回 HTTP 200。未运行正式版 `make verify-release` / `make fuzz` 门禁，本次是 Beta 发布。
+- 未解决问题、风险或重要约束：真实 IPv6 PF/WAN 路径未验证，IPv6 透明拦截默认关闭；App 使用 ad-hoc 签名而非 Developer ID/公证。Beta 可能含未完成行为，需测试后再考虑正式版。用户报告的 BGP 与升级实测无详细矩阵归档，不要将主流程描述为未实测，也不要推断所有边缘场景均覆盖。Surge 策略与缓存使用有界轮询同步。
+- 下一步行动与依赖：让测试者通过 App 的“检查 Beta 版本更新”或 Release 页面安装 `v1.0.1-beta.1` 并反馈问题；修复后递增 Beta 序号。发布 `v1.0.1` 正式版前按正式流程运行 `make verify-release` 和 `make fuzz`，更新稳定版文档/skill 版本并再次验证 Release 资产。
 ```
 
 ### 新接手者快速入口
@@ -78,4 +78,4 @@
 - **主要代码：** `cmd/` 为程序入口；`internal/dnsserver/` 和 `internal/classifier/` 为 DNS 分发与决策；`internal/resolver/` 为真实 DNS 上游；`internal/bgp/`、`internal/routing/`、`internal/state/` 管理路由与运行状态；`internal/api/`、`internal/remote/` 管理 API 与远程中继；`native/` 是 macOS 状态栏 App；`web/src/` 是管理界面。Go 包边界与数据流以架构文档为准。
 - **构建与测试：** `make verify` 跑前端测试、全 Go race 测试、vet 和构建；`make verify-release` 另外做原生/浏览器验收与 DMG/ZIP 打包校验；`make fuzz` 单独测版本解析。发布门禁会重建 `web/dist` 并替换 `artifacts/` 生成包，运行前检查并确认这些产物可重建。不要直接编辑 `web/dist`。
 - **运行及发布现实边界：** IPv4 Docker macvlan/PF 证据见 `docs/phase-2-docker-evidence.md`；IPv6 真实入口和 WAN 回程仍未验证。服务端路由状态、BGP Adj-RIB-Out 与外部网关 RIB/FIB 不是同一确认信号；Static 路由由外部管理，不要描述为应用已安装或验证。远程 API 变更必须测试旧后端缺接口/字段的局部降级。
-- **发布基线：** 当前已发布基线 `v1.0.0`（版本提交 `578c51d`）。发布流程及禁止移动标签等约束见本文件“发布版本”和 `.gitea/workflows/`。每次接手代码先执行 `git status --short --branch`，再决定是否运行会覆盖构建产物的门禁；不得覆盖或丢弃已有工作区内容。
+- **发布基线：** 当前稳定版基线 `v1.0.0`（版本提交 `578c51d`），最新测试版 `v1.0.1-beta.1`（`ad5c69d`）。发布流程及禁止移动标签等约束见本文件“发布版本”和 `.gitea/workflows/`。每次接手代码先执行 `git status --short --branch`，再决定是否运行会覆盖构建产物的门禁；不得覆盖或丢弃已有工作区内容。
