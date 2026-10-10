@@ -187,6 +187,8 @@ tbody tr:last-child td { border-bottom: 0; }
 .filters > input { flex-basis: 170px; }
 .notice { display: block; padding: 14px 18px; margin-bottom: 20px; border: 1px solid var(--warning-border); border-radius: 10px; background: var(--warning-bg); color: var(--warning-text); font-size: 13px; line-height: 22px; overflow-wrap: anywhere; }
 .notice p { margin: 4px 0; color: inherit; font-size: inherit; }
+.version-channel-notice { background: var(--panel); border-color: var(--border); color: var(--muted); }
+.version-channel-notice strong { font-weight: 500; }
 .error { color: var(--danger-text); background: var(--danger-bg); border-color: color-mix(in srgb, var(--danger-text), transparent 80%); }
 p.error { padding: 12px 14px; border-radius: 9px; }
 .main-foot { max-width: 1440px; margin: 30px auto 0; display: flex; justify-content: space-between; gap: 16px; color: var(--muted); font-size: 12px; line-height: 20px; }

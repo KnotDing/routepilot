@@ -939,5 +939,7 @@
   "自动更新设置保存在当前连接的后端，控制其所在 Mac 的完整应用（App、管理页面与网络服务）的自动检查与自动安装。": "Automatic update settings are saved on the connected backend and control checks and installation for the complete App, management page and network service on that Mac.",
   "后端设置已保存，但本机更新提示偏好保存失败：{error}": "Backend settings were saved, but the local update prompt preference could not be saved: {error}",
   "启用更新助手…": "Enable update assistant…",
-  "停用更新助手…": "Disable update assistant…"
+  "停用更新助手…": "Disable update assistant…",
+  "本地使用 Beta 测试版，远端使用正式版": "The local interface uses a Beta release; the remote backend uses a stable release.",
+  "本地使用正式版，远端使用 Beta 测试版": "The local interface uses a stable release; the remote backend uses a Beta release."
 }

@@ -186,3 +186,22 @@ by unsupported earlier remote rule sets. This supersedes the earlier 7-item
 inventory observation; no remote URLs were downloaded or script mappings run.
 The optional TCP probe is unit-tested with controlled transports; no external
 static-route or real WAN connectivity verification is claimed.
+
+## v1.0.1 release preparation — 2026-10-10
+
+The local `make verify-release` and `make fuzz` gates passed for v1.0.1:
+
+- 23 frontend test files, 108 tests; all Go packages under `-race -count=1`,
+  `go vet`, and embedded frontend/controller/CLI builds.
+- Isolated native installer, localization, core and actual AppKit/WebKit UI
+  checks; no production service upgrade or credential change performed.
+- Fixture-backed browser checks for 16 pages and 13 settings categories at
+  1440, 1120 and 390 pixels, with no page errors or viewport overflow.
+- DMG/ZIP contents, release identity, bundled resources, SHA256 manifests,
+  ad-hoc signatures and DMG integrity checks.
+- Release-version fuzzing: 229,528 executions over five seconds, passed.
+
+These checks cover update configuration, persistent scheduling/skips, release
+channels, unsaved preferences and remote version notices. They do not extend
+the existing IPv6 ingress or gateway commissioning evidence. Release publication
+is performed separately by the stable Gitea workflow.

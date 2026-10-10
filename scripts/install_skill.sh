@@ -58,7 +58,7 @@ cleanup() {
 trap cleanup EXIT
 trap 'exit 1' HUP INT TERM
 mkdir -p "$stage/agents" "$stage/references"
-base='https://gitea.knotding.com/knot/routepilot/raw/tag/v1.0.0/skills/routepilot-control'
+base='https://gitea.knotding.com/knot/routepilot/raw/tag/v1.0.1/skills/routepilot-control'
 for file in SKILL.md agents/openai.yaml references/recipes.md; do
   curl --fail --silent --show-error --location --proto '=https' --proto-redir '=https' \
     "$base/$file" -o "$stage/$file"
@@ -74,7 +74,7 @@ if [ -e "$destination" ] || [ -L "$destination" ]; then
 fi
 mv "$stage" "$destination"
 installed=true
-printf 'Installed RoutePilot v1.0.0 skill: %s\n' "$destination"
+printf 'Installed RoutePilot v1.0.1 skill: %s\n' "$destination"
 [ -z "$backup" ] || printf 'Previous contents backed up to: %s\n' "$backup"
 )
 for agent in $agents; do install_agent "$agent"; done
