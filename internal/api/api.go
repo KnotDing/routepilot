@@ -40,7 +40,12 @@ type API struct {
 	operationMu       sync.Mutex
 	operations        map[string]operation
 	RouteImportClient *http.Client
-	SoftwareUpdates   *softwareupdate.Manager
+	SoftwareUpdates   softwareUpdateController
+	updateMu          sync.Mutex
+	updateCheckMu     sync.Mutex
+	updateState       updateAutomationState
+	updateStateLoaded bool
+	updateStateError  string
 }
 
 // updatePlan is one scheduler tick of the configured automatic update policy.
@@ -76,41 +81,6 @@ func planUpdateAutomation(now time.Time, policy config.Updates, lastCheck time.T
 // running this backend: periodic release checks and at most one scheduled
 // install attempt a day. Manual checks and installs stay available via the
 // updates API.
-func (a *API) RunUpdateScheduler(ctx context.Context) {
-	ticker := time.NewTicker(time.Minute)
-	defer ticker.Stop()
-	lastCheck, attemptedDay := time.Time{}, ""
-	for {
-		select {
-		case <-ctx.Done():
-			return
-		case now := <-ticker.C:
-			if a.SoftwareUpdates == nil || !a.SoftwareUpdates.Status().Supported {
-				continue
-			}
-			settings := a.Service.Configuration().Settings
-			plan := planUpdateAutomation(now, settings.Updates, lastCheck, attemptedDay)
-			if !plan.check && !plan.install {
-				continue
-			}
-			if plan.install {
-				attemptedDay = now.Format("2006-01-02")
-			}
-			// Install only accepts a release checked within the last ten minutes.
-			checkCtx, cancel := context.WithTimeout(ctx, time.Minute)
-			_, err := a.SoftwareUpdates.Check(checkCtx, settings.Updates.CheckBeta)
-			cancel()
-			lastCheck = time.Now()
-			if err != nil || !plan.install {
-				continue // the status endpoint surfaces check failures on demand
-			}
-			status := a.SoftwareUpdates.Status()
-			if status.Available && status.Supported && status.Latest != "" {
-				_, _ = a.SoftwareUpdates.Start(status.Latest)
-			}
-		}
-	}
-}
 
 // RunRouteFeedScheduler keeps URL-managed route snapshots current while the
 // controller service is running. All changes pass through the same mutation
@@ -278,19 +248,39 @@ func (a *API) serve(w http.ResponseWriter, r *http.Request) {
 		}
 		switch {
 		case path == "updates/status" && r.Method == "GET":
-			write(w, 200, a.SoftwareUpdates.Status())
+			write(w, 200, a.updateStatus(r.Context()))
 		case path == "updates/check" && r.Method == "GET":
 			if r.Header.Get("Prefer") == "respond-async" {
 				a.startOperation(w, path, func(ctx context.Context) (any, error) {
-					return a.SoftwareUpdates.Check(ctx, a.Service.Configuration().Settings.Updates.CheckBeta)
+					return a.checkUpdates(ctx)
 				})
 				return
 			}
-			status, err := a.SoftwareUpdates.Check(r.Context(), a.Service.Configuration().Settings.Updates.CheckBeta)
+			status, err := a.checkUpdates(r.Context())
 			if err != nil {
 				fail(w, 502, err)
 			} else {
 				write(w, 200, status)
+			}
+		case path == "updates/skip" && r.Method == "POST":
+			var body struct {
+				Version string `json:"version"`
+			}
+			if err := decode(w, r, &body); err != nil {
+				fail(w, 400, err)
+				return
+			}
+			if body.Version != "" {
+				if err := softwareupdate.ValidateVersion(body.Version); err != nil {
+					fail(w, 400, err)
+					return
+				}
+				body.Version = "v" + strings.TrimPrefix(body.Version, "v")
+			}
+			if err := a.skipUpdate(r.Context(), body.Version); err != nil {
+				fail(w, 409, err)
+			} else {
+				write(w, 200, a.updateStatus(r.Context()))
 			}
 		case path == "updates/install" && r.Method == "POST":
 			if !a.Service.Configuration().Settings.Security.Authentication {
@@ -304,7 +294,7 @@ func (a *API) serve(w http.ResponseWriter, r *http.Request) {
 				fail(w, 400, err)
 				return
 			}
-			status, err := a.SoftwareUpdates.Start(body.Version)
+			status, err := a.installUpdate(r.Context(), body.Version)
 			if err != nil {
 				fail(w, 409, err)
 			} else {

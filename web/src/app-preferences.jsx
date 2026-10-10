@@ -1,9 +1,9 @@
 import {FieldLabel,FormHint} from './form-fields';
-import React,{useEffect,useState} from 'react';
-import {useT,translate,valueLabel} from './i18n';
+import React,{useEffect,useRef,useState} from 'react';
+import {useT,translate,valueLabel,message} from './i18n';
 import {notificationSelected} from './notification-errors';
 
-const defaults={assistantReady:false,updatePrompts:true,updateAvailable:false,updateVersion:'',updateDownloading:false,updateDownloadError:'',desktopNotifications:false,notificationSound:true};
+const defaults={assistantReady:false,updatePrompts:true,updateAvailable:false,updateVersion:'',updateDownloading:false,updateDownloadError:'',updateAutomationError:'',desktopNotifications:false,notificationSound:true};
 export function nativeApp(){return Boolean(window.webkit?.messageHandlers?.routepilotPreferences)}
 export function appPreferences(){
  if(nativeApp())return {...defaults,...window.routepilotNativePreferences};
@@ -31,26 +31,46 @@ export async function savePreferences(value,onWarning){
  }
  window.dispatchEvent(new Event('routepilot-preferences-changed'));
 }
-export function AppPreferencesPanel({kind,notify}){
- const t=useT(),[draft,setDraft]=useState(appPreferences),[busy,setBusy]=useState(false);
- useEffect(()=>{const changed=()=>setDraft(appPreferences());window.addEventListener('routepilot-preferences-changed',changed);return()=>window.removeEventListener('routepilot-preferences-changed',changed)},[]);
- const update=kind==='updates';
- const save=async e=>{e.preventDefault();setBusy(true);try{await savePreferences(draft,warning=>notify(warning,true));notify(t('应用偏好已保存'))}catch(e){notify(e.message,true)}finally{setBusy(false)}};
- const checkbox=(key,label,disabled=false)=><label className="check" key={key}><input type="checkbox" checked={draft[key]} disabled={disabled} onChange={e=>setDraft({...draft,[key]:e.target.checked})}/>{t(label)}</label>;
+// Native status and other preference panels can change while a form is open.
+// Refresh metadata and saved fields, retaining only this form's unsaved edits.
+export function usePreferenceDraft(keys){
+ const [draft,setValue]=useState(appPreferences),owned=useRef(keys),dirty=useRef(new Set());
+ useEffect(()=>{
+  const changed=()=>setValue(previous=>{const next=appPreferences();for(const key of dirty.current)next[key]=previous[key];return next});
+  window.addEventListener('routepilot-preferences-changed',changed);
+  window.addEventListener('routepilot-statusbar-health-changed',changed);
+  return()=>{window.removeEventListener('routepilot-preferences-changed',changed);window.removeEventListener('routepilot-statusbar-health-changed',changed)};
+ },[]);
+ const setDraft=value=>setValue(previous=>{const next=typeof value==='function'?value(previous):value;for(const key of owned.current)if(JSON.stringify(next[key])!==JSON.stringify(previous[key]))dirty.current.add(key);return next});
+ const saved=()=>{dirty.current.clear();setValue(appPreferences())};
+ return [draft,setDraft,saved];
+}
+// These controls only update the App hosting a local management window.
+// Remote connections use BackendUpdate and never send native update actions.
+export function LocalAppUpdateControls({preferences}){
+ const t=useT();
+ return <div className="update-status">
+  {preferences.updateAvailable&&<p>{t('已发现可用更新')}：{preferences.updateVersion}</p>}
+  {preferences.updateDownloadError&&<p role="alert">{t('更新包下载失败')}：{preferences.updateDownloadError}</p>}
+  {preferences.updateAutomationError&&<p role="alert">{t('自动更新失败')}：{message(preferences.updateAutomationError)}</p>}
+  <div className="toolbar">
+   <button type="button" onClick={()=>window.webkit.messageHandlers.routepilotUpdateAction.postMessage('check')}>{t('立即检查更新')}</button>
+   {preferences.updateAvailable&&<button type="button" disabled={preferences.updateDownloading} onClick={()=>window.webkit.messageHandlers.routepilotUpdateAction.postMessage('installAvailable')}>{t(preferences.updateDownloading?'正在下载更新…':'立即安装')}</button>}
+  </div>
+ </div>;
+}
+export function AppPreferencesPanel({notify}){
+ const t=useT(),[draft,setDraft,saved]=usePreferenceDraft(['desktopNotifications','notificationSound']),[busy,setBusy]=useState(false);
+ const save=async e=>{e.preventDefault();setBusy(true);try{await savePreferences({...appPreferences(),desktopNotifications:draft.desktopNotifications,notificationSound:draft.notificationSound},warning=>notify(warning,true));saved();notify(t('应用偏好已保存'))}catch(e){notify(e.message,true)}finally{setBusy(false)}};
+ const checkbox=(key,label,disabled=false)=><label className="check" key={key}><input type="checkbox" checked={draft[key]} disabled={disabled||busy} onChange={e=>setDraft({...draft,[key]:e.target.checked})}/>{t(label)}</label>;
  return <section className="panel">
-  <h2>{t(update?'软件更新':'本机系统通知')}</h2>
-  <p>{t(update?'这些选项只作用于运行管理窗口的本机 App：发现更新时的提示与手动升级。自动检查和自动安装由“自动更新”设置控制，作用于当前连接的后端。':'App 可接收本机和当前查看的远程后端异常。浏览器通知需要页面保持打开，后台 Webhook 不受页面影响。')}</p>
+  <h2>{t('本机系统通知')}</h2>
+  <p>{t('App 可接收本机和当前查看的远程后端异常。浏览器通知需要页面保持打开，后台 Webhook 不受页面影响。')}</p>
   <form onSubmit={save}>
-   <div className="option-grid">{update?<>{checkbox('updatePrompts','发现新版本时提示',!nativeApp())}</>:<>{checkbox('desktopNotifications','启用本机系统通知')}{checkbox('notificationSound','通知声音',!draft.desktopNotifications)}</>}</div>
-   {update&&nativeApp()&&<p>{t(draft.assistantReady?'更新助手已启用，本机升级与后台覆盖修复无需再次输入管理员密码，升级会短暂重启本机服务。':'启用更新助手需要一次管理员授权，之后本机升级与后台覆盖修复无需再次输入管理员密码。')}</p>}
-   {update&&nativeApp()&&draft.updateAvailable&&<p>{t('已发现可用更新')}：{draft.updateVersion}</p>}
-   {update&&nativeApp()&&draft.updateDownloadError&&<p role="alert">{t('更新包下载失败')}：{draft.updateDownloadError}</p>}
-   <div className="toolbar">
-    <button className="primary" disabled={busy||update&&!nativeApp()}>{t('保存应用偏好')}</button>
-    {update&&nativeApp()&&<>{!draft.assistantReady&&<button type="button" onClick={()=>window.webkit.messageHandlers.routepilotUpdateAction.postMessage('enableAssistant')}>{t('启用更新助手')}</button>}{draft.assistantReady&&<button type="button" onClick={()=>window.webkit.messageHandlers.routepilotUpdateAction.postMessage('disableAssistant')}>{t('停用更新助手')}</button>}<button type="button" onClick={()=>window.webkit.messageHandlers.routepilotUpdateAction.postMessage('check')}>{t('立即检查更新')}</button>{draft.updateAvailable&&<button type="button" disabled={draft.updateDownloading} onClick={()=>window.webkit.messageHandlers.routepilotUpdateAction.postMessage('installAvailable')}>{t(draft.updateDownloading?'正在下载更新…':'立即安装')}</button>}</>}
-   </div>
+   <div className="option-grid">{checkbox('desktopNotifications','启用本机系统通知')}{checkbox('notificationSound','通知声音',!draft.desktopNotifications)}</div>
+   <div className="toolbar"><button className="primary" disabled={busy}>{t('保存应用偏好')}</button></div>
   </form>
- </section>
+ </section>;
 }
 
 // Per-backend alarm state survives Workspace switches during this page session.

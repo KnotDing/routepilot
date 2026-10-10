@@ -19,6 +19,12 @@ type browser struct {
 	base, csrf string
 }
 
+func TestRelayAllowsOnlyPostForDurableVersionSkip(t *testing.T) {
+	if !allowed("updates/skip", "POST") || allowed("updates/skip", "GET") || allowed("updates/skip", "DELETE") {
+		t.Fatal("version skip relay policy is incorrect")
+	}
+}
+
 func openBrowser(t *testing.T, base string) *browser {
 	t.Helper()
 	jar, _ := cookiejar.New(nil)

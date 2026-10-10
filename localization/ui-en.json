@@ -929,5 +929,15 @@
   "保存的本机登录凭证已失效，请重新登录一次": "Saved local credentials are no longer valid. Sign in again.",
   "本机登录凭证操作超时，请重试": "The local credential operation timed out. Try again.",
   "正在恢复已保存的登录状态…": "Restoring your saved login…",
-  "无法读取本机会话，请重新连接本机服务": "Unable to read the local session. Reconnect to the local service."
+  "无法读取本机会话，请重新连接本机服务": "Unable to read the local session. Reconnect to the local service.",
+  "自动更新失败": "Automatic update failed",
+  "将在 {time} 后重试": "Will retry after {time}",
+  "已跳过版本 {version}，不会自动安装": "Version {version} is skipped and will not be installed automatically",
+  "取消跳过": "Unskip this version",
+  "跳过版本未保存": "The skipped version could not be saved",
+  "检查与升级针对当前连接的后端所在 Mac。": "Checks and upgrades apply to the Mac hosting the connected backend.",
+  "自动更新设置保存在当前连接的后端，控制其所在 Mac 的完整应用（App、管理页面与网络服务）的自动检查与自动安装。": "Automatic update settings are saved on the connected backend and control checks and installation for the complete App, management page and network service on that Mac.",
+  "后端设置已保存，但本机更新提示偏好保存失败：{error}": "Backend settings were saved, but the local update prompt preference could not be saved: {error}",
+  "启用更新助手…": "Enable update assistant…",
+  "停用更新助手…": "Disable update assistant…"
 }

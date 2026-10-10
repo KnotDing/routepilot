@@ -76,6 +76,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
     var availableRelease: GiteaRelease?
     var releaseDownloadInProgress = false
     var releaseDownloadError = ""
+    var releaseAutomationError = ""
     var checkingRelease = false
 	let serviceNotifications = ServiceNotifications()
 	var notificationSettings: [String: Any] = [:]
@@ -461,8 +462,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
                 Task { await installRelease(release) }
             }
             else if action == "install" { performReleaseUpdate() } // older management pages post "install" for the same flow
-            else if action == "enableAssistant" { enableUpdateAssistant() }
-            else if action == "disableAssistant" { disableUpdateAssistant() }
             return
         }
         if message.name == "routepilotServiceHealth" {
@@ -538,7 +537,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
             "updateAvailable": availableRelease != nil,
             "updateVersion": availableRelease?.tagName ?? "",
             "updateDownloading": releaseDownloadInProgress,
-            "updateDownloadError": releaseDownloadError
+            "updateDownloadError": releaseDownloadError,
+            "updateAutomationError": releaseAutomationError
         ]
         guard let data = try? JSONSerialization.data(withJSONObject: status),
               let json = String(data: data, encoding: .utf8) else { return }
@@ -558,6 +558,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
         preferences["updateVersion"] = availableRelease?.tagName ?? ""
         preferences["updateDownloading"] = releaseDownloadInProgress
         preferences["updateDownloadError"] = releaseDownloadError
+        preferences["updateAutomationError"] = releaseAutomationError
         preferences["remoteCredentialsSupported"] = true
         preferences["localCredentialsSupported"] = true
         preferences["managementBackend"] = UserDefaults.standard.dictionary(forKey: "managementBackend")
@@ -706,6 +707,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
         menu.addItem(submenu("本机后台", items: serviceItems))
 
         menu.addItem(item(checkingRelease ? "正在检查更新…" : "检查更新", action: #selector(performReleaseUpdate), enabled: !checkingRelease && !stopping))
+        menu.addItem(item(UpdateAssistant.configured ? "停用更新助手…" : "启用更新助手…",
+                          action: UpdateAssistant.configured ? #selector(disableUpdateAssistant) : #selector(enableUpdateAssistant),
+                          enabled: !smoke && !checkingRelease && !stopping))
 
         let login = item(SMAppService.mainApp.status == .requiresApproval ? "登录时启动（等待系统授权）" : "登录时启动", action: #selector(toggleLogin), enabled: !smoke)
         login.state = SMAppService.mainApp.status == .enabled ? .on : SMAppService.mainApp.status == .requiresApproval ? .mixed : .off
@@ -732,15 +736,24 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
     // Update prompts follow the connected backend's update settings; the App only notifies.
     func promptForBackendUpdate() async {
         guard !stopping, !quitting, !checkingRelease, !releaseDownloadInProgress,
-              AppPreferences.current.updatePrompts else { return }
-        guard let update = try? await client.call("updates/status") as? [String: Any],
+              authenticated else { return }
+        guard let update = try? await client.call("updates/status") as? [String: Any] else { return }
+        let automationError = [update["check_error"] as? String, update["automation_error"] as? String, update["error"] as? String].compactMap { $0 }.filter { !$0.isEmpty }.joined(separator: "\n")
+        if automationError != releaseAutomationError {
+            releaseAutomationError = automationError
+            publishReleaseUpdateStatus()
+        }
+        guard AppPreferences.current.updatePrompts,
+              !["downloading", "validating", "restarting"].contains(update["phase"] as? String ?? ""),
               update["supported"] as? Bool == true, update["available"] as? Bool == true,
               let tag = update["latest"] as? String, !tag.isEmpty else { return }
         let defaults = UserDefaults.standard
-        guard defaults.string(forKey: "releaseUpdateSkippedTag") != tag,
+        guard update["skipped_version"] as? String != tag,
               defaults.string(forKey: "releaseUpdateLastNotifiedTag") != tag else { return }
         defaults.set(tag, forKey: "releaseUpdateLastNotifiedTag")
-        await presentRelease(GiteaRelease(tagName: tag, assets: [], body: update["release_notes"] as? String, draft: nil, prerelease: ReleaseUpdater.betaVersion(tag) != nil))
+        availableRelease = GiteaRelease(tagName: tag, assets: [], body: update["release_notes"] as? String, draft: nil, prerelease: ReleaseUpdater.betaVersion(tag) != nil)
+        publishReleaseUpdateStatus()
+        if let release = availableRelease { await presentRelease(release) }
     }
     // Manual checks follow the backend's configured release channel; automatic
     // checking and installation live in the backend's update settings.
@@ -784,12 +797,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
         let dialog = ReleaseUpdateDialog(release: release, assistantReady: UpdateAssistant.configured)
         switch await dialog.run() {
         case .install:
-            UserDefaults.standard.removeObject(forKey: "releaseUpdateSkippedTag")
             await installRelease(release)
         case .skip:
-            UserDefaults.standard.set(release.tagName, forKey: "releaseUpdateSkippedTag")
-            availableRelease = nil
-            publishReleaseUpdateStatus()
+            do {
+                _ = try await client.call("updates/skip", method: "POST", body: ["version": release.tagName])
+                availableRelease = nil
+                publishReleaseUpdateStatus()
+            } catch {
+                alert("跳过版本未保存", error.localizedDescription)
+            }
         case .later: break
         }
     }
@@ -850,6 +866,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
                     try await UpdateAssistant.enable()
                 }
             }
+            // Every explicit installation entry point overrides a previous skip.
+            // A disconnected backend must not prevent a manual App upgrade.
+            _ = try? await client.call("updates/skip", method: "POST", body: ["version": ""])
             _ = try await UpdateAssistant.request("check", channel: release.prerelease == true ? "beta" : nil)
             if !(await stopChild()) { throw AppFailure(message: "后台进程尚未停止，升级已取消") }
             var status = try await UpdateAssistant.request("install", version: release.tagName)

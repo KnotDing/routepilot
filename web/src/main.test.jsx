@@ -1,10 +1,10 @@
 import {LanguageSelector} from './language';
 import React from 'react';
 import {describe,it,expect,vi,afterEach} from 'vitest';
-import {render,screen,fireEvent,cleanup,waitFor} from '@testing-library/react';
+import {render,screen,fireEvent,cleanup,waitFor,act} from '@testing-library/react';
 import {Field,Resource,RoutingPanel,Queries,Settings} from './main';
-import {request,setCSRF} from './client';
-afterEach(()=>{cleanup();localStorage.removeItem('routepilot.locale');vi.unstubAllGlobals()});
+import {request,setCSRF,selectBackend} from './client';
+afterEach(()=>{cleanup();localStorage.removeItem('routepilot.locale');vi.unstubAllGlobals();delete window.webkit;delete window.routepilotNativePreferences;selectBackend('')});
 it('distinguishes operational fallback from a DIRECT rule match',()=>{
  const rows=[{context:{client_ip:'192.0.2.10',received_at:'2026-10-08T00:00:00Z',question:{Name:'accounts.google.com.',Qtype:65}},result:{decision:'DIRECT',source:'state-fallback',confidence:'uncertain'},latency:0,answers:[]}];
  render(<Queries rows={rows}/>);
@@ -129,8 +129,77 @@ it('binds backend update automation to the connected backend settings',()=>{
  expect(install).toBeDisabled();
 });
 
+it('disables automatic installation when automatic checks are turned off and saves both',async()=>{
+ const settings={general:{web_listen:'127.0.0.1:1055'},security:{tls_cert:''},updates:{automatic_check:true,check_beta:false,automatic_install:true,check_interval_hours:12,update_time:'03:00'}};
+ const fetch=vi.fn(async(url,options)=>({ok:true,status:200,json:async()=>({settings:JSON.parse(options.body)})}));
+ vi.stubGlobal('fetch',fetch);
+ render(<Settings settings={settings} refresh={()=>{}} notify={()=>{}}/>);
+ fireEvent.click(screen.getByRole('button',{name:'软件更新',exact:true}));
+ fireEvent.click(screen.getByLabelText('自动检查新版本'));
+ expect(screen.getByLabelText('自动安装新版本')).not.toBeChecked();
+ expect(screen.getByLabelText('自动安装新版本')).toBeDisabled();
+ fireEvent.click(screen.getByRole('button',{name:'保存设置'}));
+ await waitFor(()=>expect(fetch).toHaveBeenCalled());
+ expect(JSON.parse(fetch.mock.calls[0][1].body).updates).toMatchObject({automatic_check:false,automatic_install:false});
+});
+
 it('degrades update automation settings for older backends',()=>{
  render(<Settings settings={{general:{web_listen:'127.0.0.1:1055'}}} refresh={()=>{}} notify={()=>{}}/>);
  fireEvent.click(screen.getByRole('button',{name:'软件更新',exact:true}));
  expect(screen.getByText('当前后端版本较旧，不支持自动更新设置；请先升级该后端。')).toBeInTheDocument();
+});
+
+const updateSettings={general:{web_listen:'127.0.0.1:1055'},security:{tls_cert:'',authentication:true},updates:{automatic_check:true,check_beta:false,automatic_install:false,check_interval_hours:12,update_time:'03:00'}};
+it('combines local update controls and policy into one form, saving prompts with settings',async()=>{
+ const postAction=vi.fn(),postPreferences=vi.fn(value=>queueMicrotask(()=>{Object.assign(window.routepilotNativePreferences,value);window.dispatchEvent(new CustomEvent('routepilot-preferences-saved',{detail:{requestID:value._requestID,ok:true}}))}));
+ window.webkit={messageHandlers:{routepilotPreferences:{postMessage:postPreferences},routepilotUpdateAction:{postMessage:postAction}}};
+ window.routepilotNativePreferences={updatePrompts:true,assistantReady:false};
+ const fetch=vi.fn(async(url,options)=>({ok:true,status:200,json:async()=>({settings:JSON.parse(options.body)})}));vi.stubGlobal('fetch',fetch);
+ const notify=vi.fn();render(<Settings settings={updateSettings} refresh={()=>{}} notify={notify}/>);
+ fireEvent.click(screen.getByRole('button',{name:'软件更新',exact:true}));
+ expect(screen.getAllByRole('heading',{name:'软件更新',exact:true})).toHaveLength(1);
+ expect(document.querySelectorAll('form')).toHaveLength(1);
+ expect(screen.queryByRole('heading',{name:'软件更新设置'})).not.toBeInTheDocument();
+ expect(screen.queryByRole('button',{name:'启用更新助手'})).not.toBeInTheDocument();
+ expect(screen.queryByRole('button',{name:'保存应用偏好'})).not.toBeInTheDocument();
+ fireEvent.click(screen.getByRole('button',{name:'立即检查更新'}));
+ expect(postAction).toHaveBeenCalledWith('check');expect(fetch).not.toHaveBeenCalled();
+ fireEvent.click(screen.getByLabelText('发现新版本时提示'));
+ act(()=>{Object.assign(window.routepilotNativePreferences,{updateAvailable:true,updateVersion:'v9.0.0',desktopNotifications:true});window.dispatchEvent(new Event('routepilot-preferences-changed'))});
+ expect(screen.getByLabelText('发现新版本时提示')).not.toBeChecked();
+ expect(screen.getByText('已发现可用更新：v9.0.0')).toBeInTheDocument();
+ fireEvent.click(screen.getByRole('button',{name:'保存设置'}));
+ await waitFor(()=>expect(notify).toHaveBeenCalledWith('设置已保存'));
+ expect(fetch).toHaveBeenCalledTimes(1);
+ expect(postPreferences).toHaveBeenCalledWith(expect.objectContaining({updatePrompts:false,desktopNotifications:true}));
+ expect(JSON.parse(fetch.mock.calls[0][1].body)).not.toHaveProperty('updatePrompts');
+});
+
+it('checks and upgrades the remote connection without invoking the local App',async()=>{
+ const postAction=vi.fn();window.webkit={messageHandlers:{routepilotPreferences:{postMessage:vi.fn()},routepilotUpdateAction:{postMessage:postAction}}};
+ window.routepilotNativePreferences={updatePrompts:true,assistantReady:true};selectBackend('hermes');
+ const result={current:'1.0.0',app_current:'1.0.0',latest:'v1.0.1',available:true,supported:true,phase:'idle',release_notes:'## Changes'};
+ const fetch=vi.fn(async()=>({ok:true,status:200,json:async()=>result}));vi.stubGlobal('fetch',fetch);
+ render(<Settings settings={updateSettings} backend={{id:'hermes',name:'Hermes'}} status={{online_update:true}} refresh={()=>{}} notify={()=>{}}/>);
+ fireEvent.click(screen.getByRole('button',{name:'软件更新',exact:true}));
+ await screen.findByText('有可用的软件新版本');
+ expect(screen.queryByLabelText('发现新版本时提示')).not.toBeInTheDocument();
+ expect(screen.queryByRole('button',{name:'停用更新助手'})).not.toBeInTheDocument();
+ expect(screen.getAllByRole('heading',{level:2})).toHaveLength(1);
+ fireEvent.click(screen.getByRole('button',{name:'立即检查更新'}));
+ await screen.findByRole('dialog');
+ fireEvent.click(screen.getByRole('button',{name:'立即升级'}));
+ await waitFor(()=>expect(fetch.mock.calls.some(([url,options])=>url==='/api/v1/management/relay/hermes/updates/install'&&options.method==='POST')).toBe(true));
+ expect(fetch.mock.calls.filter(([url])=>url.endsWith('/updates/check'))).toHaveLength(2);
+ expect(fetch.mock.calls.every(([url])=>url.startsWith('/api/v1/management/relay/hermes/'))).toBe(true);
+ expect(postAction).not.toHaveBeenCalled();
+});
+
+it('checks the connected local Mac from a browser through the backend API',async()=>{
+ const fetch=vi.fn(async()=>({ok:true,status:200,json:async()=>({available:false,supported:true,current:'1.0.1',phase:'idle'})}));vi.stubGlobal('fetch',fetch);
+ render(<Settings settings={updateSettings} status={{online_update:true}} refresh={()=>{}} notify={()=>{}}/>);
+ fireEvent.click(screen.getByRole('button',{name:'软件更新',exact:true}));
+ await screen.findByText('软件已是最新版本');
+ fireEvent.click(screen.getByRole('button',{name:'立即检查更新'}));
+ await waitFor(()=>expect(fetch.mock.calls.filter(([url])=>url==='/api/v1/updates/check')).toHaveLength(2));
 });

@@ -349,6 +349,52 @@ func TestManagerCheckBetaChannel(t *testing.T) {
 	}
 }
 
+func TestCheckCacheSeparatesChannelsAndInstallRejectsChangedChannel(t *testing.T) {
+	m := isolatedManager(t).manager
+	m.checkedAt = time.Time{}
+	stable := managerTarget()
+	parts := mustVersion(stable)
+	beta := fmt.Sprintf("v%d.%d.%d-beta.2", parts[0], parts[1], parts[2]+1)
+	calls := 0
+	m.ops.fetch = func(_ context.Context, address string, _ int64) ([]byte, error) {
+		calls++
+		if strings.Contains(address, "?limit=") {
+			return []byte(fmt.Sprintf(`[{"tag_name":%q,"prerelease":true}]`, beta)), nil
+		}
+		return []byte(fmt.Sprintf(`{"tag_name":%q}`, stable)), nil
+	}
+	if status, err := m.Check(context.Background(), true); err != nil || status.Latest != beta {
+		t.Fatal(status, err)
+	}
+	if _, err := m.StartForChannel(beta, false); err == nil {
+		t.Fatal("accepted the cached beta after disabling beta checks")
+	}
+	if status, err := m.Check(context.Background(), false); err != nil || status.Latest != stable || calls != 3 {
+		t.Fatal("stable channel reused a beta result", status, err, calls)
+	}
+	if _, err := m.Check(context.Background(), false); err != nil || calls != 3 {
+		t.Fatal("same channel no longer reuses its short cache", err, calls)
+	}
+	if status, err := m.Check(context.Background(), true); err != nil || status.Latest != beta || calls != 5 {
+		t.Fatal("beta channel reused a stable result", status, err, calls)
+	}
+}
+
+func TestFailedCheckIsVisibleInStatusAndClearsOnSuccess(t *testing.T) {
+	m := isolatedManager(t).manager
+	m.checkedAt = time.Time{}
+	m.ops.fetch = func(context.Context, string, int64) ([]byte, error) { return nil, errors.New("offline") }
+	if status, err := m.Check(context.Background(), false); err == nil || status.CheckError != "offline" || m.Status().CheckError != "offline" {
+		t.Fatal(status, err)
+	}
+	m.ops.fetch = func(context.Context, string, int64) ([]byte, error) {
+		return []byte(fmt.Sprintf(`{"tag_name":%q}`, managerTarget())), nil
+	}
+	if status, err := m.Check(context.Background(), false); err != nil || status.CheckError != "" {
+		t.Fatal(status, err)
+	}
+}
+
 func TestInstallableRelease(t *testing.T) {
 	for _, valid := range []release{
 		{Tag: "v1.0.1"},

@@ -1,16 +1,15 @@
-import React,{useEffect,useState} from 'react';
+import React,{useState} from 'react';
 import {FieldLabel} from './form-fields';
 import {useT,valueLabel} from './i18n';
-import {appPreferences,nativeApp,savePreferences} from './app-preferences';
+import {nativeApp,savePreferences,usePreferenceDraft} from './app-preferences';
 export const statusBarDefaults={animation:true,display:'none',metric:'queries_per_second',health:'Surge API',healthValue:'latency_ms'};
 export function StatusBarSettings({notify}){
- const t=useT(),[preferences,setPreferences]=useState(appPreferences),[busy,setBusy]=useState(false);
+ const t=useT(),[preferences,setPreferences,saved]=usePreferenceDraft(['statusBar']),[busy,setBusy]=useState(false);
  const draft={...statusBarDefaults,...preferences.statusBar},supported=nativeApp();
  const healthNames=[...new Set((preferences.statusBarHealth||[]).filter(name=>typeof name==='string'&&name.length))];
  const healthDisplay=['health_state','health_value'].includes(draft.display),missingHealth=healthDisplay&&!healthNames.includes(draft.health);
- useEffect(()=>{const changed=()=>setPreferences(appPreferences()),healthChanged=()=>setPreferences(previous=>({...previous,statusBarHealth:appPreferences().statusBarHealth}));window.addEventListener('routepilot-preferences-changed',changed);window.addEventListener('routepilot-statusbar-health-changed',healthChanged);return()=>{window.removeEventListener('routepilot-preferences-changed',changed);window.removeEventListener('routepilot-statusbar-health-changed',healthChanged)}},[]);
  const set=(key,value)=>setPreferences({...preferences,statusBar:{...draft,[key]:value}});
- const save=async e=>{e.preventDefault();if(missingHealth){notify(t('请选择现有健康检查项。'),true);return}setBusy(true);try{await savePreferences({...preferences,statusBar:draft});notify(t('应用偏好已保存'))}catch(e){notify(e.message,true)}finally{setBusy(false)}};
+ const save=async e=>{e.preventDefault();if(missingHealth){notify(t('请选择现有健康检查项。'),true);return}setBusy(true);try{await savePreferences({...preferences,statusBar:draft});saved();notify(t('应用偏好已保存'))}catch(e){notify(e.message,true)}finally{setBusy(false)}};
  const select=(key,label,options)=><FieldLabel label={t(label)} required><select value={draft[key]} onChange={e=>set(key,e.target.value)}>{Object.entries(options).map(([key,label])=><option key={key} value={key}>{t(label)}</option>)}</select></FieldLabel>;
  return <section className="panel"><h2>{t('状态栏设置')}</h2><p>{t('设置保存在本机 App，显示本机后台的数据；切换远程管理页面不会改变数据来源。')}</p>{!supported&&<p className="notice">{t('请在 RoutePilot App 中配置状态栏。')}</p>}<form onSubmit={save}><fieldset disabled={!supported||busy} className="plain-fieldset"><div className="option-grid"><label className="check"><input type="checkbox" checked={draft.animation} onChange={e=>set('animation',e.target.checked)}/>{t('启用图标动画')}</label></div><p>{t('以当前速度为最低速度，DNS 每秒请求数越高越快，最高为四倍；遵循 macOS 减少动态效果设置。')}</p><div className="form-grid">
  {select('display','图标旁显示',{none:'不显示数据',metric:'指标数据',health_state:'健康检查状态',health_value:'健康检查数值'})}

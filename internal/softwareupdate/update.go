@@ -51,6 +51,10 @@ type Status struct {
 	UpdatedAt       time.Time `json:"updated_at,omitempty"`
 	AppRestart      string    `json:"app_restart,omitempty"`
 	AppRestartError string    `json:"app_restart_error,omitempty"`
+	SkippedVersion  string    `json:"skipped_version,omitempty"`
+	CheckError      string    `json:"check_error,omitempty"`
+	AutomationError string    `json:"automation_error,omitempty"`
+	NextRetryAt     time.Time `json:"next_retry_at,omitempty"`
 }
 type release struct {
 	Tag        string `json:"tag_name"`
@@ -72,6 +76,8 @@ type Manager struct {
 	running         bool
 	latest          release
 	checkedAt       time.Time
+	checkedBeta     bool
+	checkError      string
 	beforeRestart   func() error
 	appRestartOnce  sync.Once
 	appReconcileMu  sync.Mutex
@@ -159,6 +165,12 @@ func versionParts(value string) ([]int, error) {
 		result[i] = n
 	}
 	return result, nil
+}
+
+// ValidateVersion accepts only the release identities supported by the installer.
+func ValidateVersion(value string) error {
+	_, err := versionParts(value)
+	return err
 }
 
 func validBetaSuffix(suffix string) bool {
@@ -258,6 +270,7 @@ func (m *Manager) snapshot() Status {
 	s.Supported, s.Reason, s.Current = m.supported, m.reason, buildinfo.Current().Version
 	s.Latest, s.CheckedAt = m.latest.Tag, m.checkedAt
 	s.ReleaseNotes = m.latest.Body
+	s.CheckError = m.checkError
 	if m.supported {
 		s.AppCurrent = m.ops.appVersion()
 		if restart := readAppRestart(); restart.Target == s.Target {
@@ -269,14 +282,23 @@ func (m *Manager) snapshot() Status {
 	return s
 }
 func (m *Manager) Status() Status { m.mu.Lock(); defer m.mu.Unlock(); return m.snapshot() }
-func (m *Manager) Check(ctx context.Context, includeBeta bool) (Status, error) {
+func (m *Manager) Check(ctx context.Context, includeBeta bool) (result Status, checkErr error) {
 	m.checkMu.Lock()
 	defer m.checkMu.Unlock()
+	defer func() {
+		if checkErr != nil {
+			m.mu.Lock()
+			m.checkError = checkErr.Error()
+			result = m.snapshot()
+			m.mu.Unlock()
+		}
+	}()
 	m.mu.Lock()
 	ctx, cancel := context.WithTimeout(ctx, 15*time.Second)
 	defer cancel()
 	// Reuse a result briefly so dashboard mounts and multiple clients do not flood Gitea.
-	if time.Since(m.checkedAt) < time.Minute {
+	if m.checkedBeta == includeBeta && time.Since(m.checkedAt) < time.Minute {
+		m.checkError = ""
 		value := m.snapshot()
 		m.mu.Unlock()
 		return value, nil
@@ -316,12 +338,24 @@ func (m *Manager) Check(ctx context.Context, includeBeta bool) (Status, error) {
 	defer m.mu.Unlock()
 	m.latest = r
 	m.checkedAt = time.Now().UTC()
+	m.checkedBeta = includeBeta
+	m.checkError = ""
 	return m.snapshot(), nil
 }
 func active(phase string) bool {
 	return phase == "downloading" || phase == "validating" || phase == "restarting"
 }
 func (m *Manager) Start(version string) (Status, error) {
+	return m.start(version, nil)
+}
+
+// StartForChannel prevents a configuration change from installing a release
+// checked under a different channel, even while that check is still recent.
+func (m *Manager) StartForChannel(version string, includeBeta bool) (Status, error) {
+	return m.start(version, &includeBeta)
+}
+
+func (m *Manager) start(version string, includeBeta *bool) (Status, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	if !m.supported {
@@ -331,7 +365,7 @@ func (m *Manager) Start(version string) (Status, error) {
 	if m.running || m.ops.pid() > 0 || active(previous.Phase) && time.Since(previous.UpdatedAt) < 10*time.Minute {
 		return m.snapshot(), errors.New("A backend update is already in progress")
 	}
-	if version != m.latest.Tag || !applicationUpdateAvailable(version, buildinfo.Current().Version, m.ops.appVersion()) || time.Since(m.checkedAt) > 10*time.Minute {
+	if includeBeta != nil && *includeBeta != m.checkedBeta || version != m.latest.Tag || !applicationUpdateAvailable(version, buildinfo.Current().Version, m.ops.appVersion()) || time.Since(m.checkedAt) > 10*time.Minute {
 		return m.snapshot(), errors.New("Check the latest release again before updating")
 	}
 	s := Status{Phase: "downloading", Target: version, UpdatedAt: time.Now().UTC()}

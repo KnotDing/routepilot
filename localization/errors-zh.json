@@ -385,5 +385,10 @@
   "invalid or duplicate Surge restart target": "Surge 重启检查目标为空、重复或名称不合法",
   "Surge restart probe URL must use HTTP(S) without credentials": "策略探测 URL 必须使用 HTTP(S)，且不能包含凭据",
   "Surge policy health probe failed": "Surge 策略健康探测失败",
-  "invalid Surge policy probe duration": "Surge 策略探测耗时不合法"
+  "invalid Surge policy probe duration": "Surge 策略探测耗时不合法",
+  "Persistent update storage is unavailable": "无法使用持久化更新记录，暂不能自动升级或保存跳过版本",
+  "A software update is already in progress": "软件更新正在进行中",
+  "Automatic installation could not start: {error}": "自动安装无法启动：{error}",
+  "Cannot load automatic update state: {error}": "无法读取自动更新记录：{error}",
+  "Cannot save automatic update state: {error}": "无法保存自动更新记录：{error}"
 }

@@ -1,17 +1,16 @@
 import React,{useEffect,useRef,useState} from 'react';
 import {useT} from './i18n';
-import {appPreferences,nativeApp,savePreferences} from './app-preferences';
+import {nativeApp,savePreferences,usePreferenceDraft} from './app-preferences';
 
 const defaults={cliEnabled:false,automaticSkillInstall:false,skillTargets:['codex']};
 const agents=[['codex','Codex'],['claude','Claude Code'],['hermes','Hermes'],['cursor','Cursor'],['copilot','GitHub Copilot'],['gemini','Gemini CLI'],['opencode','OpenCode'],['windsurf','Windsurf / Devin Desktop'],['cline','Cline'],['roo','Roo Code'],['kilo','Kilo Code'],['antigravity','Antigravity'],['openclaw','OpenClaw'],['qwen','Qwen Code'],['amp','Amp'],['pi','Pi']].map(([id,name])=>({id,name}));
 const entryLabel=id=>id==='cli'?'CLI':(agents.find(agent=>agent.id===id)?.name||id)+' skill';
 export function AutomationSettings({notify}){
- const t=useT(),[preferences,setPreferences]=useState(appPreferences),[busy,setBusy]=useState(false),[conflicts,setConflicts]=useState(null),[choices,setChoices]=useState({});
+ const t=useT(),[preferences,setPreferences,saved]=usePreferenceDraft(['automation']),[busy,setBusy]=useState(false),[conflicts,setConflicts]=useState(null),[choices,setChoices]=useState({});
  const modal=useRef(null),pending=useRef(null);
  const draft={...defaults,...preferences.automation},supported=nativeApp()&&preferences.automationSupported===true&&Array.isArray(preferences.automation?.skillTargets),status=preferences.automationStatus||{},entries=status.entries||[];
  const missingTarget=draft.automaticSkillInstall&&!draft.skillTargets.length;
  const visibleEntries=entries.filter(entry=>entry.id==='cli'||entry.installed||entry.skipped||draft.automaticSkillInstall&&draft.skillTargets.includes(entry.id));
- useEffect(()=>{const changed=()=>setPreferences(appPreferences());window.addEventListener('routepilot-preferences-changed',changed);return()=>window.removeEventListener('routepilot-preferences-changed',changed)},[]);
  useEffect(()=>{
   if(!conflicts)return;
   const focus=document.activeElement,overflow=document.body.style.overflow;document.body.style.overflow='hidden';modal.current?.querySelector('[data-continue]')?.focus();
@@ -26,7 +25,7 @@ export function AutomationSettings({notify}){
   if(busy||!supported)return;
   if(value.automation.automaticSkillInstall&&!value.automation.skillTargets.length){notify(t('至少选择一个 agent。'),true);return}
   setBusy(true);
-  try{await savePreferences({...value,_automation:true,_automationChoices:resolutions});setConflicts(null);pending.current=null;notify(t('CLI 与 skill 设置已保存'))}
+  try{await savePreferences({...value,_automation:true,_automationChoices:resolutions});saved();setConflicts(null);pending.current=null;notify(t('CLI 与 skill 设置已保存'))}
   catch(e){if(e.code==='automation_conflict'&&Array.isArray(e.conflicts)&&e.conflicts.length){pending.current=value;setConflicts(e.conflicts);setChoices(Object.fromEntries(e.conflicts.map(item=>[item.id,'overwrite'])))}else notify(e.message,true)}
   finally{setBusy(false)}
  };

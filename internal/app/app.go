@@ -914,6 +914,8 @@ func (a *App) activateConfiguration(ctx context.Context, d config.Document) erro
 	newRuntime.Settings.Security = config.Security{}
 	oldRuntime.Settings.Notifications = config.Notifications{}
 	newRuntime.Settings.Notifications = config.Notifications{}
+	oldRuntime.Settings.Updates = config.Updates{}
+	newRuntime.Settings.Updates = config.Updates{}
 	oldRuntime.Settings.Logging.Level = ""
 	newRuntime.Settings.Logging.Level = ""
 	oldRuntime.Settings.Logging.EventRetention = 0

@@ -120,3 +120,29 @@ func waitConfiguration(t *testing.T, a *App, state string) ApplicationStatus {
 	t.Fatalf("configuration did not reach %s", state)
 	return ApplicationStatus{}
 }
+
+func TestUpdateSettingsApplyWithoutRestartingRuntime(t *testing.T) {
+	a := fixtureApp(t)
+	a.mu.RLock()
+	rt := a.runtime
+	a.mu.RUnlock()
+	d := a.Configuration()
+	d.Settings.Updates.CheckBeta = true
+	d.Settings.Updates.AutomaticInstall = true
+	d.Settings.Updates.CheckIntervalHours = 6
+	d.Settings.Updates.UpdateTime = "03:30"
+	if err := a.SaveConfiguration(context.Background(), d); err != nil {
+		t.Fatal(err)
+	}
+	waitConfiguration(t, a, "succeeded")
+	a.mu.RLock()
+	unchanged := a.runtime == rt
+	a.mu.RUnlock()
+	if !unchanged || a.activeConfiguration().Settings.Updates != d.Settings.Updates {
+		t.Fatal("automatic update settings rebuilt the DNS/routing runtime or did not apply")
+	}
+	saved, err := a.store.Load(context.Background())
+	if err != nil || saved.Settings.Updates != d.Settings.Updates {
+		t.Fatal("automatic update settings were not persisted", err)
+	}
+}

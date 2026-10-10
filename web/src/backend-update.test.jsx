@@ -20,10 +20,32 @@ it('uses one dialog with three choices and safe rendered Markdown',async()=>{
  expect(dialog.querySelector('img,script,input[type=checkbox]')).toBeNull();expect(window.untrustedRelease).toBeUndefined();
 });
 it('skips only the selected backend version and allows manual rechecking',async()=>{
- const dialog=await open();fireEvent.click(within(dialog).getByRole('button',{name:'跳过该版本'}));
- expect(localStorage.getItem('routepilot.skippedBackendVersion:remote')).toBe('v0.5.2');expect(screen.queryByRole('dialog')).not.toBeInTheDocument();expect(screen.queryByLabelText('远程软件更新')).not.toBeInTheDocument();
+ const dialog=await open();request.mockResolvedValue({...available,skipped_version:'v0.5.2'});fireEvent.click(within(dialog).getByRole('button',{name:'跳过该版本'}));
+ await waitFor(()=>expect(screen.queryByRole('dialog')).not.toBeInTheDocument());expect(request).toHaveBeenCalledWith('updates/skip','POST',{version:'v0.5.2'});expect(screen.queryByLabelText('远程软件更新')).not.toBeInTheDocument();
  cleanup();request.mockResolvedValue({...available,latest:'v0.5.3'});mount();expect(await screen.findByRole('button',{name:'升级远程应用'})).toBeInTheDocument();
- fireEvent.click(screen.getByRole('button',{name:'检查远程更新'}));expect(await screen.findByRole('dialog')).toBeInTheDocument();
+ fireEvent.click(screen.getByRole('button',{name:'立即检查更新'}));expect(await screen.findByRole('dialog')).toBeInTheDocument();
+});
+
+it('keeps the dialog open and reports a failed durable skip',async()=>{
+ const dialog=await open();request.mockRejectedValue(new Error('Persistent update storage is unavailable'));
+ fireEvent.click(within(dialog).getByRole('button',{name:'跳过该版本'}));
+ expect(await screen.findByRole('alert')).toHaveTextContent('无法使用持久化更新记录');
+ expect(screen.getByRole('dialog')).toBeInTheDocument();
+});
+
+it('shows a durable skip in settings and can unskip it',async()=>{
+ request.mockResolvedValue({...available,skipped_version:'v0.5.2'});
+ render(<BackendUpdate backend={backend} capable software={{version:'0.5.1'}} showCurrent/>);
+ expect(await screen.findByText('已跳过版本 v0.5.2，不会自动安装')).toBeInTheDocument();
+ request.mockResolvedValue(available);fireEvent.click(screen.getByRole('button',{name:'取消跳过'}));
+ await waitFor(()=>expect(screen.queryByText('已跳过版本 v0.5.2，不会自动安装')).not.toBeInTheDocument());
+ expect(request).toHaveBeenCalledWith('updates/skip','POST',{version:''});
+});
+
+it('displays scheduled check failures even when no update is available',async()=>{
+ request.mockResolvedValue({...available,available:false,check_error:'release server offline',next_retry_at:'2099-01-01T00:00:00Z'});mount();
+ expect(await screen.findByRole('alert')).toHaveTextContent('release server offline');
+ expect(screen.getByText(/后重试/)).toBeInTheDocument();
 });
 it('later and Escape preserve the backend and restore page scrolling',async()=>{
  let dialog=await open();expect(document.body.style.overflow).toBe('hidden');fireEvent.click(within(dialog).getByRole('button',{name:'稍后升级'}));expect(document.body.style.overflow).not.toBe('hidden');
