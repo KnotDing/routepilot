@@ -205,7 +205,7 @@ bin/surge-controller serve --database /ABSOLUTE/PRIVATE/DIRECTORY/controller.sql
 
 默认需要同一条件 **连续失败 5 次且持续 15 秒**，启动后宽限 60 秒；每次尝试冷却 300 秒，每小时最多 3 次，失败尝试也占用次数。各项均可调整，成功探测会清零对应失败记录。使用 Surge CLI 的 `restart-engine` 重启引擎，现有连接会中断、Surge 自身缓存与临时规则会清理；CLI 不支持或不响应时记录失败，不强制结束进程。记录可在设置与事件中查看，策略组与节点也可单独选择异常通知。后台关闭后不继续检查。Surge DNS 的可用性检查接受真实地址、成功空响应和 NXDOMAIN；它独立于 Fake-IP 路由的健康门禁，不会因真实地址不在 Fake-IP 网段而重启。
 
-在 **设置 → 状态栏** 中控制本机 App 的图标动画与旁边显示的数据。默认仅显示图标，动画按每秒 DNS 请求数平滑加速，最低保持原速度、最高四倍；每个包仍按 DIRECT / SURGE 比例随机选择一个分支。可以显示 QPS、累计请求或错误、BGP 路由数、运行时间，也可填写健康检查名称显示状态、耗时、连续失败或成功次数。数据来自本机后台，远程页面切换不会改变来源；离线或组件不存在时显示 `—`。macOS“减少动态效果”会关闭动画。
+在 **设置 → 状态栏** 中控制本机 App 的图标动画与旁边显示的数据。默认仅显示图标，动画按每秒 DNS 请求数平滑加速，最低保持原速度、最高四倍；每个包仍按 DIRECT / SURGE 比例随机选择一个分支。可以显示每秒或每分钟 DNS 请求数、累计请求或错误、DIRECT / SURGE / REJECT / UNKNOWN / 错误占比、BGP 路由数或容量占比、运行时间，也可从现有健康检查项的下拉菜单中选择状态、耗时、连续失败或成功次数。请求占比按累计 DNS 请求总数计算，BGP 容量占比按已发布路由数与路由上限计算。数据来自本机后台，远程页面切换不会改变来源；离线或组件不存在时显示 `—`。macOS“减少动态效果”会关闭动画。
 
 ### Gitea 自动发布
 
@@ -342,6 +342,6 @@ curl -fsSL https://gitea.knotding.com/knot/routepilot/raw/branch/main/scripts/in
 
 同一命令可重复传入 `--agent` 安装到多个 agent，例如 `sh -s -- --agent codex --agent cursor --agent gemini`。全部标识与安装目录见 [支持的 agent](docs/cli.md#支持的-agent)。
 
-安装器从官方仓库下载 **v0.6.3** 的 skill，无需克隆仓库、编译或管理员权限。默认覆盖同名 skill，并将原内容备份到 skills 目录之外的 `routepilot-skill-backups`，具体路径会打印出来；想保留已有内容，在命令末尾使用 `sh -s -- --on-conflict skip`（可与 `--agent claude` 一起传入）。仅安装 skill，不会启用 CLI 或保存登录凭证；使用前请在 RoutePilot **设置 → CLI 与 skill** 启用 CLI，安装完成后让 agent 重新加载 skills。
+安装器从官方仓库下载 **v0.6.4** 的 skill，无需克隆仓库、编译或管理员权限。默认覆盖同名 skill，并将原内容备份到 skills 目录之外的 `routepilot-skill-backups`，具体路径会打印出来；想保留已有内容，在命令末尾使用 `sh -s -- --on-conflict skip`（可与 `--agent claude` 一起传入）。仅安装 skill，不会启用 CLI 或保存登录凭证；使用前请在 RoutePilot **设置 → CLI 与 skill** 启用 CLI，安装完成后让 agent 重新加载 skills。
 
 安装脚本源码：[scripts/install_skill.sh](scripts/install_skill.sh)。

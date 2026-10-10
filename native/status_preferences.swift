@@ -7,9 +7,17 @@ struct StatusBarPreferences: Codable {
     var metric = "queries_per_second"
     var health = "Surge API"
     var healthValue = "latency_ms"
+    static let metrics = [
+        "queries_per_second": "每秒 DNS 请求数", "queries_per_minute": "每分钟 DNS 请求数",
+        "queries": "DNS 请求总数", "direct": "DIRECT 请求总数", "surge": "SURGE 请求总数",
+        "reject": "REJECT 请求总数", "errors": "DNS 错误总数",
+        "direct_ratio": "DIRECT 请求占比", "surge_ratio": "SURGE 请求占比",
+        "reject_ratio": "REJECT 请求占比", "unknown_ratio": "UNKNOWN 请求占比", "errors_ratio": "DNS 错误占比",
+        "bgp_advertised": "BGP 已发布路由数", "bgp_utilization": "BGP 路由容量占比", "uptime_seconds": "后台运行秒数"
+    ]
     var valid: Bool {
         ["none", "metric", "health_state", "health_value"].contains(display)
-        && ["queries_per_second", "queries", "direct", "surge", "reject", "errors", "bgp_advertised", "uptime_seconds"].contains(metric)
+        && Self.metrics[metric] != nil
         && ["latency_ms", "failures", "successes"].contains(healthValue)
         && !health.isEmpty && health.utf8.count <= 256 && !health.contains(where: { $0.isNewline || $0 == "\0" })
     }
@@ -20,11 +28,22 @@ struct StatusBarPreferences: Codable {
             guard let value = value as? NSNumber, value.doubleValue.isFinite, value.doubleValue >= 0 else { return "—" }
             return String(format: "%.0f", min(value.doubleValue, 999999999)) + suffix
         }
+        func percentage(_ value: Any?, total: Any?) -> String {
+            guard let value = value as? NSNumber, let total = total as? NSNumber,
+                  value.doubleValue.isFinite, value.doubleValue >= 0,
+                  total.doubleValue.isFinite, total.doubleValue > 0 else { return "—" }
+            return number(min(value.doubleValue / total.doubleValue, 1) * 100, suffix: "%")
+        }
         if display == "metric" {
             let counters = status["counters"] as? [String: Any] ?? [:]
             switch metric {
             case "queries_per_second": return number(status["queries_per_second"], suffix: "/s")
+            case "queries_per_minute": return number(status["queries_per_minute"], suffix: "/min")
+            case "direct_ratio", "surge_ratio", "reject_ratio", "unknown_ratio", "errors_ratio":
+                let key = ["direct_ratio":"Direct", "surge_ratio":"Surge", "reject_ratio":"Reject", "unknown_ratio":"Unknown", "errors_ratio":"Errors"][metric]!
+                return percentage(counters[key], total: counters["Queries"])
             case "bgp_advertised": return number(bgp["advertised"])
+            case "bgp_utilization": return percentage(bgp["advertised"], total: bgp["limit"])
             case "uptime_seconds": return number(status["uptime_seconds"], suffix: "s")
             default: return number(counters[["queries":"Queries", "direct":"Direct", "surge":"Surge", "reject":"Reject", "errors":"Errors"][metric] ?? ""])
             }

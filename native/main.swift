@@ -272,7 +272,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
                 guard let name = component["name"] as? String, name.hasPrefix("BGP peer ") else { return false }
                 return !peerAddresses.contains(String(name.dropFirst("BGP peer ".count)))
             }
+            let previousHealthNames = notificationHealth.compactMap { $0["name"] as? String }
             notificationHealth = activeHealth
+            if previousHealthNames != notificationHealth.compactMap({ $0["name"] as? String }) { publishStatusBarHealth() }
             activeHealth.append(["name": "Management connection", "state": "UP"])
             serviceNotifications.observe(scope: client.base.absoluteString, name: status["name"] as? String ?? L("本地服务"), health: activeHealth, settings: notificationSettings)
             lastError = ""
@@ -342,7 +344,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
         let visual = serviceVisualState
         let preference = AppPreferences.current.statusBar
         statusIconAnimator?.configure(animation: preference.animation, queriesPerSecond: (status["queries_per_second"] as? NSNumber)?.doubleValue ?? 0)
-        let caption = preference.text(status: status, health: health, bgp: bgp, available: authenticated && lastError.isEmpty)
+        let caption = preference.text(status: status, health: notificationHealth, bgp: bgp, available: authenticated && lastError.isEmpty)
         statusItem.length = caption.isEmpty ? NSStatusItem.squareLength : NSStatusItem.variableLength
         statusItem.button?.title = caption.isEmpty ? "" : " " + caption
         statusItem.button?.font = NSFont.monospacedDigitSystemFont(ofSize: 12, weight: .regular)
@@ -357,7 +359,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
         let down = notificationHealth.filter { ($0["state"] as? String)?.uppercased() == "DOWN" }.compactMap { $0["name"] as? String }
         if authenticated && !down.isEmpty { statusItem.button?.toolTip? += "\n" + down.map { L($0) }.joined(separator: "、") }
         if visual == .healthy { statusItem.button?.toolTip? += "\n" + L("分流动画：上支 DIRECT，下支 SURGE") }
-        if !caption.isEmpty { statusItem.button?.toolTip? += "\n" + (preference.display == "metric" ? L(["queries_per_second":"每秒 DNS 请求数", "queries":"DNS 请求总数", "direct":"DIRECT 请求总数", "surge":"SURGE 请求总数", "reject":"REJECT 请求总数", "errors":"DNS 错误总数", "bgp_advertised":"BGP 已发布路由数", "uptime_seconds":"后台运行秒数"][preference.metric] ?? "状态栏指标") : preference.health) + " · " + caption }
+        if !caption.isEmpty { statusItem.button?.toolTip? += "\n" + (preference.display == "metric" ? L(StatusBarPreferences.metrics[preference.metric] ?? "状态栏指标") : L(preference.health)) + " · " + caption }
         if let versionWarning { statusItem.button?.toolTip? += "\n" + L(versionWarning) }
     }
     func userContentController(_ userContentController: WKUserContentController, didReceive message: WKScriptMessage) {
@@ -471,6 +473,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
         let source = marker + "if(!localStorage.getItem('routepilot.locale'))localStorage.setItem('routepilot.locale','\(NativeText.locale)');"
         controller.addUserScript(WKUserScript(source: source, injectionTime: .atDocumentStart, forMainFrameOnly: true))
     }
+    func publishStatusBarHealth() {
+        guard let data = try? JSONSerialization.data(withJSONObject: notificationHealth.compactMap({ $0["name"] as? String })),
+              let json = String(data: data, encoding: .utf8) else { return }
+        // Update only the available checks, preserving unsaved preference edits.
+        let source = "window.routepilotNativePreferences=window.routepilotNativePreferences||{};window.routepilotNativePreferences.statusBarHealth=" + json + ";window.dispatchEvent(new Event('routepilot-statusbar-health-changed'));"
+        webView?.evaluateJavaScript(source, completionHandler: nil)
+    }
     func configurePreferenceSeed(_ controller: WKUserContentController) {
         let marker = "/* RoutePilot preferences */"
         let scripts = controller.userScripts.filter { !$0.source.hasPrefix(marker) }
@@ -478,7 +487,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
         scripts.forEach { controller.addUserScript($0) }
         guard let data = try? JSONEncoder().encode(AppPreferences.current),
               var preferences = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { return }
-        preferences["statusBarHealth"] = health.compactMap { $0["name"] as? String }
+        preferences["statusBarHealth"] = notificationHealth.compactMap { $0["name"] as? String }
         preferences["assistantReady"] = UpdateAssistant.configured
         preferences["remoteCredentialsSupported"] = true
         preferences["automationSupported"] = AutomationIntegration.supported

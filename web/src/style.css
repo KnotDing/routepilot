@@ -478,7 +478,6 @@ label[data-missing=true] > :is(input,textarea,select):not(:disabled),.form-grid 
 /* Connection actions and the current mode stay visible in the sidebar. */
 .nav-heading { display:flex; align-items:center; justify-content:space-between; gap:8px; }
 .nav-mode { max-width:130px; padding:3px 7px; border:1px solid #ffffff20; border-radius:6px; background:#ffffff08; color:#b9c8e0; font-size:11px; line-height:20px; letter-spacing:normal; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
-.aside-foot strong { display:block; font-weight:500; color:#c4d1e5; overflow-wrap:anywhere; }
 .sidebar-connection { display:flex; width:100%; justify-content:space-between; height:34px; margin:8px 0 4px; padding:0 9px; border-color:#ffffff20; border-radius:7px; background:#ffffff08; color:#c4d1e5; font-size:12px; }
 .sidebar-connection span:first-child { overflow:hidden; text-overflow:ellipsis; }
 .sidebar-connection:hover,.sidebar-signout:hover { background:#ffffff14; color:#fff; border-color:#ffffff38; }
