@@ -16,6 +16,13 @@ Overload does not spawn unbounded workers or processes. The Surge evaluator has
 its own worker pool, queue, singleflight and deadlines. Histories and caches are
 bounded; management query history is configurable, bounded and kept only in memory. No per-query service log or SQL event is emitted. The persisted decision cache contains domain/client keys and classification results, not a chronological query history. An explicitly requested, mode-0600 diagnostic journal is the only on-disk query trace.
 
+Client statistics are collected independently of optional query history. The
+runtime keeps per-client DNS decision/error counts and last-seen time for up to
+4096 client addresses; the least recently seen entry is evicted when full.
+Aggregate counts include evicted entries and feed both the Clients page and
+native status-bar metric choices. These statistics are in-memory and reset when
+the DNS runtime is replaced or restarted.
+
 ## Policy evidence and deliberately conservative DIRECT
 
 The local Surge CLI is executed through an argument array with `--raw`. The

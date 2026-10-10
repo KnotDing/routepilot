@@ -13,13 +13,20 @@ it('keeps accessible names stable and highlights empty required controls',()=>{
  rerender(<FieldLabel label="名称" required><input value="Controller" readOnly/></FieldLabel>);
  expect(screen.getByLabelText('名称').closest('label')).not.toHaveAttribute('data-missing');
 });
-it('marks Router ID only after enabling BGP',()=>{
- render(<Settings settings={{general:{name:'Test'},bgp:{enabled:false,router_id:''},routing:{mode:'bgp'}}} notify={()=>{}} refresh={()=>{}}/>);
- fireEvent.click(screen.getByRole('button',{name:'BGP',exact:true}));
+it('shows BGP settings only for BGP-capable routing modes',()=>{
+ render(<Settings settings={{general:{name:'Test'},bgp:{enabled:false,router_id:''},routing:{mode:'static',fake_ip_backend:'static',dns_backend:'static'}}} notify={()=>{}} refresh={()=>{}}/>);
+ fireEvent.click(screen.getByRole('button',{name:'路由',exact:true}));
+ expect(screen.queryByRole('heading',{name:'BGP'})).not.toBeInTheDocument();
+ fireEvent.change(screen.getByLabelText('路由模式'),{target:{value:'bgp'}});
+ expect(screen.getByRole('heading',{name:'BGP'})).toBeInTheDocument();
  expect(screen.getByLabelText('Router ID')).not.toBeRequired();
  fireEvent.click(screen.getByLabelText('启用'));
  expect(screen.getByLabelText('Router ID')).toBeRequired();
  expect(screen.getByLabelText('Router ID').closest('label')).toHaveAttribute('data-missing','true');
+ fireEvent.change(screen.getByLabelText('路由模式'),{target:{value:'hybrid'}});
+ expect(screen.getByLabelText('Router ID')).toBeInTheDocument();
+ fireEvent.change(screen.getByLabelText('路由模式'),{target:{value:'static'}});
+ expect(screen.queryByRole('heading',{name:'BGP'})).not.toBeInTheDocument();
 });
 it('marks transparent listeners, ingress and the matching network family when enabled',()=>{
  render(<Settings settings={{general:{name:'Test'},dns:{interception_enabled:false,listeners:['127.0.0.1:1053'],transparent_listeners:[],ingress_interfaces:[],egress_interface:'',source4:'',source6:'',gateway4:'',gateway6:'',upstreams:[]}}} interception={[{enabled:true,prefix:'192.0.2.53/32'}]} notify={()=>{}} refresh={()=>{}}/>);

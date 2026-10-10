@@ -16,6 +16,7 @@ function fixture(path){
  if(path==='routing/status')return {mode:'hybrid',routes:[{prefix:'198.18.0.0/16',kind:'fake-ip',backend:'static',next_hop:'192.0.2.2',route_state:'external-unconfirmed',installed:null,verified:false}]};
  if(path==='bgp/peers')return [peer];
  if(path==='dns/queries')return [record];
+ if(path==='dns/clients')return {clients:[],stats:{clients:0,queries:0,direct:0,surge:0,reject:0,unknown:0,errors:0},capacity:4096,evicted_clients:0};
  if(path.startsWith('dns/cache'))return {entries:[],response_stats:{entries:2,stale_entries:1,hits:7,misses:3,evictions:1,capacity:10000},stats:{entries:1,hits:1,misses:0},total:0};
  if(path==='surge/status')return {snapshot:{profile:'Default',mode:'rule',always_real_ip:['*.example.net'],always_real_ip_count:1,always_real_ip_observed_at:'2026-10-08T00:00:00Z'}};
  if(path==='test/domain')return {match:{rule:'DOMAIN,example.com,Proxy',final:'Proxy'},decision:record.result};
@@ -28,7 +29,7 @@ function noUntranslatedText(){const texts=[];const walker=document.createTreeWal
 afterEach(()=>{cleanup();localStorage.clear();sessionStorage.clear();selectBackend('');vi.unstubAllGlobals();document.documentElement.lang='zh-CN'});
 it('localizes every page, settings category, editor and query detail through the global preference',async()=>{
  localStorage.setItem('routepilot.locale','en');vi.stubGlobal('EventSource',class{addEventListener(){}close(){}});vi.stubGlobal('fetch',vi.fn(async url=>({ok:true,status:200,json:async()=>fixture(String(url).replace('/api/v1/',''))})));render(<App/>);await screen.findByRole('heading',{level:1,name:'Dashboard'});await screen.findByText('DNS and routing');
- const pages=['DNS overview','Query history','Decision cache','DNS interception','Local DNS','Domain overrides','Rule test','Routing','BGP overview','BGP neighbors','Manual routes','Health status','Events','Settings'];
+ const pages=['DNS overview','Query history','Decision cache','Client','DNS interception','Local DNS','Domain overrides','Rule test','Routing','BGP overview','BGP neighbors','Manual routes','Health status','Events','Settings'];
  for(const [index,page] of pages.entries()){
   fireEvent.click(screen.getByRole('navigation').querySelectorAll('button')[index+1]);await screen.findByRole('heading',{level:1,name:page});await waitFor(noUntranslatedText);
   if(['DNS interception','Local DNS','Domain overrides','BGP neighbors','Manual routes'].includes(page)){fireEvent.click(screen.getByRole('button',{name:'＋ Add'}));noUntranslatedText();fireEvent.click(screen.getByRole('button',{name:'Close'}))}
@@ -53,7 +54,7 @@ it('shows never for unset health times and rounds monitoring latency to integer 
  await screen.findByRole('heading',{level:1,name:'仪表盘'});
  const dashboard=await screen.findByRole('row',{name:'控制器 正常 1'});
  expect(within(dashboard).getByRole('cell',{name:'1',exact:true})).toBeInTheDocument();
- fireEvent.click(screen.getByRole('navigation').querySelectorAll('button')[12]);
+ fireEvent.click(screen.getByRole('navigation').querySelectorAll('button')[13]);
  await screen.findByRole('heading',{level:1,name:'健康状态'});
  const rows=screen.getAllByRole('row');
  expect(within(rows[1]).getAllByRole('cell',{name:'从不'})).toHaveLength(2);

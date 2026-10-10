@@ -23,6 +23,7 @@ it('offers QPS, metric and health-state display choices',()=>{
  window.webkit={messageHandlers:{routepilotPreferences:{postMessage:vi.fn()}}};render(<StatusBarSettings notify={()=>{}}/>);
  fireEvent.change(screen.getByLabelText('图标旁显示'),{target:{value:'metric'}});
  expect(screen.getByLabelText('显示指标')).toHaveValue('queries_per_second');
+ for(const label of ['决策缓存条目数','决策缓存命中次数','决策缓存未命中次数','查询缓存条目数','查询缓存命中次数','查询缓存未命中次数','已跟踪客户端数','客户端 DNS 请求总数','客户端 DIRECT 请求数','客户端 SURGE 请求数','客户端 REJECT 请求数','客户端 UNKNOWN 请求数','客户端 DNS 错误数'])expect(screen.getByRole('option',{name:label})).toBeInTheDocument();
  fireEvent.change(screen.getByLabelText('图标旁显示'),{target:{value:'health_state'}});
  expect(screen.getByLabelText('健康检查名称')).toBeRequired();
  expect(screen.queryByLabelText('健康检查数值')).not.toBeInTheDocument();

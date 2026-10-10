@@ -5,6 +5,7 @@ import (
 	"errors"
 	"net"
 	"net/netip"
+	"sort"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -43,6 +44,130 @@ func (c *Counters) Restore(s CounterSnapshot) {
 	c.Intercepted.Store(s.Intercepted)
 	c.Addressed.Store(s.Addressed)
 	c.Errors.Store(s.Errors)
+}
+
+type ClientStats struct {
+	ClientIP string    `json:"client_ip"`
+	Queries  uint64    `json:"queries"`
+	Direct   uint64    `json:"direct"`
+	Surge    uint64    `json:"surge"`
+	Reject   uint64    `json:"reject"`
+	Unknown  uint64    `json:"unknown"`
+	Errors   uint64    `json:"errors"`
+	LastSeen time.Time `json:"last_seen"`
+}
+
+type ClientStatsTotals struct {
+	Clients uint64 `json:"clients"`
+	Queries uint64 `json:"queries"`
+	Direct  uint64 `json:"direct"`
+	Surge   uint64 `json:"surge"`
+	Reject  uint64 `json:"reject"`
+	Unknown uint64 `json:"unknown"`
+	Errors  uint64 `json:"errors"`
+}
+
+type ClientStatsSnapshot struct {
+	Clients        []ClientStats     `json:"clients"`
+	Stats          ClientStatsTotals `json:"stats"`
+	Capacity       int               `json:"capacity"`
+	EvictedClients uint64            `json:"evicted_clients"`
+}
+
+type ClientStatistics struct {
+	mu       sync.Mutex
+	capacity int
+	clients  map[string]ClientStats
+	stats    ClientStatsTotals
+	evicted  uint64
+}
+
+func NewClientStatistics(capacity int) *ClientStatistics {
+	if capacity < 1 {
+		panic("client statistics capacity must be positive")
+	}
+	return &ClientStatistics{capacity: capacity, clients: make(map[string]ClientStats)}
+}
+
+func (s *ClientStatistics) Record(ip netip.Addr, decision model.Decision, failed bool, at time.Time) {
+	ip = ip.Unmap()
+	if !ip.IsValid() {
+		return
+	}
+	if at.IsZero() {
+		at = time.Now()
+	}
+	key := ip.String()
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	client, ok := s.clients[key]
+	if !ok {
+		if len(s.clients) >= s.capacity {
+			var oldest string
+			for candidate, entry := range s.clients {
+				if oldest == "" || entry.LastSeen.Before(s.clients[oldest].LastSeen) ||
+					entry.LastSeen.Equal(s.clients[oldest].LastSeen) && candidate < oldest {
+					oldest = candidate
+				}
+			}
+			delete(s.clients, oldest)
+			s.evicted++
+		}
+		client.ClientIP = key
+	}
+	client.Queries++
+	if at.After(client.LastSeen) {
+		client.LastSeen = at
+	}
+	switch decision {
+	case model.Direct:
+		client.Direct++
+	case model.Surge:
+		client.Surge++
+	case model.Reject:
+		client.Reject++
+	case model.Unknown:
+		client.Unknown++
+	}
+	if failed {
+		client.Errors++
+	}
+	s.clients[key] = client
+	s.stats.Queries++
+	switch decision {
+	case model.Direct:
+		s.stats.Direct++
+	case model.Surge:
+		s.stats.Surge++
+	case model.Reject:
+		s.stats.Reject++
+	case model.Unknown:
+		s.stats.Unknown++
+	}
+	if failed {
+		s.stats.Errors++
+	}
+}
+
+func (s *ClientStatistics) Snapshot() ClientStatsSnapshot {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	clients := make([]ClientStats, 0, len(s.clients))
+	for _, client := range s.clients {
+		clients = append(clients, client)
+	}
+	sort.Slice(clients, func(i, j int) bool {
+		if clients[i].Queries != clients[j].Queries {
+			return clients[i].Queries > clients[j].Queries
+		}
+		if !clients[i].LastSeen.Equal(clients[j].LastSeen) {
+			return clients[i].LastSeen.After(clients[j].LastSeen)
+		}
+		return clients[i].ClientIP < clients[j].ClientIP
+	})
+	stats := s.stats
+	stats.Clients = uint64(len(s.clients))
+	return ClientStatsSnapshot{Clients: clients, Stats: stats, Capacity: s.capacity, EvictedClients: s.evicted}
 }
 
 type QueryRecord struct {
@@ -142,6 +267,7 @@ type Dispatcher struct {
 	Counters         Counters
 	SharedCounters   *Counters
 	History          *History
+	ClientStatistics *ClientStatistics
 	FakeTTLMax       *uint32
 	RealIPDomains    interface{ MatchAlwaysRealIP(string) (string, bool) }
 	PolicyDNS        []PolicyDNSBinding
@@ -186,6 +312,9 @@ func (d *Dispatcher) Dispatch(ctx context.Context, q model.DNSQueryContext, m *d
 		}
 		if reply.Rcode == dns.RcodeServerFailure {
 			counters.Errors.Add(1)
+		}
+		if d.ClientStatistics != nil {
+			d.ClientStatistics.Record(q.ClientIP, result.Decision, reply.Rcode == dns.RcodeServerFailure, q.ReceivedAt)
 		}
 		if d.History != nil {
 			answers := make([]string, 0, len(reply.Answer))

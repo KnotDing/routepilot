@@ -497,7 +497,7 @@ func (a *API) serve(w http.ResponseWriter, r *http.Request) {
 			} else {
 				write(w, 200, v)
 			}
-		case "status", "health", "dns/queries", "surge/status", "surge/hosts", "bgp/status", "routing/status":
+		case "status", "health", "dns/queries", "dns/clients", "surge/status", "surge/hosts", "bgp/status", "routing/status":
 			v, e := a.Service.View(r.Context(), path)
 			if e != nil {
 				fail(w, 503, e)

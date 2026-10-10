@@ -56,17 +56,24 @@ it('defaults DIRECT conservatism on and saves an explicit opt-out',async()=>{
 
 it('keeps routing configuration in settings and preserves it when saving other categories',async()=>{
  const routing={mode:'hybrid',fake_ip_backend:'static',dns_backend:'bgp',static_fake_ip_configured:true};
- const settings={general:{web_listen:'127.0.0.1:1055',name:'Controller',theme:'system'},routing,security:{tls_cert:''}};
+ const bgp={enabled:true,local_asn:64512,router_id:'192.0.2.1',listen_port:179,route_limit:128,hold_seconds:90,keepalive_seconds:30};
+ const settings={general:{web_listen:'127.0.0.1:1055',name:'Controller',theme:'system'},routing,bgp,security:{tls_cert:''}};
  const fetch=vi.fn(async(url,options)=>({ok:true,status:200,json:async()=>({settings:JSON.parse(options.body)})}));
  vi.stubGlobal('fetch',fetch);
  render(<Settings settings={settings} refresh={()=>{}} notify={()=>{}}/>);
  expect(screen.getByRole('button',{name:'路由',exact:true})).toBeInTheDocument();
+ expect(screen.queryByRole('button',{name:'BGP',exact:true})).not.toBeInTheDocument();
  expect(screen.queryByLabelText('路由模式')).not.toBeInTheDocument();
+ fireEvent.click(screen.getByRole('button',{name:'路由',exact:true}));
+ expect(screen.getByRole('heading',{name:'BGP'})).toBeInTheDocument();
+ fireEvent.change(screen.getByLabelText('本地 ASN'),{target:{value:'64513'}});
+ fireEvent.click(screen.getByRole('button',{name:'通用',exact:true}));
  fireEvent.change(screen.getByLabelText('主题'),{target:{value:'dark'}});
  fireEvent.click(screen.getByRole('button',{name:'保存设置'}));
  await waitFor(()=>expect(fetch).toHaveBeenCalledTimes(1));
  const saved=JSON.parse(fetch.mock.calls[0][1].body);
  expect(saved.routing).toEqual(routing);
+ expect(saved.bgp.local_asn).toBe(64513);
  expect(saved.general.theme).toBe('dark');
 });
 
@@ -86,7 +93,7 @@ it('exposes independent long-lived cache invalidation settings',()=>{
  render(<Settings settings={{cache:{expire_decisions:false,invalidate_on_read_failure:false,invalidate_direct_on_selection_change:true,invalidate_reject_on_selection_change:false,unknown_ttl_seconds:10,error_ttl_seconds:1}}} refresh={()=>{}} notify={()=>{}}/>);
  fireEvent.click(screen.getByRole('button',{name:'缓存'}));
  expect(screen.getByLabelText('决策 TTL 过期')).not.toBeChecked();
- expect(screen.getByLabelText('读取失败时失效')).not.toBeChecked();
+ expect(screen.getByLabelText('配置读取失败时失效决策')).not.toBeChecked();
  expect(screen.getByLabelText('DIRECT 选择变化时失效')).toBeChecked();
  expect(screen.getByLabelText('REJECT 选择变化时失效')).not.toBeChecked();
 });
@@ -104,6 +111,6 @@ it('keeps cache option labels concise and shows explanations on hover',()=>{
 it('translates all cache settings and shares language with the routing page',()=>{
  localStorage.setItem('routepilot.locale','en');
  render(<><Settings settings={{cache:{expire_decisions:false,invalidate_on_read_failure:false,invalidate_direct_on_selection_change:true,invalidate_reject_on_selection_change:true,capacity:10000,unknown_ttl_seconds:10,error_ttl_seconds:1}}} refresh={()=>{}} notify={()=>{}}/></>);fireEvent.click(screen.getByRole('button',{name:'Cache'}));
- expect(screen.getByText('Cache settings')).toBeInTheDocument();expect(screen.getByLabelText('Expire decisions by TTL')).not.toBeChecked();expect(screen.getByLabelText('Invalidate on read failure')).not.toBeChecked();expect(screen.getByLabelText('Invalidate DIRECT on selection change')).toBeChecked();expect(screen.getByLabelText('Invalidate REJECT on selection change')).toBeChecked();expect(screen.getByRole('button',{name:'Save settings'})).toBeInTheDocument();
+ expect(screen.getByText('Cache settings')).toBeInTheDocument();expect(screen.getByLabelText('Expire decisions by TTL')).not.toBeChecked();expect(screen.getByLabelText('Invalidate decisions on config read failure')).not.toBeChecked();expect(screen.getByLabelText('Invalidate DIRECT on selection change')).toBeChecked();expect(screen.getByLabelText('Invalidate REJECT on selection change')).toBeChecked();expect(screen.getByRole('button',{name:'Save settings'})).toBeInTheDocument();
  fireEvent.click(screen.getByRole('button',{name:'General',exact:true}));fireEvent.change(screen.getByLabelText(/页面语言|Page language/),{target:{value:'zh-CN'}});fireEvent.click(screen.getByRole('button',{name:'缓存',exact:true}));expect(screen.getByLabelText('决策 TTL 过期')).toBeInTheDocument();
 });

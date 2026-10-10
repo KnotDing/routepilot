@@ -369,7 +369,7 @@ func (a *App) build(d config.Document, saved *decisionCacheSnapshot, responses *
 	}
 	rt.hosts = localdns.New(d.Hosts)
 	maxFakeTTL := uint32(s.Health.GraceSeconds)
-	rt.dispatcher = &dnsserver.Dispatcher{AAAAFallback: s.DNS.AAAAFallback, IPv6Status: rt.adapter, SharedCounters: &a.dnsCounters, Local: rt.hosts, RealIPDomains: rt.adapter, FakeTTLMax: &maxFakeTTL, Classifier: rt.policy, Surge: &observedSurge{SurgeAdapter: rt.adapter, rt: rt}, Gate: rt.machine, FakeIssuer: rt.machine, History: dnsserver.NewHistory(s.Logging.HistoryCapacity, s.Logging.QueryHistory && s.Logging.LogDomains)}
+	rt.dispatcher = &dnsserver.Dispatcher{AAAAFallback: s.DNS.AAAAFallback, IPv6Status: rt.adapter, SharedCounters: &a.dnsCounters, Local: rt.hosts, RealIPDomains: rt.adapter, FakeTTLMax: &maxFakeTTL, Classifier: rt.policy, Surge: &observedSurge{SurgeAdapter: rt.adapter, rt: rt}, Gate: rt.machine, FakeIssuer: rt.machine, History: dnsserver.NewHistory(s.Logging.HistoryCapacity, s.Logging.QueryHistory && s.Logging.LogDomains), ClientStatistics: dnsserver.NewClientStatistics(4096)}
 	rt.previousQueries.Store(a.dnsCounters.Queries.Load())
 	for _, p := range s.Surge.FakePrefixes {
 		rt.dispatcher.FakePrefixes = append(rt.dispatcher.FakePrefixes, netip.MustParsePrefix(p))
@@ -1043,18 +1043,24 @@ func (a *App) View(ctx context.Context, key string) (any, error) {
 	if rt == nil {
 		return nil, errors.New("runtime unavailable")
 	}
+	clientStatistics := dnsserver.ClientStatsSnapshot{Clients: []dnsserver.ClientStats{}}
+	if rt.dispatcher != nil && rt.dispatcher.ClientStatistics != nil {
+		clientStatistics = rt.dispatcher.ClientStatistics.Snapshot()
+	}
 	switch key {
 	case "configuration/status":
 		return application, nil
 	case "status":
 		p := rt.machine.Plan()
-		return map[string]any{"software": buildinfo.Current(), "online_update": true, "remote_credential_origin_binding": true, "fast_configuration_save": true, "configuration_application": application, "name": name, "mode": mode, "state": p.State, "fake_ip_enabled": p.AllowFakeIP, "queries_per_minute": rt.queryRate.Load(), "queries_per_second": math.Float64frombits(a.queryRateBits.Load()), "surge_restart": a.surgeRecovery.Status(), "counters": rt.dispatcher.Statistics().Snapshot(), "warning": rt.Fault(), "uptime_seconds": int(time.Since(rt.started).Seconds())}, nil
+		return map[string]any{"software": buildinfo.Current(), "online_update": true, "remote_credential_origin_binding": true, "fast_configuration_save": true, "configuration_application": application, "name": name, "mode": mode, "state": p.State, "fake_ip_enabled": p.AllowFakeIP, "queries_per_minute": rt.queryRate.Load(), "queries_per_second": math.Float64frombits(a.queryRateBits.Load()), "surge_restart": a.surgeRecovery.Status(), "counters": rt.dispatcher.Statistics().Snapshot(), "client_statistics": clientStatistics, "cache": map[string]any{"decision": rt.engine.Cache.Stats(), "response": responseCacheStats(rt)}, "warning": rt.Fault(), "uptime_seconds": int(time.Since(rt.started).Seconds())}, nil
 	case "health":
 		values := rt.health.Values()
 		sort.Slice(values, func(i, j int) bool { return values[i].Name < values[j].Name })
 		return values, nil
 	case "dns/queries":
 		return rt.dispatcher.History.Records(), nil
+	case "dns/clients":
+		return clientStatistics, nil
 	case "dns/cache":
 		return a.cacheViewLocked(rt, 0, 1000, "", ""), nil
 	case "surge/hosts":
@@ -1089,6 +1095,11 @@ func (a *App) cacheViewLocked(rt *Runtime, offset, limit int, domain, decision s
 	rows, total := rt.engine.Cache.Page(offset, limit, func(d model.DecisionResult) bool {
 		return (domain == "" || strings.Contains(d.Domain, strings.ToLower(domain))) && (decision == "" || string(d.Decision) == decision)
 	})
+	responseStats := responseCacheStats(rt)
+	return map[string]any{"response_stats": responseStats, "stats": rt.engine.Cache.Stats(), "entries": rows, "total": total, "offset": offset, "limit": limit, "capacity": rt.settings.Settings.Cache.Capacity, "ttl": rt.settings.Settings.Cache, "restoration_pending": pending}
+}
+
+func responseCacheStats(rt *Runtime) map[string]any {
 	responseEntries, responsePending := 0, 0
 	var responseHits, responseMisses, responseEvictions uint64
 	for _, upstream := range append([]*resolver.Real{rt.real}, rt.policyResolvers...) {
@@ -1101,7 +1112,7 @@ func (a *App) cacheViewLocked(rt *Runtime, offset, limit int, domain, decision s
 			responseEvictions += stats.Evictions
 		}
 	}
-	responseStats := map[string]any{
+	return map[string]any{
 		"entries":       responseEntries,
 		"stale_entries": responsePending,
 		"hits":          responseHits,
@@ -1109,7 +1120,6 @@ func (a *App) cacheViewLocked(rt *Runtime, offset, limit int, domain, decision s
 		"evictions":     responseEvictions,
 		"capacity":      rt.settings.Settings.Cache.ResponseCapacity,
 	}
-	return map[string]any{"response_stats": responseStats, "stats": rt.engine.Cache.Stats(), "entries": rows, "total": total, "offset": offset, "limit": limit, "capacity": rt.settings.Settings.Cache.Capacity, "ttl": rt.settings.Settings.Cache, "restoration_pending": pending}
 }
 func (a *App) Flush(ctx context.Context, domain string) error {
 	a.transition.Lock()

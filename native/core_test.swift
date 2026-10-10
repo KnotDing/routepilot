@@ -58,6 +58,16 @@ struct NativeCoreTests {
         let sample: [String: Any] = ["queries_per_second": 12.6, "counters": ["Errors": 5]]
         try nativeCheck(preference.text(status: sample, health: [], bgp: [:], available: true) == "13/s", "QPS text wrong")
         try nativeCheck(preference.text(status: sample, health: [], bgp: [:], available: false) == "—", "offline displayed stale data")
+        let cacheSample: [String: Any] = ["cache": ["decision": ["entries": 12, "hits": 30, "misses": 4], "response": ["entries": 8, "hits": 20, "misses": 2]]]
+        for (metric, expected) in [("decision_cache_entries", "12"), ("decision_cache_hits", "30"), ("decision_cache_misses", "4"), ("response_cache_entries", "8"), ("response_cache_hits", "20"), ("response_cache_misses", "2")] {
+            preference.metric = metric
+            try nativeCheck(preference.valid && preference.text(status: cacheSample, health: [], bgp: [:], available: true) == expected, "cache status bar metric wrong: \(metric)")
+        }
+        preference.metric = "client_count"
+        let clientSample: [String: Any] = ["client_statistics": ["stats": ["clients": 3, "queries": 42, "direct": 20, "surge": 15, "reject": 4, "unknown": 3, "errors": 2]]]
+        try nativeCheck(preference.valid && preference.text(status: clientSample, health: [], bgp: [:], available: true) == "3", "client count status bar metric wrong")
+        preference.metric = "client_queries"
+        try nativeCheck(preference.valid && preference.text(status: clientSample, health: [], bgp: [:], available: true) == "42", "client query status bar metric wrong")
         preference.display = "health_state"
         try nativeCheck(preference.text(status: [:], health: [["name":"Surge API", "state":"DOWN"]], bgp: [:], available: true) == "!", "health state missing")
         preference.display = "health_value"

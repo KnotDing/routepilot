@@ -11,9 +11,16 @@ struct StatusBarPreferences: Codable {
         "queries_per_second": "每秒 DNS 请求数", "queries_per_minute": "每分钟 DNS 请求数",
         "queries": "DNS 请求总数", "direct": "DIRECT 请求总数", "surge": "SURGE 请求总数",
         "reject": "REJECT 请求总数", "errors": "DNS 错误总数",
+        "client_count": "已跟踪客户端数", "client_queries": "客户端 DNS 请求总数",
+        "client_direct": "客户端 DIRECT 请求数", "client_surge": "客户端 SURGE 请求数",
+        "client_reject": "客户端 REJECT 请求数", "client_unknown": "客户端 UNKNOWN 请求数",
+        "client_errors": "客户端 DNS 错误数",
         "direct_ratio": "DIRECT 请求占比", "surge_ratio": "SURGE 请求占比",
         "reject_ratio": "REJECT 请求占比", "unknown_ratio": "UNKNOWN 请求占比", "errors_ratio": "DNS 错误占比",
-        "bgp_advertised": "BGP 已发布路由数", "bgp_utilization": "BGP 路由容量占比", "uptime_seconds": "后台运行秒数"
+        "bgp_advertised": "BGP 已发布路由数", "bgp_utilization": "BGP 路由容量占比",
+        "decision_cache_entries": "决策缓存条目数", "decision_cache_hits": "决策缓存命中次数", "decision_cache_misses": "决策缓存未命中次数",
+        "response_cache_entries": "查询缓存条目数", "response_cache_hits": "查询缓存命中次数", "response_cache_misses": "查询缓存未命中次数",
+        "uptime_seconds": "后台运行秒数"
     ]
     var valid: Bool {
         ["none", "metric", "health_state", "health_value"].contains(display)
@@ -44,6 +51,18 @@ struct StatusBarPreferences: Codable {
                 return percentage(counters[key], total: counters["Queries"])
             case "bgp_advertised": return number(bgp["advertised"])
             case "bgp_utilization": return percentage(bgp["advertised"], total: bgp["limit"])
+            case "decision_cache_entries", "decision_cache_hits", "decision_cache_misses":
+                let stats = (status["cache"] as? [String: Any])?["decision"] as? [String: Any] ?? [:]
+                let key = ["decision_cache_entries":"entries", "decision_cache_hits":"hits", "decision_cache_misses":"misses"][metric]!
+                return number(stats[key])
+            case "response_cache_entries", "response_cache_hits", "response_cache_misses":
+                let stats = (status["cache"] as? [String: Any])?["response"] as? [String: Any] ?? [:]
+                let key = ["response_cache_entries":"entries", "response_cache_hits":"hits", "response_cache_misses":"misses"][metric]!
+                return number(stats[key])
+            case "client_count", "client_queries", "client_direct", "client_surge", "client_reject", "client_unknown", "client_errors":
+                let stats = (status["client_statistics"] as? [String: Any])?["stats"] as? [String: Any] ?? [:]
+                let key = ["client_count":"clients", "client_queries":"queries", "client_direct":"direct", "client_surge":"surge", "client_reject":"reject", "client_unknown":"unknown", "client_errors":"errors"][metric]!
+                return number(stats[key])
             case "uptime_seconds": return number(status["uptime_seconds"], suffix: "s")
             default: return number(counters[["queries":"Queries", "direct":"Direct", "surge":"Surge", "reject":"Reject", "errors":"Errors"][metric] ?? ""])
             }

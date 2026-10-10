@@ -20,8 +20,8 @@ RoutePilot 是一款 macOS 状态栏应用：向 Surge 查询分流策略，为 
 | 路由发布 | BGP、Static、Hybrid 三种模式，管理 Fake-IP、DNS 拦截前缀与手动路由 |
 | 规则维护 | URL 导入先预览，定时同步 IPv4、IPv6 或两者，支持批量删除 |
 | 本地解析 | 自定义域名、通配符和 TTL，也可导入 Surge `[Host]` 静态映射 |
-| 缓存与统计 | 持久化累计 DNS 统计和稳定决策，响应缓存可开启持久化与乐观刷新 |
-| 状态与告警 | 流动图标、可选状态栏指标、健康检查、异常通知与 Webhook |
+| 缓存与统计 | 持久化累计 DNS 统计和稳定决策，查看客户端分流统计；响应缓存可开启持久化与乐观刷新 |
+| 状态与告警 | 流动图标、可选 DNS / 缓存 / 客户端状态栏指标、健康检查、异常通知与 Webhook |
 | 远程与升级 | 一处切换多台后端，保存登录凭证，在线升级完整 App 与网络服务 |
 | AI agent 控制 | JSON CLI 与 `routepilot-control` skill，支持多种 agent 集成 |
 
@@ -90,6 +90,8 @@ DNS 查询不会生成单 IP BGP 路由。Surge 不可用时停止新 Fake-IP、
 - **策略专用 DNS**：按 Surge 的 `final_policy` 或 `policy` 名称配置上游与失败回退。超时、连接错误、SERVFAIL 可触发备用，NXDOMAIN 和正常空响应不触发。
 - **AAAA 回落**：Surge 关闭 IPv6 时，可沿用分流规则、返回成功空响应，或直接查询真实上游。回落优先于本地 Hosts 和 `always-real-ip`；Surge 状态未知时沿用原有规则。
 - **分流模式**：在「设置 → 路由」选择自动分流、强制直连或全部交给 Surge；总览旁显示当前模式。
+
+在「DNS 与决策 → 客户端」查看各客户端请求数、分流决策、DNS 错误和最近活动。状态栏指标可显示客户端汇总，客户端明细最多保留 4096 个地址；统计在后台运行期间累计，后台重启后重新开始。
 
 ### 缓存：先响应，再刷新 ⚡
 
@@ -189,7 +191,7 @@ curl -fsSL https://gitea.knotding.com/knot/routepilot/raw/branch/main/scripts/in
 curl -fsSL https://gitea.knotding.com/knot/routepilot/raw/branch/main/scripts/install_skill.sh | sh -s -- --agent codex --agent cursor --agent gemini
 ```
 
-安装器从官方仓库获取 **v0.6.7** 的 skill，无需克隆、编译或管理员权限。默认覆盖并备份；追加 `--on-conflict skip` 可保留现有内容。安装 skill 不会启用 CLI 或保存登录凭证，使用前请在 App 设置中启用 CLI，并让 agent 重新加载 skills。
+安装器从官方仓库获取 **v0.6.8** 的 skill，无需克隆、编译或管理员权限。默认覆盖并备份；追加 `--on-conflict skip` 可保留现有内容。安装 skill 不会启用 CLI 或保存登录凭证，使用前请在 App 设置中启用 CLI，并让 agent 重新加载 skills。
 
 [CLI 使用与安装目录](docs/cli.md) · [安装脚本源码](scripts/install_skill.sh)
 
