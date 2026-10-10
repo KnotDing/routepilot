@@ -571,6 +571,7 @@
   "应用偏好已保存": "App preferences saved",
   "立即检查更新": "Check for updates now",
   "检查Beta版本更新": "Check for beta updates",
+  "检查 Beta 版本更新": "Check for beta updates",
   "自动检查 Beta 版本": "Check for beta updates automatically",
   "启用“自动检查 Beta 版本”后，自动检查会同时比较正式版与最新 Beta；Beta 遵循更新提示、自动安装和计划时间设置。测试版可能包含未完成的功能。": "When enabled, automatic checks compare the latest stable release with the latest beta. Beta updates follow your update prompts, automatic installation, and scheduled time settings. Beta builds may contain unfinished features.",
   "没有可用的 Beta 更新": "No beta update is available",
