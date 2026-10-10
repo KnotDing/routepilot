@@ -272,7 +272,7 @@ func TestManagerCheckValidationCacheAndConcurrency(t *testing.T) {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			s, err := m.Check(context.Background())
+			s, err := m.Check(context.Background(), false)
 			if err != nil || !s.Available || s.ReleaseNotes != "## Notes" {
 				t.Error(s, err)
 			}
@@ -285,16 +285,101 @@ func TestManagerCheckValidationCacheAndConcurrency(t *testing.T) {
 	for _, body := range []string{`{`, `{"tag_name":"v1.0.0","draft":true}`, `{"tag_name":"v1.0.0","prerelease":true}`, `{"tag_name":"v1.0.0-beta"}`} {
 		m.checkedAt = time.Time{}
 		m.ops.fetch = func(context.Context, string, int64) ([]byte, error) { return []byte(body), nil }
-		if _, err := m.Check(context.Background()); err == nil {
+		if _, err := m.Check(context.Background(), false); err == nil {
 			t.Fatal("accepted invalid release", body)
 		}
 	}
 	m.checkedAt = time.Time{}
 	m.ops.fetch = func(context.Context, string, int64) ([]byte, error) { return nil, errors.New("offline") }
-	s, err := m.Check(context.Background())
+	s, err := m.Check(context.Background(), false)
 	if err == nil || s.Latest != managerTarget() {
 		t.Fatal("failed check lost last release", s, err)
 	}
+}
+
+func TestManagerCheckBetaChannel(t *testing.T) {
+	stable := managerTarget()
+	beta := "v" + fmt.Sprintf("%d.%d.%d-beta.2", mustVersion(stable)[0], mustVersion(stable)[1], mustVersion(stable)[2]+1)
+	sources := func(stableBody, listBody string) func(context.Context, string, int64) ([]byte, error) {
+		return func(_ context.Context, address string, _ int64) ([]byte, error) {
+			switch address {
+			case origin + "/api/v1/repos/knot/routepilot/releases/latest":
+				return []byte(stableBody), nil
+			case origin + "/api/v1/repos/knot/routepilot/releases?limit=50":
+				return []byte(listBody), nil
+			default:
+				return nil, errors.New("unexpected release request")
+			}
+		}
+	}
+	list := func(tags ...string) string {
+		entries := make([]string, len(tags))
+		for i, tag := range tags {
+			entries[i] = fmt.Sprintf(`{"tag_name":%q,"prerelease":true}`, tag)
+		}
+		return "[" + strings.Join(entries, ",") + "]"
+	}
+	f := isolatedManager(t)
+	m := f.manager
+	m.checkedAt = time.Time{}
+	m.ops.fetch = sources(fmt.Sprintf(`{"tag_name":%q}`, stable), list(beta))
+	if s, err := m.Check(context.Background(), true); err != nil || s.Latest != beta {
+		t.Fatal("beta channel missed a newer numbered beta", s, err)
+	}
+	m.checkedAt = time.Time{}
+	m.ops.fetch = sources(fmt.Sprintf(`{"tag_name":%q}`, stable), list())
+	if s, err := m.Check(context.Background(), true); err != nil || s.Latest != stable {
+		t.Fatal("beta channel without beta releases must fall back to stable", s, err)
+	}
+	m.checkedAt = time.Time{}
+	m.ops.fetch = sources(fmt.Sprintf(`{"tag_name":%q}`, stable), list("v0.0.1-beta.1"))
+	if s, err := m.Check(context.Background(), true); err != nil || s.Latest != stable {
+		t.Fatal("older beta must not replace the stable release", s, err)
+	}
+	sameBase := "v" + strings.TrimPrefix(stable, "v") + "-beta.1"
+	m.checkedAt = time.Time{}
+	m.ops.fetch = sources(fmt.Sprintf(`{"tag_name":%q}`, stable), list(sameBase))
+	if s, err := m.Check(context.Background(), true); err != nil || s.Latest != stable {
+		t.Fatal("equal base versions must prefer the stable release", s, err)
+	}
+	m.checkedAt = time.Time{}
+	m.ops.fetch = sources(fmt.Sprintf(`{"tag_name":%q}`, stable), list("v1.0.0-beta"))
+	if s, err := m.Check(context.Background(), true); err != nil || s.Latest != stable {
+		t.Fatal("unnumbered beta tag in the release list must be ignored", s, err)
+	}
+}
+
+func TestInstallableRelease(t *testing.T) {
+	for _, valid := range []release{
+		{Tag: "v1.0.1"},
+		{Tag: "v1.0.1-beta.3", Prerelease: true},
+	} {
+		if !installableRelease(valid, valid.Tag) {
+			t.Fatal("rejected installable release", valid)
+		}
+	}
+	for _, invalid := range []struct {
+		r      release
+		target string
+	}{
+		{release{Tag: "v1.0.1", Draft: true}, "v1.0.1"},
+		{release{Tag: "v1.0.2"}, "v1.0.1"},
+		{release{Tag: "v1.0.1-beta.3"}, "v1.0.1-beta.3"},
+		{release{Tag: "v1.0.1", Prerelease: true}, "v1.0.1"},
+		{release{Tag: "v1.0.1-beta"}, "v1.0.1-beta"},
+	} {
+		if installableRelease(invalid.r, invalid.target) {
+			t.Fatal("accepted uninstallable release metadata", invalid)
+		}
+	}
+}
+
+func mustVersion(tag string) []int {
+	parts, err := versionParts(tag)
+	if err != nil {
+		panic(err)
+	}
+	return parts
 }
 func TestManagerStartReturnsBeforePreparationAndRecordsFailure(t *testing.T) {
 	f := isolatedManager(t)

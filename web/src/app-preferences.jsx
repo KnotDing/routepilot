@@ -3,7 +3,7 @@ import React,{useEffect,useState} from 'react';
 import {useT,translate,valueLabel} from './i18n';
 import {notificationSelected} from './notification-errors';
 
-const defaults={automaticCheck:true,automaticInstall:false,checkBetaUpdates:false,assistantReady:false,updatePrompts:true,checkIntervalHours:12,updateTime:'03:00',updateAvailable:false,updateVersion:'',updateDownloading:false,updateDownloadError:'',desktopNotifications:false,notificationSound:true};
+const defaults={assistantReady:false,updatePrompts:true,updateAvailable:false,updateVersion:'',updateDownloading:false,updateDownloadError:'',desktopNotifications:false,notificationSound:true};
 export function nativeApp(){return Boolean(window.webkit?.messageHandlers?.routepilotPreferences)}
 export function appPreferences(){
  if(nativeApp())return {...defaults,...window.routepilotNativePreferences};
@@ -39,17 +39,10 @@ export function AppPreferencesPanel({kind,notify}){
  const checkbox=(key,label,disabled=false)=><label className="check" key={key}><input type="checkbox" checked={draft[key]} disabled={disabled} onChange={e=>setDraft({...draft,[key]:e.target.checked})}/>{t(label)}</label>;
  return <section className="panel">
   <h2>{t(update?'软件更新':'本机系统通知')}</h2>
-  <p>{t(update?'这些选项控制本机 RoutePilot App 的自动更新；当前连接后台的完整应用可在软件更新中检查和升级。':'App 可接收本机和当前查看的远程后端异常。浏览器通知需要页面保持打开，后台 Webhook 不受页面影响。')}</p>
+  <p>{t(update?'这些选项只作用于运行管理窗口的本机 App：发现更新时的提示与手动升级。自动检查和自动安装由“自动更新”设置控制，作用于当前连接的后端。':'App 可接收本机和当前查看的远程后端异常。浏览器通知需要页面保持打开，后台 Webhook 不受页面影响。')}</p>
   <form onSubmit={save}>
-   <div className="option-grid">{update?<>{checkbox('automaticCheck','自动检查新版本',!nativeApp())}{checkbox('automaticInstall','自动安装新版本',!nativeApp()||!draft.automaticCheck||!draft.assistantReady)}{checkbox('checkBetaUpdates','自动检查 Beta 版本',!nativeApp())}{checkbox('updatePrompts','发现新版本时提示',!nativeApp())}</>:<>{checkbox('desktopNotifications','启用本机系统通知')}{checkbox('notificationSound','通知声音',!draft.desktopNotifications)}</>}</div>
-   {update&&<div className="form-grid">
-    <FieldLabel label={t('自动检查间隔（小时）')} required={nativeApp()&&draft.automaticCheck}><input type="number" min="1" max="168" disabled={!nativeApp()||!draft.automaticCheck} value={draft.checkIntervalHours} onChange={e=>setDraft({...draft,checkIntervalHours:e.target.value===''?'':Number(e.target.value)})}/></FieldLabel>
-    <FieldLabel label={t('自动更新时间（本地时间）')} required={nativeApp()&&draft.automaticCheck&&draft.automaticInstall}><input type="time" step="60" disabled={!nativeApp()||!draft.automaticCheck||!draft.automaticInstall} value={draft.updateTime} onChange={e=>setDraft({...draft,updateTime:e.target.value})}/></FieldLabel>
-   </div>}
-   {update&&nativeApp()&&<p>{t('自动检查仍按设置的检查周期独立运行；发现更新后会立即下载并校验，可手动立即安装。启用自动安装后，RoutePilot App 运行期间每天到达设定的本地时间时还会自动安装。若 Mac 在该时间休眠或 App 未运行，当天不会延迟补装。')}</p>}
-   {update&&!nativeApp()&&<p>{t('自动检查和下载需要在 RoutePilot App 内设置。')}</p>}
-   {update&&nativeApp()&&<p>{t(draft.assistantReady?'更新助手已启用，后续升级无需再次输入管理员密码。自动安装会短暂重启本机服务。':'启用更新助手需要一次管理员授权，之后升级无需再次输入管理员密码。自动安装默认关闭。')}</p>}
-   {update&&nativeApp()&&<p>{t('启用“自动检查 Beta 版本”后，自动检查会同时比较正式版与最新 Beta；Beta 遵循更新提示、自动安装和计划时间设置。测试版可能包含未完成的功能。')}</p>}
+   <div className="option-grid">{update?<>{checkbox('updatePrompts','发现新版本时提示',!nativeApp())}</>:<>{checkbox('desktopNotifications','启用本机系统通知')}{checkbox('notificationSound','通知声音',!draft.desktopNotifications)}</>}</div>
+   {update&&nativeApp()&&<p>{t(draft.assistantReady?'更新助手已启用，本机升级与后台覆盖修复无需再次输入管理员密码，升级会短暂重启本机服务。':'启用更新助手需要一次管理员授权，之后本机升级与后台覆盖修复无需再次输入管理员密码。')}</p>}
    {update&&nativeApp()&&draft.updateAvailable&&<p>{t('已发现可用更新')}：{draft.updateVersion}</p>}
    {update&&nativeApp()&&draft.updateDownloadError&&<p role="alert">{t('更新包下载失败')}：{draft.updateDownloadError}</p>}
    <div className="toolbar">

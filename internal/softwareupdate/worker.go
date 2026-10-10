@@ -87,7 +87,7 @@ func RunWorker() (result error) {
 		return err
 	}
 	var r release
-	if json.Unmarshal(b, &r) != nil || r.Tag != job.Target || r.Draft || r.Prerelease {
+	if json.Unmarshal(b, &r) != nil || !installableRelease(r, job.Target) {
 		return errors.New("Release metadata does not match the application update")
 	}
 	if err = pause(ctx, 2*time.Second); err != nil {

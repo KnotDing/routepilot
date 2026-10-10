@@ -141,3 +141,47 @@ func TestRemoteBackendOriginsAndClone(t *testing.T) {
 		t.Fatal("backend draft mutated live configuration")
 	}
 }
+
+func TestUpdateAutomationValidation(t *testing.T) {
+	d := Default()
+	if err := d.Validate(); err != nil {
+		t.Fatal(err)
+	}
+	if !d.Settings.Updates.AutomaticCheck || d.Settings.Updates.CheckBeta || d.Settings.Updates.AutomaticInstall || d.Settings.Updates.CheckIntervalHours != 12 || d.Settings.Updates.UpdateTime != "03:00" {
+		t.Fatal("unexpected update automation defaults", d.Settings.Updates)
+	}
+	for _, mutate := range []func(*Document){
+		func(d *Document) { d.Settings.Updates.CheckIntervalHours = 0 },
+		func(d *Document) { d.Settings.Updates.CheckIntervalHours = 169 },
+		func(d *Document) { d.Settings.Updates.UpdateTime = "3:00" },
+		func(d *Document) { d.Settings.Updates.UpdateTime = "24:00" },
+		func(d *Document) { d.Settings.Updates.UpdateTime = "03:60" },
+		func(d *Document) {
+			d.Settings.Updates.AutomaticCheck, d.Settings.Updates.AutomaticInstall = false, true
+		},
+	} {
+		bad := d.Clone()
+		mutate(&bad)
+		if bad.Validate() == nil {
+			t.Fatal("invalid update automation accepted", bad.Settings.Updates)
+		}
+	}
+	enabled := d.Clone()
+	enabled.Settings.Updates.AutomaticInstall = true
+	if err := enabled.Validate(); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestParseUpdateTime(t *testing.T) {
+	for _, value := range []string{"00:00", "03:00", "23:59"} {
+		if _, _, ok := ParseUpdateTime(value); !ok {
+			t.Fatal("valid update time rejected", value)
+		}
+	}
+	for _, value := range []string{"", "3:00", "03:0", "24:00", "03:60", "03:0a", "03:00:00", " 03:00"} {
+		if _, _, ok := ParseUpdateTime(value); ok {
+			t.Fatal("invalid update time accepted", value)
+		}
+	}
+}

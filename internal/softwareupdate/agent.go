@@ -41,8 +41,8 @@ type agentRequest struct {
 }
 type agentStatus struct {
 	Status
-	Ready          bool `json:"ready"`
-	ProtocolVersion int `json:"protocol_version"`
+	Ready           bool `json:"ready"`
+	ProtocolVersion int  `json:"protocol_version"`
 }
 type agent struct {
 	mu     sync.Mutex

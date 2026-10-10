@@ -77,9 +77,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
     var releaseDownloadInProgress = false
     var releaseDownloadError = ""
     var checkingRelease = false
-    var pendingScheduledInstallDay: String?
 	let serviceNotifications = ServiceNotifications()
 	var notificationSettings: [String: Any] = [:]
+    var backendUpdateSettings: [String: Any] = [:]
     var notificationHealth: [[String: Any]] = []
 	var backendFailures = 0
     var remoteNotificationWatch: RemoteNotificationWatch?
@@ -166,8 +166,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
             Task { @MainActor in await self?.refreshRemoteNotifications() }
         }
         Task { await refresh() }
-        Task { await checkScheduledAutomaticUpdate() }
-        Task { await checkReleaseUpdate(silent: true) }
+        Task { await promptForBackendUpdate() }
         startReleaseUpdateTimer()
         ManagementWindowFrame.isOpen = false
         if arguments.contains("--open-management") && !smoke { openManagement() }
@@ -267,6 +266,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
             bgp = try await client.call("bgp/status") as? [String: Any] ?? [:]
             let settings = try await client.call("settings") as? [String: Any] ?? [:]
             notificationSettings = settings["notifications"] as? [String: Any] ?? [:]
+            backendUpdateSettings = settings["updates"] as? [String: Any] ?? [:]
             backendFailures = 0
             var activeHealth = health
             let peerAddresses = Set((bgp["peers"] as? [[String: Any]] ?? []).compactMap { $0["address"] as? String })
@@ -426,8 +426,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
                 webView?.evaluateJavaScript("window.dispatchEvent(new CustomEvent('routepilot-preferences-saved',{detail:" + json + "}));", completionHandler: nil)
             }
             guard let data = try? JSONSerialization.data(withJSONObject: values),
-                  var preferences = try? JSONDecoder().decode(AppPreferences.self, from: data), (1...168).contains(preferences.checkIntervalHours), UpdateSchedule.isValidTime(preferences.updateTime), preferences.statusBar.valid, preferences.automation.valid else { reply(false); return }
-            preferences.automaticInstall = preferences.automaticInstall && preferences.automaticCheck && UpdateAssistant.configured
+                  let preferences = try? JSONDecoder().decode(AppPreferences.self, from: data), preferences.statusBar.valid, preferences.automation.valid else { reply(false); return }
             let previous = AppPreferences.current
             if preferences.automation != previous.automation || values["_automation"] as? Bool == true {
                 let choices = values["_automationChoices"] as? [String: String] ?? [:]
@@ -443,9 +442,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
             }
             AppPreferences.current = preferences
             updateToolTip()
-            if preferences.automaticCheck && (!previous.automaticCheck || preferences.updatePrompts != previous.updatePrompts || preferences.automaticInstall != previous.automaticInstall || preferences.checkBetaUpdates != previous.checkBetaUpdates || preferences.checkIntervalHours != previous.checkIntervalHours) {
-                UserDefaults.standard.removeObject(forKey: "releaseUpdateLastCheck")
-            }
             configurePreferenceSeed(userContentController)
             reply(true)
             Task {
@@ -453,15 +449,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
                     if !(await DesktopNotifications.shared.authorize()) { alert("通知未授权", "请在 macOS 系统设置 → 通知 → RoutePilot 中允许通知。") }
                     serviceNotifications.reset()
                 }
-                await checkScheduledAutomaticUpdate()
-                await checkReleaseUpdate(silent: true)
             }
             return
         }
         if message.name == "routepilotUpdateAction" {
             guard trusted, let action = message.body as? String else { return }
-            if action == "check" { Task { await checkReleaseUpdate(silent: false) } }
-            else if action == "checkBeta" { Task { await checkReleaseUpdate(silent: false, beta: true) } } // older management pages still post this action
+            if action == "check" { Task { await checkReleaseUpdate() } }
+            else if action == "checkBeta" { Task { await checkReleaseUpdate(beta: true) } } // older management pages still post this action
             else if action == "installAvailable" {
                 guard let release = availableRelease else { alert("没有可安装的更新", "请重新检查更新后再试。"); return }
                 Task { await installRelease(release) }
@@ -729,53 +723,38 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
         menu.addItem(quit)
         statusItem.menu = menu
     }
-    func checkScheduledAutomaticUpdate() async {
-        let preferences = AppPreferences.current
-        let now = Date()
-        guard preferences.automaticCheck, preferences.automaticInstall, UpdateAssistant.configured,
-              UpdateSchedule.matches(preferences.updateTime, at: now),
-              let day = UpdateSchedule.key(for: preferences.updateTime, at: now),
-              UserDefaults.standard.string(forKey: "releaseUpdateLastScheduledCheck") != day else { return }
-        await checkReleaseUpdate(silent: true, scheduledInstallDay: day)
-    }
     func startReleaseUpdateTimer() {
         releaseTimer?.invalidate()
         releaseTimer = Timer.scheduledTimer(withTimeInterval: 60, repeats: true) { [weak self] _ in
-            Task { @MainActor in
-                await self?.checkScheduledAutomaticUpdate()
-                await self?.checkReleaseUpdate(silent: true)
-            }
+            Task { @MainActor in await self?.promptForBackendUpdate() }
         }
     }
-    func checkReleaseUpdate(silent: Bool, beta: Bool = false, scheduledInstallDay: String? = nil) async {
-        guard !stopping else { return }
-        if checkingRelease {
-            if scheduledInstallDay != nil { pendingScheduledInstallDay = scheduledInstallDay }
-            return
-        }
-        let preferences = AppPreferences.current
-        if silent && !preferences.automaticCheck { return }
-        let lastCheck = UserDefaults.standard.object(forKey: "releaseUpdateLastCheck") as? Date ?? .distantPast
-        if silent && scheduledInstallDay == nil && Date().timeIntervalSince(lastCheck) < Double(preferences.checkIntervalHours * 3600) { return }
+    // Update prompts follow the connected backend's update settings; the App only notifies.
+    func promptForBackendUpdate() async {
+        guard !stopping, !quitting, !checkingRelease, !releaseDownloadInProgress,
+              AppPreferences.current.updatePrompts else { return }
+        guard let update = try? await client.call("updates/status") as? [String: Any],
+              update["supported"] as? Bool == true, update["available"] as? Bool == true,
+              let tag = update["latest"] as? String, !tag.isEmpty else { return }
+        let defaults = UserDefaults.standard
+        guard defaults.string(forKey: "releaseUpdateSkippedTag") != tag,
+              defaults.string(forKey: "releaseUpdateLastNotifiedTag") != tag else { return }
+        defaults.set(tag, forKey: "releaseUpdateLastNotifiedTag")
+        await presentRelease(GiteaRelease(tagName: tag, assets: [], body: update["release_notes"] as? String, draft: nil, prerelease: ReleaseUpdater.betaVersion(tag) != nil))
+    }
+    // Manual checks follow the backend's configured release channel; automatic
+    // checking and installation live in the backend's update settings.
+    func checkReleaseUpdate(beta: Bool = false) async {
+        guard !stopping, !checkingRelease else { return }
         checkingRelease = true
         rebuildMenu()
-        defer {
-            checkingRelease = false
-            rebuildMenu()
-            if let pendingDay = pendingScheduledInstallDay {
-                pendingScheduledInstallDay = nil
-                Task { await checkReleaseUpdate(silent: true, scheduledInstallDay: pendingDay) }
-            }
-        }
+        defer { checkingRelease = false; rebuildMenu() }
         do {
             let latest: GiteaRelease
             if beta {
                 latest = try await ReleaseUpdater.latestBeta()
             } else {
-                latest = try await ReleaseUpdater.latest(includingBeta: preferences.checkBetaUpdates)
-                if scheduledInstallDay == nil {
-                    UserDefaults.standard.set(Date(), forKey: "releaseUpdateLastCheck")
-                }
+                latest = try await ReleaseUpdater.latest(includingBeta: backendUpdateSettings["check_beta"] as? Bool == true)
             }
             let appVersion = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? ""
             let backendVersion = (status["software"] as? [String: Any])?["version"] as? String ?? ""
@@ -783,19 +762,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
             availableRelease = ReleaseUpdater.newerAvailable(latest, current: appVersion) || repairLocalService ? latest : nil
             releaseDownloadError = ""
             publishReleaseUpdateStatus()
-            if let scheduledInstallDay {
-                UserDefaults.standard.set(scheduledInstallDay, forKey: "releaseUpdateLastScheduledCheck")
-            }
             guard let release = availableRelease else {
-                if !silent {
-                    alert(beta ? "没有可用的 Beta 更新" : "RoutePilot 已是最新版本",
-                          "当前版本：\(Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "未知")")
-                }
-                return
-            }
-            if silent && UserDefaults.standard.string(forKey: "releaseUpdateSkippedTag") == release.tagName {
-                availableRelease = nil
-                publishReleaseUpdateStatus()
+                alert(beta ? "没有可用的 Beta 更新" : "RoutePilot 已是最新版本",
+                      "当前版本：\(Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "未知")")
                 return
             }
             releaseDownloadInProgress = true
@@ -806,17 +775,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
             }
             releaseDownloadInProgress = false
             publishReleaseUpdateStatus()
-            if silent && scheduledInstallDay != nil && preferences.automaticInstall && UpdateAssistant.configured {
-                await installRelease(release)
-                return
-            }
-            if silent && preferences.automaticInstall && scheduledInstallDay == nil { return }
-            if !silent || preferences.updatePrompts && UserDefaults.standard.string(forKey: "releaseUpdateLastNotifiedTag") != release.tagName {
-                UserDefaults.standard.set(release.tagName, forKey: "releaseUpdateLastNotifiedTag")
-                await presentRelease(release)
-            }
+            await presentRelease(release)
         } catch {
-            if !silent { alert(beta ? "检查 Beta 更新失败" : "检查更新失败", error.localizedDescription) }
+            alert(beta ? "检查 Beta 更新失败" : "检查更新失败", error.localizedDescription)
         }
     }
     func presentRelease(_ release: GiteaRelease) async {
@@ -834,13 +795,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
     }
     @objc func performReleaseUpdate() {
         // Both entry points perform a fresh check and open exactly one decision window.
-        Task { await checkReleaseUpdate(silent: false) }
+        Task { await checkReleaseUpdate() }
     }
     @objc func enableUpdateAssistant() {
         guard !stopping, !checkingRelease else { return }
         let dialog = NSAlert()
         dialog.messageText = L("启用更新助手")
-        dialog.informativeText = L("一次管理员授权后，当前用户可免密码更新 /Applications 中的 RoutePilot 和本机网络服务。助手只安装项目官方 Release，不接受任意命令；自动安装默认关闭。")
+        dialog.informativeText = L("一次管理员授权后，当前用户可免密码更新 /Applications 中的 RoutePilot 和本机网络服务。助手只安装项目官方 Release，不接受任意命令。")
         dialog.addButton(withTitle: L("启用")); dialog.addButton(withTitle: L("取消"))
         NSApp.activate(ignoringOtherApps: true)
         guard dialog.runModal() == .alertFirstButtonReturn else { return }
@@ -855,7 +816,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
         guard !stopping, !checkingRelease else { return }
         let dialog = NSAlert()
         dialog.messageText = L("停用更新助手")
-        dialog.informativeText = L("将移除常驻更新助手并关闭自动安装，保留 App 和网络服务。移除助手需要管理员授权。")
+        dialog.informativeText = L("将移除常驻更新助手，保留 App 和网络服务。移除助手需要管理员授权。")
         dialog.addButton(withTitle: L("停用")); dialog.addButton(withTitle: L("取消"))
         NSApp.activate(ignoringOtherApps: true)
         guard dialog.runModal() == .alertFirstButtonReturn else { return }
@@ -864,9 +825,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
             defer { stopping = false; rebuildMenu() }
             do {
                 try await UpdateAssistant.disable()
-                var preferences = AppPreferences.current
-                preferences.automaticInstall = false
-                AppPreferences.current = preferences
                 if let controller = webView?.configuration.userContentController { configurePreferenceSeed(controller) }
             } catch { alert("更新助手未停用", error.localizedDescription) }
         }

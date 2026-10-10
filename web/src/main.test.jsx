@@ -114,3 +114,23 @@ it('translates all cache settings and shares language with the routing page',()=
  expect(screen.getByText('Cache settings')).toBeInTheDocument();expect(screen.getByLabelText('Expire decisions by TTL')).not.toBeChecked();expect(screen.getByLabelText('Invalidate decisions on config read failure')).not.toBeChecked();expect(screen.getByLabelText('Invalidate DIRECT on selection change')).toBeChecked();expect(screen.getByLabelText('Invalidate REJECT on selection change')).toBeChecked();expect(screen.getByRole('button',{name:'Save settings'})).toBeInTheDocument();
  fireEvent.click(screen.getByRole('button',{name:'General',exact:true}));fireEvent.change(screen.getByLabelText(/页面语言|Page language/),{target:{value:'zh-CN'}});fireEvent.click(screen.getByRole('button',{name:'缓存',exact:true}));expect(screen.getByLabelText('决策 TTL 过期')).toBeInTheDocument();
 });
+
+it('binds backend update automation to the connected backend settings',()=>{
+ render(<Settings settings={{updates:{automatic_check:true,check_beta:false,automatic_install:false,check_interval_hours:12,update_time:'03:00'}}} refresh={()=>{}} notify={()=>{}}/>);
+ fireEvent.click(screen.getByRole('button',{name:'软件更新',exact:true}));
+ expect(screen.getByLabelText('自动检查新版本')).toBeChecked();
+ expect(screen.getByLabelText('自动检查 Beta 版本')).not.toBeChecked();
+ expect(screen.getByLabelText('自动检查间隔（小时）')).toHaveValue(12);
+ expect(screen.getByLabelText('自动更新时间（本地时间）')).toHaveValue('03:00');
+ const install=screen.getByLabelText('自动安装新版本');
+ expect(install).not.toBeChecked();
+ expect(install).toBeEnabled();
+ fireEvent.click(screen.getByLabelText('自动检查新版本'));
+ expect(install).toBeDisabled();
+});
+
+it('degrades update automation settings for older backends',()=>{
+ render(<Settings settings={{general:{web_listen:'127.0.0.1:1055'}}} refresh={()=>{}} notify={()=>{}}/>);
+ fireEvent.click(screen.getByRole('button',{name:'软件更新',exact:true}));
+ expect(screen.getByText('当前后端版本较旧，不支持自动更新设置；请先升级该后端。')).toBeInTheDocument();
+});

@@ -10,25 +10,23 @@ afterEach(()=>{
  vi.restoreAllMocks();
 });
 
-it('keeps the automatic check interval independent from the scheduled install time',async()=>{
+it('keeps update prompts as the only App update preference',async()=>{
  const postMessage=vi.fn(value=>queueMicrotask(()=>window.dispatchEvent(new CustomEvent('routepilot-preferences-saved',{detail:{requestID:value._requestID,ok:true}}))));
  window.webkit={messageHandlers:{routepilotPreferences:{postMessage}}};
- window.routepilotNativePreferences={automaticCheck:true,automaticInstall:true,checkBetaUpdates:false,assistantReady:true,checkIntervalHours:12,updateTime:'03:00'};
+ window.routepilotNativePreferences={assistantReady:true,updatePrompts:true};
  const notify=vi.fn();
  render(<AppPreferencesPanel kind="updates" notify={notify}/>);
 
- const interval=screen.getByLabelText('自动检查间隔（小时）');
- const time=screen.getByLabelText('自动更新时间（本地时间）');
- const beta=screen.getByLabelText('自动检查 Beta 版本');
- expect(interval).toHaveValue(12);
- expect(time).toHaveValue('03:00');
- expect(beta).not.toBeChecked();
- fireEvent.click(beta);
- fireEvent.change(time,{target:{value:'04:30'}});
+ expect(screen.queryByLabelText('自动检查新版本')).not.toBeInTheDocument();
+ expect(screen.queryByLabelText('自动安装新版本')).not.toBeInTheDocument();
+ expect(screen.queryByLabelText('自动检查 Beta 版本')).not.toBeInTheDocument();
+ const prompts=screen.getByLabelText('发现新版本时提示');
+ expect(prompts).toBeChecked();
+ fireEvent.click(prompts);
  fireEvent.click(screen.getByRole('button',{name:'保存应用偏好'}));
 
  await waitFor(()=>expect(notify).toHaveBeenCalledWith('应用偏好已保存'));
- expect(postMessage).toHaveBeenCalledWith(expect.objectContaining({checkBetaUpdates:true,checkIntervalHours:12,updateTime:'04:30'}));
+ expect(postMessage).toHaveBeenCalledWith(expect.objectContaining({updatePrompts:false}));
 });
 
 it('offers immediate installation only after update download is complete',async()=>{

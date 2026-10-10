@@ -43,6 +43,75 @@ type API struct {
 	SoftwareUpdates   *softwareupdate.Manager
 }
 
+// updatePlan is one scheduler tick of the configured automatic update policy.
+type updatePlan struct {
+	check, install bool
+}
+
+// planUpdateAutomation decides one tick of the update policy. The scheduled
+// install is attempted at most once a day and only after the local update time;
+// a missed slot is picked up at the next tick of the same day.
+func planUpdateAutomation(now time.Time, policy config.Updates, lastCheck time.Time, attemptedDay string) updatePlan {
+	var plan updatePlan
+	if !policy.AutomaticCheck {
+		return plan
+	}
+	if lastCheck.IsZero() || now.Sub(lastCheck) >= time.Duration(policy.CheckIntervalHours)*time.Hour {
+		plan.check = true
+	}
+	if !policy.AutomaticInstall {
+		return plan
+	}
+	hour, minute, ok := config.ParseUpdateTime(policy.UpdateTime)
+	if !ok {
+		return plan
+	}
+	if now.Format("2006-01-02") != attemptedDay && now.Hour()*60+now.Minute() >= hour*60+minute {
+		plan.install = true
+	}
+	return plan
+}
+
+// RunUpdateScheduler applies the configured automatic update policy to the Mac
+// running this backend: periodic release checks and at most one scheduled
+// install attempt a day. Manual checks and installs stay available via the
+// updates API.
+func (a *API) RunUpdateScheduler(ctx context.Context) {
+	ticker := time.NewTicker(time.Minute)
+	defer ticker.Stop()
+	lastCheck, attemptedDay := time.Time{}, ""
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case now := <-ticker.C:
+			if a.SoftwareUpdates == nil || !a.SoftwareUpdates.Status().Supported {
+				continue
+			}
+			settings := a.Service.Configuration().Settings
+			plan := planUpdateAutomation(now, settings.Updates, lastCheck, attemptedDay)
+			if !plan.check && !plan.install {
+				continue
+			}
+			if plan.install {
+				attemptedDay = now.Format("2006-01-02")
+			}
+			// Install only accepts a release checked within the last ten minutes.
+			checkCtx, cancel := context.WithTimeout(ctx, time.Minute)
+			_, err := a.SoftwareUpdates.Check(checkCtx, settings.Updates.CheckBeta)
+			cancel()
+			lastCheck = time.Now()
+			if err != nil || !plan.install {
+				continue // the status endpoint surfaces check failures on demand
+			}
+			status := a.SoftwareUpdates.Status()
+			if status.Available && status.Supported && status.Latest != "" {
+				_, _ = a.SoftwareUpdates.Start(status.Latest)
+			}
+		}
+	}
+}
+
 // RunRouteFeedScheduler keeps URL-managed route snapshots current while the
 // controller service is running. All changes pass through the same mutation
 // lock and configuration transaction as interactive edits.
@@ -212,10 +281,12 @@ func (a *API) serve(w http.ResponseWriter, r *http.Request) {
 			write(w, 200, a.SoftwareUpdates.Status())
 		case path == "updates/check" && r.Method == "GET":
 			if r.Header.Get("Prefer") == "respond-async" {
-				a.startOperation(w, path, func(ctx context.Context) (any, error) { return a.SoftwareUpdates.Check(ctx) })
+				a.startOperation(w, path, func(ctx context.Context) (any, error) {
+					return a.SoftwareUpdates.Check(ctx, a.Service.Configuration().Settings.Updates.CheckBeta)
+				})
 				return
 			}
-			status, err := a.SoftwareUpdates.Check(r.Context())
+			status, err := a.SoftwareUpdates.Check(r.Context(), a.Service.Configuration().Settings.Updates.CheckBeta)
 			if err != nil {
 				fail(w, 502, err)
 			} else {

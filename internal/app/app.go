@@ -267,6 +267,7 @@ func Open(ctx context.Context, path string) (*App, error) {
 	go func() { defer close(a.notificationDone); a.notifications.Run(notificationCtx) }()
 	a.control = &api.API{Service: a, Store: a.store, Bus: a.bus, SoftwareUpdates: softwareupdate.New(ctx, path, a.security.SaveUpdateSessions)}
 	go a.control.RunRouteFeedScheduler(ctx)
+	go a.control.RunUpdateScheduler(ctx)
 	var savedDecisions decisionCacheSnapshot
 	if err := store.LoadDecisionCache(ctx, &savedDecisions); err != nil {
 		// Cache corruption must not prevent management or fallback DNS startup.

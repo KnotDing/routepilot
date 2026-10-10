@@ -9,12 +9,6 @@ struct NativeCoreTests {
         for value in ["", "v", "1.2", "1.2.3.4", "01.2.3", "+1.2.3", "1.-1.0", "1.2.3-beta", "1.2.3+build", "release1.0.0", "١.٢.٣"] { try nativeCheck(ReleaseUpdater.stableVersion(value) == nil, "invalid stable version accepted: " + value) }
         for value in ["1.0.1-beta.1", "v1.2.3-beta.12"] { try nativeCheck(ReleaseUpdater.betaVersion(value) != nil, "beta version rejected") }
         for value in ["1.0.1-beta", "1.0.1-beta.0", "1.0.1-beta.01", "1.0.1-rc.1", "01.0.1-beta.1"] { try nativeCheck(ReleaseUpdater.betaVersion(value) == nil, "invalid beta version accepted: " + value) }
-        for value in ["00:00", "03:00", "23:59"] { try nativeCheck(UpdateSchedule.isValidTime(value), "valid update time rejected: " + value) }
-        for value in ["", "3:00", "24:00", "12:60", "１２:００"] { try nativeCheck(!UpdateSchedule.isValidTime(value), "invalid update time accepted: " + value) }
-        let scheduleDate = Calendar.current.date(from: DateComponents(year: 2026, month: 10, day: 10, hour: 3, minute: 0))!
-        try nativeCheck(UpdateSchedule.matches("03:00", at: scheduleDate), "configured local update time did not match")
-        try nativeCheck(!UpdateSchedule.matches("03:01", at: scheduleDate), "scheduled update ran at the wrong time")
-        try nativeCheck(UpdateSchedule.key(for: "03:00", at: scheduleDate) != UpdateSchedule.key(for: "04:00", at: scheduleDate), "changing the scheduled time did not create a distinct daily check")
         let betas = [try nativeRelease("v1.0.1-beta.1", prerelease:true), try nativeRelease("v1.0.1-beta.3", prerelease:true), try nativeRelease("v1.0.1-beta.2", draft:true, prerelease:true), try nativeRelease("v1.0.1-rc.1", prerelease:true), try nativeRelease("v1.1.0")]
         try nativeCheck(ReleaseUpdater.newestBeta(in: betas)?.tagName == "v1.0.1-beta.3", "latest valid beta not selected")
         let stableRelease = try nativeRelease("v1.0.1")

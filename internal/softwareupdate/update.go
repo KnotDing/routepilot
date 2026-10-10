@@ -197,6 +197,20 @@ func newer(latest, current string) bool {
 	}
 	return latestIsBeta && latestBeta > currentBeta
 }
+
+// installableRelease keeps the official tag metadata as the only source: the
+// tag must match the checked target, and numbered beta tags are only accepted
+// from prerelease releases (stable tags only from stable releases).
+func installableRelease(r release, target string) bool {
+	if r.Tag != target || r.Draft {
+		return false
+	}
+	if _, err := versionParts(r.Tag); err != nil {
+		return false
+	}
+	_, beta := betaNumber(r.Tag)
+	return beta == r.Prerelease
+}
 func readState() Status {
 	var s Status
 	if b, e := os.ReadFile(stateFile); e == nil {
@@ -255,7 +269,7 @@ func (m *Manager) snapshot() Status {
 	return s
 }
 func (m *Manager) Status() Status { m.mu.Lock(); defer m.mu.Unlock(); return m.snapshot() }
-func (m *Manager) Check(ctx context.Context) (Status, error) {
+func (m *Manager) Check(ctx context.Context, includeBeta bool) (Status, error) {
 	m.checkMu.Lock()
 	defer m.checkMu.Unlock()
 	m.mu.Lock()
@@ -282,6 +296,21 @@ func (m *Manager) Check(ctx context.Context) (Status, error) {
 			err = errors.New("The latest endpoint did not return a stable release")
 		}
 		return m.Status(), err
+	}
+	if includeBeta {
+		// A numbered beta is only preferred when it is newer than the stable
+		// release; equal base versions keep the stable release.
+		b, err = m.ops.fetch(ctx, origin+"/api/v1/repos/knot/routepilot/releases?limit=50", 2<<20)
+		if err != nil {
+			return m.Status(), err
+		}
+		var releases []release
+		if json.Unmarshal(b, &releases) != nil {
+			return m.Status(), errors.New("Beta release metadata is invalid")
+		}
+		if beta, ok := newestBetaRelease(releases); ok && newer(beta.Tag, r.Tag) {
+			r = beta
+		}
 	}
 	m.mu.Lock()
 	defer m.mu.Unlock()

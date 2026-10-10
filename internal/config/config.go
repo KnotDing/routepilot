@@ -126,6 +126,13 @@ type Security struct {
 	TLSCert            string   `json:"tls_cert"`
 	TLSKey             string   `json:"tls_key"`
 }
+type Updates struct {
+	AutomaticCheck     bool   `json:"automatic_check"`
+	CheckBeta          bool   `json:"check_beta"`
+	AutomaticInstall   bool   `json:"automatic_install"`
+	CheckIntervalHours int    `json:"check_interval_hours"`
+	UpdateTime         string `json:"update_time"`
+}
 type Backend struct {
 	ID   string `json:"id"`
 	Name string `json:"name"`
@@ -165,6 +172,7 @@ type Settings struct {
 	Logging        Logging       `json:"logging"`
 	Notifications  Notifications `json:"notifications"`
 	Security       Security      `json:"security"`
+	Updates        Updates       `json:"updates"`
 }
 type Peer struct {
 	ID               string `json:"id"`
@@ -312,6 +320,7 @@ func Default() Document {
 		Health:  Health{1000, 3, 3, 60, 3, "example.com"}, Logging: Logging{"info", true, 1000, true, 2000},
 		Notifications: Notifications{Surge: true, BGP: true, DNS: true, Controller: true, CooldownSeconds: 300},
 		Security:      Security{Username: "admin", SessionMinutes: 60, AllowedNetworks: []string{"127.0.0.0/8", "::1/128"}},
+		Updates:       Updates{AutomaticCheck: true, CheckIntervalHours: 12, UpdateTime: "03:00"},
 	}, Peers: []Peer{}, Routes: []Route{}, RouteFeeds: []RouteFeed{}, Interception: []Interception{}, Overrides: []Override{}}
 }
 
@@ -344,6 +353,26 @@ func Community(s string) (uint32, error) {
 	}
 	return a<<16 | b, nil
 }
+
+// ParseUpdateTime accepts a canonical 24-hour local HH:MM time.
+func ParseUpdateTime(value string) (int, int, bool) {
+	parts := strings.Split(value, ":")
+	if len(parts) != 2 {
+		return 0, 0, false
+	}
+	numbers := [2]int{}
+	for i, part := range parts {
+		if len(part) != 2 || strings.IndexFunc(part, func(r rune) bool { return r < '0' || r > '9' }) >= 0 {
+			return 0, 0, false
+		}
+		numbers[i] = int(part[0]-'0')*10 + int(part[1]-'0')
+	}
+	if numbers[0] > 23 || numbers[1] > 59 {
+		return 0, 0, false
+	}
+	return numbers[0], numbers[1], true
+}
+
 func (d Document) Validate() error {
 	s := d.Settings
 	if s.DNS.AAAAFallback != "" && s.DNS.AAAAFallback != "surge" && s.DNS.AAAAFallback != "block" && s.DNS.AAAAFallback != "upstream" {
@@ -354,6 +383,15 @@ func (d Document) Validate() error {
 	}
 	if s.Notifications.CooldownSeconds < 0 || s.Notifications.CooldownSeconds > 86400 {
 		return errors.New("notification cooldown must be between 0 and 86400 seconds")
+	}
+	if s.Updates.CheckIntervalHours < 1 || s.Updates.CheckIntervalHours > 168 {
+		return errors.New("update check interval must be between 1 and 168 hours")
+	}
+	if _, _, ok := ParseUpdateTime(s.Updates.UpdateTime); !ok {
+		return errors.New("update time must be a local HH:MM time")
+	}
+	if s.Updates.AutomaticInstall && !s.Updates.AutomaticCheck {
+		return errors.New("automatic installation requires automatic update checks")
 	}
 	if raw := s.Notifications.WebhookURL; raw != "" {
 		u, err := url.Parse(raw)

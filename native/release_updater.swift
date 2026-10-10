@@ -256,27 +256,3 @@ enum ReleaseUpdater {
         return data
     }
 }
-
-enum UpdateSchedule {
-    static func isValidTime(_ value: String) -> Bool {
-        let parts = value.split(separator: ":", omittingEmptySubsequences: false)
-        guard parts.count == 2, parts.allSatisfy({ $0.count == 2 && $0.allSatisfy(\.isNumber) }),
-              parts.allSatisfy({ $0.allSatisfy(\.isASCII) }),
-              let hour = Int(parts[0]), let minute = Int(parts[1]) else { return false }
-        return (0..<24).contains(hour) && (0..<60).contains(minute)
-    }
-
-    static func matches(_ value: String, at date: Date) -> Bool {
-        guard isValidTime(value) else { return false }
-        let parts = value.split(separator: ":")
-        let components = Calendar.current.dateComponents([.hour, .minute], from: date)
-        return components.hour == Int(parts[0]) && components.minute == Int(parts[1])
-    }
-
-    static func key(for value: String, at date: Date) -> String? {
-        guard isValidTime(value) else { return nil }
-        let parts = Calendar.current.dateComponents([.year, .month, .day], from: date)
-        guard let year = parts.year, let month = parts.month, let day = parts.day else { return nil }
-        return String(format: "%04d-%02d-%02d@%@", year, month, day, value)
-    }
-}

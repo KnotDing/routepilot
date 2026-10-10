@@ -20,27 +20,17 @@ private enum NotificationSelection {
 }
 
 struct AppPreferences: Codable {
-    var automaticCheck = true
-    var automaticInstall = false
-    var checkBetaUpdates = false
     var updatePrompts = true
-    var checkIntervalHours = 12
-    var updateTime = "03:00"
     var desktopNotifications = false
     var notificationSound = true
     var statusBar = StatusBarPreferences()
     var automation = AutomationPreferences()
 
-    enum CodingKeys: String, CodingKey { case automation, statusBar, automaticCheck, automaticInstall, checkBetaUpdates, updatePrompts, checkIntervalHours, updateTime, desktopNotifications, notificationSound }
+    enum CodingKeys: String, CodingKey { case automation, statusBar, updatePrompts, desktopNotifications, notificationSound }
     init() {}
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
-        automaticCheck = try c.decodeIfPresent(Bool.self, forKey: .automaticCheck) ?? true
-        automaticInstall = try c.decodeIfPresent(Bool.self, forKey: .automaticInstall) ?? false
-        checkBetaUpdates = try c.decodeIfPresent(Bool.self, forKey: .checkBetaUpdates) ?? false
         updatePrompts = try c.decodeIfPresent(Bool.self, forKey: .updatePrompts) ?? true
-        checkIntervalHours = try c.decodeIfPresent(Int.self, forKey: .checkIntervalHours) ?? 12
-        updateTime = try c.decodeIfPresent(String.self, forKey: .updateTime) ?? "03:00"
         desktopNotifications = try c.decodeIfPresent(Bool.self, forKey: .desktopNotifications) ?? false
         statusBar = try c.decodeIfPresent(StatusBarPreferences.self, forKey: .statusBar) ?? StatusBarPreferences()
         automation = try c.decodeIfPresent(AutomationPreferences.self, forKey: .automation) ?? AutomationPreferences()

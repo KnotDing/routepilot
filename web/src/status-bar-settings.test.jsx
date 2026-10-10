@@ -9,7 +9,7 @@ it('explains App-only status bar settings in browsers',()=>{
  expect(screen.getByLabelText('启用图标动画')).toBeDisabled();
 });
 it('saves animation and selected values together while preserving update preferences',async()=>{
- const postMessage=vi.fn(value=>queueMicrotask(()=>window.dispatchEvent(new CustomEvent('routepilot-preferences-saved',{detail:{requestID:value._requestID,ok:true}})))),notify=vi.fn();window.webkit={messageHandlers:{routepilotPreferences:{postMessage}}};window.routepilotNativePreferences={automaticCheck:false,notificationSound:false,statusBarHealth:['Surge API','BGP peer 192.0.2.1']};
+ const postMessage=vi.fn(value=>queueMicrotask(()=>window.dispatchEvent(new CustomEvent('routepilot-preferences-saved',{detail:{requestID:value._requestID,ok:true}})))),notify=vi.fn();window.webkit={messageHandlers:{routepilotPreferences:{postMessage}}};window.routepilotNativePreferences={updatePrompts:false,notificationSound:false,statusBarHealth:['Surge API','BGP peer 192.0.2.1']};
  render(<StatusBarSettings notify={notify}/>);
  fireEvent.click(screen.getByLabelText('启用图标动画'));
  fireEvent.change(screen.getByLabelText('图标旁显示'),{target:{value:'health_value'}});
@@ -17,7 +17,7 @@ it('saves animation and selected values together while preserving update prefere
  fireEvent.change(screen.getByLabelText('健康检查数值'),{target:{value:'failures'}});
  fireEvent.click(screen.getByRole('button',{name:'保存状态栏设置'}));
  await waitFor(()=>expect(notify).toHaveBeenCalledWith('应用偏好已保存'));
- expect(postMessage).toHaveBeenCalledWith(expect.objectContaining({automaticCheck:false,notificationSound:false,statusBar:{animation:false,display:'health_value',metric:'queries_per_second',health:'BGP peer 192.0.2.1',healthValue:'failures'}}));
+ expect(postMessage).toHaveBeenCalledWith(expect.objectContaining({updatePrompts:false,notificationSound:false,statusBar:{animation:false,display:'health_value',metric:'queries_per_second',health:'BGP peer 192.0.2.1',healthValue:'failures'}}));
 });
 it('offers QPS, metric and health-state display choices',()=>{
  window.webkit={messageHandlers:{routepilotPreferences:{postMessage:vi.fn()}}};render(<StatusBarSettings notify={()=>{}}/>);

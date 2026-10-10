@@ -12,7 +12,7 @@ export function FieldLabel({label,required=false,hint,children,className='',...p
  </label>;
 }
 export function FormHint(){const t=useT();return <p className="form-guidance">{t('标有“必填”的项目需要填写；开启相关功能后，必填提示会自动变化。')}</p>}
-const numbers=new Set('timeout_ms source_port_first source_port_last local_asn listen_port route_limit hold_seconds keepalive_seconds capacity response_capacity workers queue direct_ttl_seconds surge_ttl_seconds unknown_ttl_seconds error_ttl_seconds interval_ms failures successes grace_seconds stabilize_seconds history_capacity event_retention session_minutes cooldown_seconds asn port ttl med local_preference checkIntervalHours gateway_asn'.split(' '));
+const numbers=new Set('timeout_ms source_port_first source_port_last local_asn listen_port route_limit hold_seconds keepalive_seconds capacity response_capacity workers queue direct_ttl_seconds surge_ttl_seconds unknown_ttl_seconds error_ttl_seconds interval_ms failures successes grace_seconds stabilize_seconds history_capacity event_retention session_minutes cooldown_seconds asn port ttl med local_preference checkIntervalHours check_interval_hours gateway_asn'.split(' '));
 export const numericField=name=>numbers.has(name);
 export function resourceRequired(page,name){return numericField(name)||({Hosts:['domain','addresses','match'],Interception:['prefix'],Peers:['address'],Routes:['prefix','next_hop'],Overrides:['domain','match','decision']}[page]||[]).includes(name)}
 export function settingsRequirement(category,name,draft,interception=[]){
@@ -34,8 +34,11 @@ export function settingsRequirement(category,name,draft,interception=[]){
   for(const family of [4,6])if(name==='source'+family||name==='gateway'+family){result.required=Boolean((dns.interception_enabled||name.startsWith('source')&&routing.static_dns_configured)&&families.some(value=>value.includes(':')===(family===6)));if(result.required)result.hint='当前拦截地址族需要源地址与网关。'}
   if(name==='bypass_verified')result.required=Boolean(dns.interception_enabled);
  }
- if(category==='surge'&&name==='api_url'&&surge.restart?.enabled&&surge.restart?.api)result.required=true;
- if(category==='surge'&&(name==='next_hop4'||name==='next_hop6')){
+ if(category==='surge'&&name==='api_url'&&surge.restart?.enabled&&surge.restart?.api)result.required=true;	if(category==='updates'){
+		if(name==='automatic_install')result.disabled=!section.automatic_check;
+		if(name==='check_interval_hours')result.disabled=!section.automatic_check;
+		if(name==='update_time'){result.required=Boolean(section.automatic_check&&section.automatic_install);result.disabled=!section.automatic_check||!section.automatic_install;if(result.required)result.hint='每天到达该本地时间后自动安装；当天最多尝试一次。'}
+	} if(category==='surge'&&(name==='next_hop4'||name==='next_hop6')){
   const backend=routing.mode==='hybrid'?routing.fake_ip_backend:(routing.mode||'bgp');
   const active=backend==='bgp'?bgp.enabled:routing.static_fake_ip_configured;
   const family=name.endsWith('6')?6:4;
