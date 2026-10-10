@@ -181,7 +181,27 @@ func TestRouteImportRelayEndpoints(t *testing.T) {
 			t.Fatal("route import relay method", path)
 		}
 	}
+
 	if allowed("bgp/routes/import-url/anything", "POST") {
 		t.Fatal("nested import route allowed")
+	}
+}
+
+func TestRelayForwardsClientStatisticsToOlderBackend(t *testing.T) {
+	var requestedPath atomic.Value
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requestedPath.Store(r.URL.Path)
+		http.Error(w, `{"error":"unknown API endpoint"}`, http.StatusNotFound)
+	}))
+	defer upstream.Close()
+	m := New(func() []config.Backend { return []config.Backend{{ID: "remote", URL: upstream.URL}} })
+	defer m.Close()
+	local := httptest.NewServer(security.New(config.Default().Settings.Security).Wrap(m))
+	defer local.Close()
+	b := openBrowser(t, local.URL)
+
+	status, _, _ := b.call(t, "remote/dns/clients", "GET", "", "")
+	if status != http.StatusNotFound || requestedPath.Load() != "/api/v1/dns/clients" {
+		t.Fatalf("old backend response was not forwarded: status=%d path=%v", status, requestedPath.Load())
 	}
 }

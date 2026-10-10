@@ -18,6 +18,12 @@ it('shows client totals and per-client DNS decision statistics',()=>{
  expect(screen.getByText('DIRECT 请求数')).toBeInTheDocument();
 });
 
+it('explains when an older remote backend does not support client statistics',()=>{
+ render(<ClientsPanel snapshot={null}/>);
+ expect(screen.getByText('此远程后端版本暂不支持客户端统计。更新远程后端后即可查看。')).toBeInTheDocument();
+ expect(screen.queryByRole('table')).not.toBeInTheDocument();
+});
+
 it('explains when old client entries were evicted from the bounded list',()=>{
  render(<ClientsPanel snapshot={{clients:[],stats:{clients:1},capacity:4096,evicted_clients:3}}/>);
  expect(screen.getByText(/客户端列表容量为 4096 个；已淘汰 3 个不活跃客户端/)).toBeInTheDocument();

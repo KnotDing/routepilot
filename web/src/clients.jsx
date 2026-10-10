@@ -18,7 +18,9 @@ const clientColumns=[
 ];
 
 export function ClientsPanel({snapshot={}}){
- const t=useT(),stats=snapshot.stats||{},clients=Array.isArray(snapshot.clients)?snapshot.clients:[];
+ const t=useT();
+ if(snapshot===null)return <div className="notice">{t('此远程后端版本暂不支持客户端统计。更新远程后端后即可查看。')}</div>;
+ const stats=snapshot.stats||{},clients=Array.isArray(snapshot.clients)?snapshot.clients:[];
  return <>
   <div className="metrics">{summaryMetrics.map(([label,key])=><div className="metric" key={key}><span>{t(label)}</span><strong>{stats[key]??0}</strong></div>)}</div>
   {snapshot.evicted_clients>0&&<p className="field-hint">{t('客户端列表容量为 {capacity} 个；已淘汰 {count} 个不活跃客户端，淘汰前的请求仍计入汇总统计。',{capacity:snapshot.capacity,count:snapshot.evicted_clients})}</p>}

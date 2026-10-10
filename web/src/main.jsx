@@ -1,6 +1,6 @@
 import React,{useEffect,useRef,useState} from 'react';
 import {createRoot} from 'react-dom/client';
-import {request,setCSRF,setLocalCSRF,localRequest,selectBackend,isRemote,pretty,reconnectAfterApplication} from './client';
+import {request,requestOptional,setCSRF,setLocalCSRF,localRequest,selectBackend,isRemote,pretty,reconnectAfterApplication} from './client';
 import {saveSettings} from './configuration';
 import {FieldLabel,FormHint,numericField,resourceRequired,settingsRequirement} from './form-fields';
 import {DNSForwardingOverview} from './dns-overview';
@@ -152,7 +152,30 @@ function Workspace({backend,onManage,onLocalSession}){const t=useT();const [sess
 
  const refreshing=useRef(false),notificationState=useRef({settings:null,health:[],name:'',failures:0});
  const reportHealth=health=>observeServices({scope:backend?.url||location.origin,name:notificationState.current.name||backend?.name||t('本地服务'),health,settings:notificationState.current.settings||{},remote:Boolean(backend),backendID:backend?.id});
- const refresh=async()=>{if(!session?.authenticated||refreshing.current)return;refreshing.current=true;try{const keys=['status','health','settings','bgp/status','routing/status','bgp/peers','bgp/routes','dns/interception','dns/hosts','overrides','events','dns/cache?limit=0','dns/queries','dns/clients','surge/status'];const values=await Promise.all(keys.map(k=>request(k)));const next=Object.fromEntries(keys.map((k,i)=>[k.split('?')[0],values[i]]));setData(next);setError('');const peers=new Set((next['bgp/peers']||[]).filter(p=>p.enabled&&next['bgp/status']?.enabled).map(p=>'BGP peer '+p.address));const health=(next.health||[]).filter(c=>!c.name.startsWith('BGP peer ')||peers.has(c.name));notificationState.current={settings:next.settings?.notifications,health,name:next.status?.name||backend?.name,failures:0};reportHealth([...health,{name:'Management connection',state:'UP'}])}catch(e){if(e.status===401){init()}else if(e.name!=='AbortError'){setData({});setError(e.message);if(!e.status||e.status>=500){notificationState.current.failures++;if(notificationState.current.failures>=3)reportHealth([...notificationState.current.health,{name:'Management connection',state:'DOWN'}])}}}finally{refreshing.current=false}};
+ const refresh=async()=>{
+  if(!session?.authenticated||refreshing.current)return;
+  refreshing.current=true;
+  try{
+   const keys=['status','health','settings','bgp/status','routing/status','bgp/peers','bgp/routes','dns/interception','dns/hosts','overrides','events','dns/cache?limit=0','dns/queries','dns/clients','surge/status'];
+   const optional={'health':[],'bgp/status':{},'routing/status':{},'bgp/peers':[],'bgp/routes':[],'dns/interception':[],'dns/hosts':[],'overrides':[],'events':[],'dns/cache?limit=0':{},'dns/queries':[],'dns/clients':null,'surge/status':{}};
+   const values=await Promise.all(keys.map(k=>Object.hasOwn(optional,k)?requestOptional(k,optional[k]):request(k)));
+   const next=Object.fromEntries(keys.map((k,i)=>[k.split('?')[0],values[i]]));
+   setData(next);setError('');
+   const peers=new Set((next['bgp/peers']||[]).filter(p=>p.enabled&&next['bgp/status']?.enabled).map(p=>'BGP peer '+p.address));
+   const health=(next.health||[]).filter(c=>!c.name.startsWith('BGP peer ')||peers.has(c.name));
+   notificationState.current={settings:next.settings?.notifications,health,name:next.status?.name||backend?.name,failures:0};
+   reportHealth([...health,{name:'Management connection',state:'UP'}]);
+  }catch(e){
+   if(e.status===401){init()}
+   else if(e.name!=='AbortError'){
+    setData({});setError(e.message);
+    if(!e.status||e.status>=500){
+     notificationState.current.failures++;
+     if(notificationState.current.failures>=3)reportHealth([...notificationState.current.health,{name:'Management connection',state:'DOWN'}]);
+    }
+   }
+  }finally{refreshing.current=false}
+ };
  useEffect(()=>{if(!session?.authenticated)return;refresh();const timer=setInterval(refresh,3000);const stream=isRemote()?null:new EventSource('/api/v1/events/stream');stream?.addEventListener('update',refresh);return()=>{clearInterval(timer);stream?.close()}},[session?.authenticated]);
  useEffect(()=>{document.documentElement.dataset.theme=data.settings?.general.theme||'system'},[data.settings?.general.theme]);
  const signIn=async e=>{

@@ -134,6 +134,7 @@
   "时间": "Time",
   "暂无记录": "No records",
   "暂无客户端 DNS 请求": "No client DNS requests yet",
+  "此远程后端版本暂不支持客户端统计。更新远程后端后即可查看。": "This remote backend version does not support client statistics. Update the remote backend to view them.",
   "最近事件": "Recent events",
   "最近同步": "Last sync",
   "最近错误": "Last error",
