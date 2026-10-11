@@ -4,6 +4,12 @@ on:
   push:
     tags:
       - 'v*'
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: Existing release tag to build and publish
+        required: true
+        type: string
 
 permissions:
   contents: write
@@ -14,6 +20,8 @@ jobs:
     steps:
       - name: Check out source
         uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.release_tag || github.ref }}
 
       - name: Set up Go
         uses: actions/setup-go@v7
@@ -41,10 +49,12 @@ jobs:
           command -v gh
 
       - name: Set release identity
+        env:
+          RELEASE_TAG: ${{ inputs.release_tag || github.ref_name }}
         shell: bash
         run: |
           set -euo pipefail
-          tag="${GITHUB_REF_NAME}"
+          tag="${RELEASE_TAG}"
           version="${tag#v}"
           [[ "$version" =~ ^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-beta\.[1-9][0-9]*)?$ ]]
           python3 - "$version" "$GITHUB_RUN_NUMBER" <<'PY'
@@ -59,37 +69,38 @@ jobs:
         run: npm --prefix web ci
 
       - name: Install browser test runtime for stable release
-        if: ${{ !contains(github.ref_name, '-beta.') }}
+        if: ${{ !contains(inputs.release_tag || github.ref_name, '-beta.') }}
         run: npm --prefix web exec -- playwright install chromium
 
       - name: Test and verify stable release artifacts
-        if: ${{ !contains(github.ref_name, '-beta.') }}
+        if: ${{ !contains(inputs.release_tag || github.ref_name, '-beta.') }}
         run: |
           make verify-release
           make fuzz
 
       - name: Build and verify beta package without full test suite
-        if: ${{ contains(github.ref_name, '-beta.') }}
+        if: ${{ contains(inputs.release_tag || github.ref_name, '-beta.') }}
         run: make package package-check
 
       - name: Publish GitHub release and assets
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_TAG: ${{ inputs.release_tag || github.ref_name }}
         shell: bash
         run: |
           set -euo pipefail
-          TAG="${GITHUB_REF_NAME}"
-          prerelease=()
-          if [[ "$TAG" == *-beta.* ]]; then prerelease=(--prerelease); fi
+          TAG="${RELEASE_TAG}"
           notes_file=".gitea/release-notes/${TAG}.md"
           if [ ! -f "$notes_file" ]; then
             notes_file=$(mktemp)
             printf 'Automatically built by GitHub Actions.\n\nSee SHA256SUMS to verify downloaded assets.\n' > "$notes_file"
           fi
-          gh release create "$TAG" \
-            --title "RoutePilot $TAG" \
-            --notes-file "$notes_file" \
-            "${prerelease[@]}" \
-            artifacts/RoutePilot-macos-arm64.dmg \
-            artifacts/RoutePilot-macos-arm64.zip \
-            artifacts/SHA256SUMS
+          assets=(artifacts/RoutePilot-macos-arm64.dmg artifacts/RoutePilot-macos-arm64.zip artifacts/SHA256SUMS)
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release upload "$TAG" "${assets[@]}" --clobber
+          else
+            release_args=("$TAG" --title "RoutePilot $TAG" --notes-file "$notes_file")
+            if [[ "$TAG" == *-beta.* ]]; then release_args+=(--prerelease); fi
+            release_args+=("${assets[@]}")
+            gh release create "${release_args[@]}"
+          fi
