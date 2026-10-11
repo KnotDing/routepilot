@@ -1,0 +1,26 @@
+name: RoutePilot regression checks
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  regression:
+    runs-on: macos-14
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+      - name: Install locked test dependencies
+        run: |
+          npm --prefix web ci
+          npm --prefix web exec -- playwright install chromium
+      - name: Check frontend and backend
+        run: make verify
+      - name: Check native UI and responsive pages
+        run: make native-test ui-test
+      - name: Fuzz release version parsing
+        run: make fuzz

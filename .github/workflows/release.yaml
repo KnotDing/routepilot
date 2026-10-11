@@ -1,0 +1,90 @@
+name: Build and publish RoutePilot release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: macos-14
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Check installed build tools
+        shell: bash
+        run: |
+          set -euo pipefail
+          go version
+          node --version
+          npm --version
+          python3 - <<'PY'
+          import pathlib, re, subprocess
+          required = re.search(r"^go (\d+)\.(\d+)\.(\d+)", pathlib.Path("go.mod").read_text(), re.M)
+          installed = re.search(r"go(\d+)\.(\d+)\.(\d+)", subprocess.check_output(["go", "version"], text=True))
+          assert required and installed and tuple(map(int, installed.groups())) >= tuple(map(int, required.groups())), "Runner Go version is too old"
+          node = subprocess.check_output(["node", "--version"], text=True).strip().lstrip("v")
+          assert tuple(map(int, node.split("."))) >= (22, 12, 0), "Runner needs Node.js 22.12+"
+          PY
+          command -v jq
+          command -v xcrun
+          command -v hdiutil
+          command -v gh
+
+      - name: Set release identity
+        shell: bash
+        run: |
+          set -euo pipefail
+          tag="${GITHUB_REF_NAME}"
+          version="${tag#v}"
+          [[ "$version" =~ ^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-beta\.[1-9][0-9]*)?$ ]]
+          python3 - "$version" "$GITHUB_RUN_NUMBER" <<'PY'
+          import json, pathlib, sys
+          path = pathlib.Path("internal/buildinfo/release.json")
+          release = json.loads(path.read_text())
+          release["version"], release["build"] = sys.argv[1], sys.argv[2]
+          path.write_text(json.dumps(release, ensure_ascii=False, indent=2) + "\n")
+          PY
+
+      - name: Install locked test dependencies
+        run: npm --prefix web ci
+
+      - name: Install browser test runtime for stable release
+        if: ${{ !contains(github.ref_name, '-beta.') }}
+        run: npm --prefix web exec -- playwright install chromium
+
+      - name: Test and verify stable release artifacts
+        if: ${{ !contains(github.ref_name, '-beta.') }}
+        run: |
+          make verify-release
+          make fuzz
+
+      - name: Build and verify beta package without full test suite
+        if: ${{ contains(github.ref_name, '-beta.') }}
+        run: make package package-check
+
+      - name: Publish GitHub release and assets
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          TAG="${GITHUB_REF_NAME}"
+          prerelease=()
+          if [[ "$TAG" == *-beta.* ]]; then prerelease=(--prerelease); fi
+          notes_file=".gitea/release-notes/${TAG}.md"
+          if [ ! -f "$notes_file" ]; then
+            notes_file=$(mktemp)
+            printf 'Automatically built by GitHub Actions.\n\nSee SHA256SUMS to verify downloaded assets.\n' > "$notes_file"
+          fi
+          gh release create "$TAG" \
+            --title "RoutePilot $TAG" \
+            --notes-file "$notes_file" \
+            "${prerelease[@]}" \
+            artifacts/RoutePilot-macos-arm64.dmg \
+            artifacts/RoutePilot-macos-arm64.zip \
+            artifacts/SHA256SUMS
