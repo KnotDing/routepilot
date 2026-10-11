@@ -48,7 +48,7 @@ final class ControllerClient {
 }
 
 @MainActor
-final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNavigationDelegate, WKUIDelegate, WKDownloadDelegate, NSMenuDelegate, WKScriptMessageHandler {
+final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, @preconcurrency WKNavigationDelegate, @preconcurrency WKUIDelegate, @preconcurrency WKDownloadDelegate, NSMenuDelegate, @preconcurrency WKScriptMessageHandler {
     let arguments = CommandLine.arguments
     var client: ControllerClient!
     var statusItem: NSStatusItem!
@@ -165,8 +165,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
         }
         rebuildMenu()
         timer = Timer.scheduledTimer(withTimeInterval: 3, repeats: true) { [weak self] _ in
-            Task { @MainActor in await self?.refresh() }
-            Task { @MainActor in await self?.refreshRemoteNotifications() }
+            Task { @MainActor [weak self] in await self?.refresh() }
+            Task { @MainActor [weak self] in await self?.refreshRemoteNotifications() }
         }
         Task { await refresh() }
         Task { await promptForBackendUpdate() }
@@ -618,7 +618,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
             process.currentDirectoryURL = dataDirectory
             process.standardOutput = logHandle; process.standardError = logHandle
             process.terminationHandler = { [weak self] _ in
-                Task { @MainActor in
+                Task { @MainActor [weak self] in
                     guard let self = self else { return }
                     self.child = nil
                     try? self.logHandle?.close(); self.logHandle = nil
@@ -723,7 +723,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
     func startReleaseUpdateTimer() {
         releaseTimer?.invalidate()
         releaseTimer = Timer.scheduledTimer(withTimeInterval: 60, repeats: true) { [weak self] _ in
-            Task { @MainActor in await self?.promptForBackendUpdate() }
+            Task { @MainActor [weak self] in await self?.promptForBackendUpdate() }
         }
     }
     // Update prompts follow the connected backend's update settings; the App only notifies.
@@ -1144,8 +1144,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
             NSApp.reply(toApplicationShouldTerminate: false)
             self.alert("服务仍在停止", "为等待 DNS/BGP/PF 清理，APP 保持运行。可查看服务日志后重试退出。")
             self.timer = Timer.scheduledTimer(withTimeInterval: 3, repeats: true) { [weak self] _ in
-                Task { @MainActor in await self?.refresh() }
-                Task { @MainActor in await self?.refreshRemoteNotifications() }
+                Task { @MainActor [weak self] in await self?.refresh() }
+                Task { @MainActor [weak self] in await self?.refreshRemoteNotifications() }
             }
             self.startReleaseUpdateTimer()
         }
