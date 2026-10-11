@@ -23,9 +23,14 @@ function familyName(family){
  return [afi,safi].filter(Boolean).join(' / ');
 }
 const capabilityNames={MultiProtocolCapability:'多协议扩展',RouteRefreshCapability:'路由刷新',CarryingLabelInfoCapability:'标签信息',ExtendedNexthopCapability:'扩展下一跳',GracefulRestartCapability:'优雅重启',FourOctetASNCapability:'四字节 ASN',AddPathCapability:'多路径通告',EnhancedRouteRefreshCapability:'增强路由刷新',LongLivedGracefulRestartCapability:'长期优雅重启',RouteRefreshCiscoCapability:'Cisco 路由刷新',FqdnCapability:'主机名',SoftwareVersionCapability:'软件版本',UnknownCapability:'未知能力'};
-function Capabilities({title,values,established}){
+function capabilitySortKey(capability){
+ const fields=Object.fromEntries(Object.entries(capability||{}).filter(([key])=>key!=='@type').sort(([a],[b])=>a<b?-1:a>b?1:0));
+ return `${(capability?.['@type']||'').split('.').pop()}\u0000${JSON.stringify(fields)}`;
+}
+function Capabilities({title,values,established,sort=false}){
  const t=useT();
- return <section className="panel"><h3>{t(title)}</h3>{!established?<p className="muted">{t('会话尚未建立，能力协商信息暂不可用。')}</p>:!values?.length?<p className="muted">{t('无能力信息')}</p>:<ul className="peer-capabilities">{values.map((capability,index)=>{
+ const sortedValues=sort&&values?[...values].sort((a,b)=>{const left=capabilitySortKey(a),right=capabilitySortKey(b);return left<right?-1:left>right?1:0}):values;
+ return <section className="panel"><h3>{t(title)}</h3>{!established?<p className="muted">{t('会话尚未建立，能力协商信息暂不可用。')}</p>:!sortedValues?.length?<p className="muted">{t('无能力信息')}</p>:<ul className="peer-capabilities">{sortedValues.map((capability,index)=>{
   const type=(capability['@type']||'').split('.').pop(),fields=Object.fromEntries(Object.entries(capability).filter(([key])=>key!=='@type'));
   return <li key={index}><details><summary>{t(capabilityNames[type]||type||'未知能力')}{capability.family&&' · '+familyName(capability.family)}{capability.asn!==undefined&&' · AS'+capability.asn}</summary><pre>{JSON.stringify(fields,null,2)}</pre></details></li>;
  })}</ul>}</section>;
@@ -59,6 +64,6 @@ export function BGPPeerDetails({peer,live,settings,onClose}){
   </div>
   {messages&&<section className="panel"><h3>{t('BGP 消息统计')}</h3><div className="table-wrap"><table><thead><tr><th>{t('类型')}</th><th>{t('接收')}</th><th>{t('发送')}</th></tr></thead><tbody>{[['total','总计'],['open','OPEN'],['update','UPDATE'],['keepalive','KEEPALIVE'],['notification','NOTIFICATION'],['refresh','ROUTE-REFRESH'],['discarded','丢弃'],['withdraw_update','撤回 UPDATE'],['withdraw_prefix','撤回前缀']].map(([key,label])=><tr key={key}><td>{t(label)}</td><td>{messages.received?.[key]??'—'}</td><td>{messages.sent?.[key]??'—'}</td></tr>)}</tbody></table></div></section>}
   {detail?.afi_safis?.length>0&&<section className="panel"><h3>{t('地址族与前缀统计')}</h3><div className="table-wrap"><table><thead><tr>{['地址族','启用','接收','接受','GoBGP 通告数','前缀上限'].map(label=><th key={label}>{t(label)}</th>)}</tr></thead><tbody>{detail.afi_safis.map((family,index)=><tr key={index}><td>{familyName(family.state?.family||family.config?.family)}</td><td>{display(family.config?.enabled,t)}</td><td>{family.state?.received??'—'}</td><td>{family.state?.accepted??'—'}</td><td>{established?(family.state?.advertised??'—'):'—'}</td><td>{family.prefix_limits?.max_prefixes??'—'}</td></tr>)}</tbody></table></div><p className="muted">{t('地址族统计为 GoBGP 运行快照；实际导出前缀总数见“已发布前缀”。')}</p></section>}
-  {detail&&<><div className="peer-detail-grid"><Capabilities title="本地通告能力" values={state.local_cap} established={established}/><Capabilities title="远端通告能力" values={state.remote_cap} established={established}/></div><details className="peer-raw"><summary>{t('完整 GoBGP 信息（已隐藏认证密钥）')}</summary><pre>{JSON.stringify(detail,null,2)}</pre></details></>}
+  {detail&&<><div className="peer-detail-grid"><Capabilities title="本地通告能力" values={state.local_cap} established={established}/><Capabilities title="远端通告能力" values={state.remote_cap} established={established} sort/></div><details className="peer-raw"><summary>{t('完整 GoBGP 信息（已隐藏认证密钥）')}</summary><pre>{JSON.stringify(detail,null,2)}</pre></details></>}
  </section></div>;
 }
