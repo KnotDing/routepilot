@@ -140,8 +140,10 @@ main { flex: 1; min-width: 0; margin-left: 236px; padding: 30px 36px 22px; }
 .panel > :last-child { margin-bottom: 0; }
 .inline-help-panel { position: relative; }
 .inline-help-heading { display: flex; align-items: center; gap: 8px; }
-.inline-help-button { width: 22px; height: 22px; min-height: 22px; padding: 0; border-radius: 50%; color: var(--muted); font-size: 14px; line-height: 20px; }
-.inline-help-popover { position: absolute; z-index: 5; top: 62px; right: 18px; width: min(440px, calc(100vw - 48px)); padding: 14px 16px; border: 1px solid var(--border-strong); border-radius: 10px; background: var(--panel); box-shadow: 0 8px 28px #17243b26; color: var(--text); }
+.inline-help-control { position: relative; display: inline-flex; flex: 0 0 auto; }
+.inline-help-button { display: grid; place-items: center; flex: 0 0 22px; width: 22px; height: 22px; min-height: 22px; padding: 0; border-radius: 50%; color: var(--muted); font-size: 14px; line-height: 1; }
+.inline-help-popover { position: absolute; z-index: 5; top: calc(100% + 8px); left: 0; width: min(440px, calc(100vw - 48px)); padding: 14px 16px; border: 1px solid var(--border-strong); border-radius: 10px; background: var(--panel); box-shadow: 0 8px 28px #17243b26; color: var(--text); }
+.inline-help-popover::before { position: absolute; top: -7px; left: 5px; width: 12px; height: 12px; border-top: 1px solid var(--border-strong); border-left: 1px solid var(--border-strong); background: var(--panel); content: ''; transform: rotate(45deg); }
 .inline-help-popover p { margin: 0 0 10px; }
 .inline-help-popover p:last-child { margin-bottom: 0; }
 .table-wrap { max-width: 100%; overflow: auto; background: var(--panel); border: 1px solid var(--border); border-radius: 12px; }
