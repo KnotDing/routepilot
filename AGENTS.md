@@ -120,7 +120,8 @@
 
 ## 最近已核验发布（2026-10-11）
 
-- 正式版基线为 `v1.0.2`；最新已核验测试版为 `v1.0.3-beta.3`，功能提交 `1058cb9`。回归 #79（run 2048）与 Release #80（run 2049）均成功，Release 为 prerelease，DMG/ZIP/校验和已下载核验；App 与捆绑后台均为 `1.0.3-beta.3` / build `80`。
+- 正式版基线为 `v1.0.2`；最新测试版为 `v1.0.3-beta.10`，发布标签指向 `1870e7a`。GitHub 回归 #9（run `38129959463`）与 Release #3（run `38130240664`）成功。Gitea Release #98（run `2067`）的 Ubuntu 获取任务遇到 GitHub HTTP 403，macOS 回退构建成功；两边 Release 均为预发布，含 DMG、ZIP、SHA256SUMS。Gitea 附件校验和通过，App 与捆绑后台均为 `1.0.3-beta.10` / build `98`。
+- Gitea Release 工作流现可从 Actions Secret `GITHUB_RELEASE_TOKEN` 读取 GitHub 只读 token；配置 Secret 后的新标签运行可用它认证 GitHub API 和附件下载。beta.10 使用旧工作流运行，因此走了本地回退构建。
 - Beta.1 将 CLI 与 skill 设置改为管理当前连接的后端；Beta.2 增加管理 IP 免认证、可信代理、代理域名与请求来源处理。默认免认证白名单为空。真实反向代理部署尚未现场验收。
 - Beta.3 增加乐观缓存可靠性统计和 BGP 邻居详情。代码地图与本节发布结果作为后续文档提交更新，未移动发布标签；它们不改变已发布 App 的运行行为。
 - 此节仅为带日期的快照。接手时以 `git status`、`internal/buildinfo/release.json`、远端标签与实际 Release/Actions 为准，不凭本文猜测最新版本。
