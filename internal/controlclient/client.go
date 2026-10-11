@@ -14,12 +14,12 @@ import (
 	"io"
 	"net/http"
 	"net/http/cookiejar"
-	"net/netip"
 	"net/url"
 	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
+	"surge-controller/internal/config"
 	"time"
 )
 
@@ -53,8 +53,8 @@ func New(o Options) (*Client, error) {
 	if err != nil || u == nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" || u.User != nil || u.RawQuery != "" || u.ForceQuery || u.Fragment != "" || u.RawPath != "" || (u.Path != "" && u.Path != "/") || u.Opaque != "" {
 		return nil, errors.New("--url must be an HTTP(S) origin without credentials, path, query or fragment")
 	}
-	if _, err := netip.ParseAddr(u.Hostname()); err != nil && u.Hostname() != "localhost" {
-		return nil, errors.New("management address must use an IP address or localhost")
+	if _, err := config.ManagementOrigin(o.URL); err != nil {
+		return nil, err
 	}
 	if port := u.Port(); port != "" {
 		n, err := strconv.Atoi(port)
@@ -281,13 +281,15 @@ func (c *Client) Session(ctx context.Context) (json.RawMessage, bool, error) {
 		CSRF          string `json:"csrf"`
 		Authenticated bool   `json:"authenticated"`
 		Required      bool   `json:"authentication_required"`
+		IPWhitelisted bool   `json:"ip_whitelisted"`
+		ClientIP      string `json:"client_ip"`
 	}
 	if err := json.Unmarshal(data, &s); err != nil || s.CSRF == "" {
 		return nil, false, errors.New("invalid management session")
 	}
 	c.csrf = s.CSRF
 	// Never write CSRF tokens or cookies to terminal/agent output.
-	value, _ := json.Marshal(map[string]any{"origin": c.base.String(), "authenticated": s.Authenticated, "authentication_required": s.Required})
+	value, _ := json.Marshal(map[string]any{"origin": c.base.String(), "authenticated": s.Authenticated, "authentication_required": s.Required, "ip_whitelisted": s.IPWhitelisted, "client_ip": s.ClientIP})
 	return value, s.Authenticated, nil
 }
 func (c *Client) Login(ctx context.Context, username, password string) (json.RawMessage, error) {

@@ -954,5 +954,17 @@
   "CLI 集成锁文件权限或类型无效。": "The CLI integration lock has invalid permissions or type.",
   "CLI 与 skill 设置正在应用，请稍后重试。": "CLI and skill settings are being applied; retry shortly.",
   "CLI 与 skill 安装必须以桌面用户运行。": "CLI and skill installation must run as a desktop user.",
-  "CLI 与 skill 请求过大。": "The CLI and skill request is too large."
+  "CLI 与 skill 请求过大。": "The CLI and skill request is too large.",
+  "免认证 IP 白名单（每行 IP 或 CIDR）": "Authentication bypass IP allowlist (one IP or CIDR per line)",
+  "可信反向代理（每行 IP 或 CIDR）": "Trusted reverse proxies (one IP or CIDR per line)",
+  "反向代理访问地址（每行 HTTP(S) 源地址）": "Public proxy origins (one HTTP(S) origin per line)",
+  "代理客户端 IP 请求头": "Proxy client IP header",
+  "管理认证与 TLS": "Management authentication and TLS",
+  "管理 IP 与反向代理": "Management IP access and reverse proxies",
+  "这些网段允许访问管理接口，但仍需登录；免认证白名单中的 IP 自动获得访问权限。": "These networks may access management but must still sign in. Authentication bypass IPs are automatically allowed access.",
+  "匹配的客户端直接进入管理页面和 CLI，无需用户名密码。留空关闭；写操作仍校验 CSRF。": "Matching clients access the management page and CLI without credentials. Leave blank to disable. Writes still require CSRF.",
+  "只填写实际代理的来源地址。非可信连接的转发头会被忽略；缺少真实客户端 IP 时不免认证。": "Only list actual proxy source addresses. Forwarding headers from untrusted connections are ignored; requests without a verified client IP cannot bypass authentication.",
+  "例如 https://routepilot.example.com；不包含路径。代理访问域名需要在此登记；HTTPS 终止后仍使用安全 Cookie。": "For example, https://routepilot.example.com, without a path. Register public proxy domains here. Cookies remain Secure after HTTPS termination.",
+  "默认 X-Forwarded-For。代理必须改写选中的 IP 头，以及转发的 Host 和 Proto；不从其他 IP 头回退。": "Defaults to X-Forwarded-For. Proxies must set the selected IP header and forwarded Host and Proto. Other IP headers are not used as fallbacks.",
+  "客户端 IP 按代理链从右向左确认。只将真实客户端加入免认证白名单，不要将代理地址用于免认证。通过本机中继连接远端时，远端看到的是本机 Controller 的出口 IP。": "Client IPs are verified from right to left through the proxy chain. Only allow actual clients to bypass authentication, not proxies. A remote backend reached through the local relay sees the local Controller egress IP."
 }

@@ -404,5 +404,18 @@
   "installed App ownership or permissions are unsafe": "已安装 App 的所有者或权限不安全。",
   "complete CLI and skill preferences are required": "需要完整的 CLI 与 skill 设置。",
   "invalid or duplicate skill target": "skill 目标无效或重复。",
-  "invalid CLI or skill conflict choice": "CLI 或 skill 冲突处理选项无效。"
+  "invalid CLI or skill conflict choice": "CLI 或 skill 冲突处理选项无效。",
+  "invalid management authentication bypass network": "免认证白名单无效：每行填写 IP 或规范的非默认 CIDR，最多 128 项",
+  "invalid management trusted proxy": "可信代理无效：每行填写 IP 或规范的非默认 CIDR，最多 128 项",
+  "invalid management proxy origin": "反向代理访问地址无效：请填写不含路径、查询参数或凭据的 HTTP(S) 源地址",
+  "invalid management proxy client IP header": "代理客户端 IP 请求头无效",
+  "trusted management proxies require authentication": "使用可信反向代理需要开启管理认证",
+  "management proxy origins require trusted proxies (maximum 32)": "请先配置可信代理；反向代理访问地址最多 32 项",
+  "invalid management client IP": "管理客户端 IP 无效",
+  "invalid management proxy client IP": "代理提供的管理客户端 IP 无效",
+  "invalid management proxy headers": "管理代理请求头无效，请检查选定的 IP 头及 Host / Proto 配置",
+  "management proxy origin is not allowed": "反向代理访问地址未获允许，请在安全设置中登记外部源地址",
+  "management origin must be an HTTP(S) origin without credentials, path, query or fragment": "管理地址必须是 HTTP(S) 源地址，不能包含凭据、路径、查询参数或片段",
+  "invalid management origin host": "管理地址的主机名或 IP 无效",
+  "invalid management origin port": "管理地址的端口无效"
 }

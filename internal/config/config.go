@@ -116,15 +116,19 @@ type Notifications struct {
 	ClearWebhook      bool     `json:"clear_webhook,omitempty"`
 }
 type Security struct {
-	Authentication     bool     `json:"authentication"`
-	Username           string   `json:"username"`
-	PasswordHash       string   `json:"password_hash,omitempty"`
-	Password           string   `json:"password,omitempty"`
-	PasswordConfigured bool     `json:"password_configured"`
-	SessionMinutes     int      `json:"session_minutes"`
-	AllowedNetworks    []string `json:"allowed_networks"`
-	TLSCert            string   `json:"tls_cert"`
-	TLSKey             string   `json:"tls_key"`
+	Authentication      bool     `json:"authentication"`
+	Username            string   `json:"username"`
+	PasswordHash        string   `json:"password_hash,omitempty"`
+	Password            string   `json:"password,omitempty"`
+	PasswordConfigured  bool     `json:"password_configured"`
+	SessionMinutes      int      `json:"session_minutes"`
+	AllowedNetworks     []string `json:"allowed_networks"`
+	AuthBypassNetworks  []string `json:"auth_bypass_networks"`
+	TrustedProxies      []string `json:"trusted_proxies"`
+	ProxyOrigins        []string `json:"proxy_origins"`
+	ProxyClientIPHeader string   `json:"proxy_client_ip_header"`
+	TLSCert             string   `json:"tls_cert"`
+	TLSKey              string   `json:"tls_key"`
 }
 type Updates struct {
 	AutomaticCheck     bool   `json:"automatic_check"`
@@ -291,6 +295,9 @@ func (d Document) Clone() Document {
 	c.Settings.Surge.Restart.Nodes = append([]string{}, d.Settings.Surge.Restart.Nodes...)
 	c.Settings.Surge.FakePrefixes = append([]string{}, d.Settings.Surge.FakePrefixes...)
 	c.Settings.Security.AllowedNetworks = append([]string{}, d.Settings.Security.AllowedNetworks...)
+	c.Settings.Security.AuthBypassNetworks = append([]string{}, d.Settings.Security.AuthBypassNetworks...)
+	c.Settings.Security.TrustedProxies = append([]string{}, d.Settings.Security.TrustedProxies...)
+	c.Settings.Security.ProxyOrigins = append([]string{}, d.Settings.Security.ProxyOrigins...)
 	c.Peers = append([]Peer{}, d.Peers...)
 	c.Routes = append([]Route{}, d.Routes...)
 	for i := range c.Routes {
@@ -319,7 +326,7 @@ func Default() Document {
 		Cache:   Cache{OptimisticIdleRefresh: true, OptimisticResponseIdleRefresh: true, Capacity: 10000, ResponseCapacity: 10000, Workers: 8, Queue: 256, TimeoutMS: 500, DirectTTLSeconds: 300, SurgeTTLSeconds: 300, UnknownTTLSeconds: 10, ErrorTTLSeconds: 1, InvalidateDirectOnSelectionChange: true, InvalidateRejectOnSelectionChange: true},
 		Health:  Health{1000, 3, 3, 60, 3, "example.com"}, Logging: Logging{"info", true, 1000, true, 2000},
 		Notifications: Notifications{Surge: true, BGP: true, DNS: true, Controller: true, CooldownSeconds: 300},
-		Security:      Security{Username: "admin", SessionMinutes: 60, AllowedNetworks: []string{"127.0.0.0/8", "::1/128"}},
+		Security:      Security{Username: "admin", SessionMinutes: 60, AllowedNetworks: []string{"127.0.0.0/8", "::1/128"}, AuthBypassNetworks: []string{}, TrustedProxies: []string{}, ProxyOrigins: []string{}, ProxyClientIPHeader: "X-Forwarded-For"},
 		Updates:       Updates{AutomaticCheck: true, CheckIntervalHours: 12, UpdateTime: "03:00"},
 	}, Peers: []Peer{}, Routes: []Route{}, RouteFeeds: []RouteFeed{}, Interception: []Interception{}, Overrides: []Override{}}
 }
@@ -444,6 +451,9 @@ func (d Document) Validate() error {
 		if _, e := netip.ParsePrefix(p); e != nil {
 			return errors.New("invalid management allowed network")
 		}
+	}
+	if err := s.Security.ValidateIPAccess(); err != nil {
+		return err
 	}
 	if !filepath.IsAbs(s.Surge.CLIPath) || s.DNS.TimeoutMS < 100 || s.DNS.TimeoutMS > 10000 {
 		return errors.New("absolute CLI path and bounded DNS timeout required")

@@ -23,7 +23,7 @@ const help = `RoutePilot CLI — authenticated control of the connected backend
 
 Usage: routepilot [global options] COMMAND [options]
 Global options go before COMMAND:
-  --url ORIGIN         HTTP(S) IP/localhost address (ROUTEPILOT_URL or http://127.0.0.1:1055)
+  --url ORIGIN         HTTP(S) IP/localhost/proxy domain (ROUTEPILOT_URL or http://127.0.0.1:1055)
   --session-dir DIR    Private cookie storage (ROUTEPILOT_SESSION_DIR or user config directory)
   --ca-file FILE       Additional trusted PEM certificates (standard TLS verification)
   --timeout 30s        Per-request timeout

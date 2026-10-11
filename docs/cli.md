@@ -77,7 +77,9 @@ routepilot --url http://192.0.2.10:1055 login --username admin --password-file /
 routepilot --url http://192.0.2.10:1055 status
 ```
 
-也可通过 `ROUTEPILOT_URL` 设置当前目标。默认仅连接 `http://127.0.0.1:1055`；Web 中选中的远程连接不会改变 CLI 的目标。地址仅支持 IP 或 localhost、HTTP/HTTPS，可使用 IPv6，例如 `http://[2001:db8::10]:1055`。默认不使用环境 HTTP 代理。
+也可通过 `ROUTEPILOT_URL` 设置当前目标。默认仅连接 `http://127.0.0.1:1055`；Web 中选中的远程连接不会改变 CLI 的目标。地址支持 IP、localhost 或反向代理域名、HTTP/HTTPS，可使用 IPv6，例如 `http://[2001:db8::10]:1055`。默认不使用环境 HTTP 代理，不支持子路径。
+
+在目标后台 **设置 → 安全 → 免认证 IP 白名单** 中加入 CLI 的实际出口 IP 或网段后，可直接执行命令，无需 `login`。CLI 每次操作仍取得会话与 CSRF，并由后台重新核对 IP；`session` 的 `ip_whitelisted` 与 `client_ip` 显示是否免认证及后台确认的地址。使用域名反向代理时需要在目标后台配置可信代理、客户端 IP 请求头和外部源地址，见[反向代理配置](remote-management.md#管理-ip-免认证与反向代理)。CLI 的本机启用开关仍需开启。
 
 密码通过 `--password-stdin` 或权限为 0600 的 `--password-file` 读取，不接受密码参数，不保存密码。会话按管理地址分别保存，只保存会话 Cookie，每次操作重新取得 CSRF。macOS 默认目录为 `~/Library/Application Support/RoutePilot/CLI`，Linux 为用户配置目录下 `RoutePilot/CLI`；目录 0700，文件 0600。`--session-dir` / `ROUTEPILOT_SESSION_DIR` 可改位置。会话过期后重新登录；`logout` 撤销会话，`logout --local-only` 在后台不可达时清除本地会话。
 

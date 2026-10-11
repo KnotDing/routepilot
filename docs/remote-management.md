@@ -37,6 +37,53 @@ App 提供本地网络访问的中英文用途说明；macOS 在需要授权的�
 远程修改管理监听地址或 TLS 配置后，编辑已保存连接的地址并重新连接。
 macOS 状态栏仍监控本地网络后台；Web 切换远程后端不会切换本地 DNS/BGP 服务。
 
+## 管理 IP 免认证与反向代理
+
+在 **设置 → 安全 → 管理 IP 与反向代理** 配置，设置作用于当前连接的后端：
+
+| 设置 | 用途 |
+| --- | --- |
+| 允许的管理网段 | 允许访问接口的客户端网段；仍需要正常登录。 |
+| 免认证 IP 白名单 | 每行一个 IPv4 / IPv6 或规范 CIDR；匹配后可直接进入页面、App 和 CLI，也自动获得管理网段访问权限。留空关闭。 |
+| 可信反向代理 | 实际连接后台的代理 IP / CIDR，默认不信任任何代理。只列代理来源，不能把整个客户端网段当作代理。 |
+| 代理客户端 IP 请求头 | 选择 `X-Forwarded-For`（默认）、`X-Real-IP` 或 [RFC 7239](https://www.rfc-editor.org/rfc/rfc7239.html) `Forwarded`；只读取选中的一种，不在不同 IP 头之间回退。 |
+| 反向代理访问地址 | 每行一个外部 HTTP(S) 源地址，例如 `https://routepilot.example.com`。域名访问需明确登记；不能包含路径、查询参数或凭据。 |
+
+非回环管理监听、反向代理仍需启用管理认证并设置密码，供非白名单客户端登录。白名单支持单个地址或非默认网段，最多 128 项；不接受 `0.0.0.0/0`、`::/0`。免认证仅按每次请求的实际客户端 IP 判定，不会把免认证权限写入可跨 IP 使用的登录 Cookie。修改操作仍需要会话与 CSRF；移除白名单后，原匿名会话不能继续免认证。
+
+来自非可信代理的转发头全部忽略。可信代理链从右向左解析，遇到第一个非可信地址即作为客户端；请求头中的更左侧内容不作为身份依据。缺少选中的 IP 头时不会用代理自身的 IP 免认证；身份无法解析时拒绝访问。只有代理地址、没有可确认客户端的链也不能免认证。访问网段校验和登录限流同样使用确认后的客户端 IP，回环代理不会使远端客户端自动获得本机访问权限。
+
+代理必须覆盖所选 IP 请求头，或在可信的链尾追加它实际观察到的来源。配置 `Forwarded` 时从对应元素读取 `for`、`host`、`proto`；其他两种 IP 头配合 `X-Forwarded-Host` 与 `X-Forwarded-Proto`。代理必须覆盖或可靠追加 Host / Proto，不能原样透传用户伪造的值。外部源地址还会与配置逐项匹配，并继续校验浏览器 Origin。HTTPS 在代理终止时，后台仍给会话 Cookie 设置 Secure。
+
+例如，Nginx 单层代理与 RoutePilot 位于同一台主机，客户端 `192.168.5.20` 需要免认证，可配置以下安全字段（合并到原配置，保留原用户名、密码与认证开关）：
+
+```json
+{
+  "auth_bypass_networks": ["192.168.5.20"],
+  "trusted_proxies": ["127.0.0.1"],
+  "proxy_client_ip_header": "X-Forwarded-For",
+  "proxy_origins": ["https://routepilot.example.com"]
+}
+```
+
+在已配置好证书的 Nginx HTTPS server 中使用根路径代理：
+
+```nginx
+location / {
+    proxy_pass http://127.0.0.1:1055;
+    proxy_set_header Host $http_host;
+    proxy_set_header X-Forwarded-For $remote_addr;
+    proxy_set_header X-Forwarded-Host $http_host;
+    proxy_set_header X-Forwarded-Proto $scheme;
+    proxy_set_header Forwarded "";
+    proxy_set_header X-Real-IP "";
+}
+```
+
+本机直连请求没有转发头时仍可使用账号密码登录；若代理来源与本机客户端同为回环地址，不凭这个共享地址免认证。非白名单客户端需加入“允许的管理网段”才能通过代理正常登录。CLI 可直接使用 `--url https://routepilot.example.com`，白名单匹配后无需执行 `login`，`session` 输出 `ip_whitelisted` 和 `client_ip` 便于确认。代理需使用根路径，暂不支持子路径挂载。
+
+通过本机 Controller 的远程中继访问时，远端看到的是本机 Controller 的出口 IP，不是浏览器 IP；中继不会把浏览器的转发头传给远端。要按浏览器 IP 判定，请直接访问远端的反向代理地址。
+
 ## 远程异常通知
 
 “设置 → 通知”中的异常筛选、恢复提醒、冷却时间和 Webhook 都作用于当前选中的后端。异常可逐项或按组勾选，系统通知和 Webhook 共用同一份选择；取消全部时不发送异常或恢复通知。BGP 邻居选项适用于当前后端所有已启用的邻居，管理连接中断只能由连接该后端的 App 或浏览器提醒。

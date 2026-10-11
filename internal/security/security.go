@@ -88,7 +88,7 @@ func (m *Manager) create(w http.ResponseWriter, r *http.Request, authenticated b
 	id := Token()
 	s := session{Token(), now.Add(time.Duration(m.settings.SessionMinutes) * time.Minute), authenticated}
 	m.sessions[id] = s
-	http.SetCookie(w, &http.Cookie{Name: "controller_session", Value: id, Path: "/", HttpOnly: true, Secure: r.TLS != nil, SameSite: http.SameSiteStrictMode, Expires: s.Expires})
+	http.SetCookie(w, &http.Cookie{Name: "controller_session", Value: id, Path: "/", HttpOnly: true, Secure: secureRequest(r), SameSite: http.SameSiteStrictMode, Expires: s.Expires})
 	return s, true
 }
 func (m *Manager) Wrap(next http.Handler) http.Handler {
@@ -97,63 +97,40 @@ func (m *Manager) Wrap(next http.Handler) http.Handler {
 		w.Header().Set("Referrer-Policy", "same-origin")
 		w.Header().Set("Content-Security-Policy", "default-src 'self'; script-src 'self'; style-src 'self'; connect-src 'self'; img-src 'self' data:; frame-ancestors 'none'; base-uri 'none'; form-action 'self'")
 		w.Header().Set("Cache-Control", "no-store")
-		// A concrete listener must not be exposed through an arbitrary DNS name:
-		// rejecting such Host headers prevents browser DNS-rebinding attacks.
-		hostName := r.Host
-		if h, _, e := net.SplitHostPort(r.Host); e == nil {
-			hostName = h
-		}
-		hostName = strings.Trim(hostName, "[]")
-		if _, e := netip.ParseAddr(hostName); e != nil && hostName != "localhost" {
-			http.Error(w, "invalid management host", 403)
-			return
-		}
-		host, _, e := net.SplitHostPort(r.RemoteAddr)
-		if e != nil {
-			http.Error(w, "forbidden", 403)
-			return
-		}
-		ip, e := netip.ParseAddr(host)
 		m.mu.Lock()
 		c := m.settings
 		m.mu.Unlock()
-		allowed := false
-		for _, n := range c.AllowedNetworks {
-			p, pe := netip.ParsePrefix(n)
-			if pe == nil && p.Contains(ip.Unmap()) {
-				allowed = true
-			}
+		id, err := requestIdentity(r, c)
+		if err != nil {
+			http.Error(w, err.Error(), 403)
+			return
 		}
-		// Loopback is always local. A process connecting to one of its own
-		// interface addresses also arrives from that same address; permit that
-		// case so a local operator can still authenticate after moving the
-		// management listener off loopback. Other clients remain subject to the
-		// configured allow-list.
-		if e == nil && ip.IsLoopback() {
+		r, err = managementRequest(r, c, id)
+		if err != nil {
+			http.Error(w, err.Error(), 403)
+			return
+		}
+		// An IP exemption is recalculated on every request; it never becomes
+		// password authentication stored in a portable session cookie.
+		bypass := (!id.trustedPeer || id.forwarded && !matchesIP(id.ip, c.TrustedProxies)) && matchesIP(id.ip, c.AuthBypassNetworks)
+		allowed := bypass || matchesIP(id.ip, c.AllowedNetworks)
+		// Local recovery applies only to direct connections, never to the
+		// loopback proxy that delivered a remote client's request.
+		if !id.trustedPeer && id.ip.IsLoopback() {
 			allowed = true
 		}
-		if e == nil && !allowed {
+		if !id.trustedPeer && !allowed {
 			if local, ok := r.Context().Value(http.LocalAddrContextKey).(net.Addr); ok {
 				if localHost, _, splitErr := net.SplitHostPort(local.String()); splitErr == nil {
-					if localIP, parseErr := netip.ParseAddr(localHost); parseErr == nil && localIP.Unmap() == ip.Unmap() {
+					if localIP, parseErr := netip.ParseAddr(localHost); parseErr == nil && localIP.Unmap() == id.ip {
 						allowed = true
 					}
 				}
 			}
 		}
-		if e != nil || !allowed {
+		if !allowed {
 			http.Error(w, "management client network is not allowed", 403)
 			return
-		}
-		if origin := r.Header.Get("Origin"); origin != "" {
-			scheme := "http"
-			if r.TLS != nil {
-				scheme = "https"
-			}
-			if origin != scheme+"://"+r.Host {
-				http.Error(w, "invalid origin", 403)
-				return
-			}
 		}
 		if r.URL.Path == "/api/v1/session" && r.Method == "GET" {
 			s, ok := m.session(r)
@@ -164,11 +141,11 @@ func (m *Manager) Wrap(next http.Handler) http.Handler {
 				http.Error(w, "session capacity exhausted", 503)
 				return
 			}
-			write(w, 200, map[string]any{"authenticated": !c.Authentication || s.Authenticated, "authentication_required": c.Authentication, "csrf": s.CSRF})
+			write(w, 200, map[string]any{"authenticated": !c.Authentication || bypass || s.Authenticated, "authentication_required": c.Authentication && !bypass, "ip_whitelisted": bypass, "client_ip": id.ip.String(), "csrf": s.CSRF})
 			return
 		}
 		if r.URL.Path == "/api/v1/login" && r.Method == "POST" {
-			m.login(w, r, c, host)
+			m.login(w, r, c, id.ip.String(), bypass)
 			return
 		}
 		s, ok := m.session(r)
@@ -183,7 +160,7 @@ func (m *Manager) Wrap(next http.Handler) http.Handler {
 				m.discardUpdateSessions()
 				m.mu.Unlock()
 			}
-			http.SetCookie(w, &http.Cookie{Name: "controller_session", Value: "", Path: "/", MaxAge: -1, HttpOnly: true, Secure: r.TLS != nil, SameSite: http.SameSiteStrictMode})
+			http.SetCookie(w, &http.Cookie{Name: "controller_session", Value: "", Path: "/", MaxAge: -1, HttpOnly: true, Secure: secureRequest(r), SameSite: http.SameSiteStrictMode})
 			write(w, 200, map[string]bool{"ok": true})
 			return
 		}
@@ -192,7 +169,7 @@ func (m *Manager) Wrap(next http.Handler) http.Handler {
 			http.Error(w, "management session required", 401)
 			return
 		}
-		if api && c.Authentication && (!ok || !s.Authenticated) {
+		if api && c.Authentication && !bypass && (!ok || !s.Authenticated) {
 			http.Error(w, "authentication required", 401)
 			return
 		}
@@ -206,13 +183,13 @@ func (m *Manager) Wrap(next http.Handler) http.Handler {
 func validCSRF(r *http.Request, s session, ok bool) bool {
 	return ok && len(r.Header.Get("X-CSRF-Token")) == len(s.CSRF) && subtle.ConstantTimeCompare([]byte(r.Header.Get("X-CSRF-Token")), []byte(s.CSRF)) == 1
 }
-func (m *Manager) login(w http.ResponseWriter, r *http.Request, c config.Security, ip string) {
+func (m *Manager) login(w http.ResponseWriter, r *http.Request, c config.Security, ip string, bypass bool) {
 	s, ok := m.session(r)
 	if !validCSRF(r, s, ok) {
 		http.Error(w, "invalid CSRF token", 403)
 		return
 	}
-	if !c.Authentication {
+	if !c.Authentication || bypass {
 		write(w, 200, map[string]bool{"ok": true})
 		return
 	}
