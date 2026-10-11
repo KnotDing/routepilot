@@ -160,7 +160,7 @@ final class StatusBarIconAnimator {
             forName: NSWorkspace.accessibilityDisplayOptionsDidChangeNotification,
             object: nil, queue: .main
         ) { [weak self] _ in
-            Task { @MainActor in self?.updateMotionPreference() }
+            Task { @MainActor [weak self] in self?.updateMotionPreference() }
         }
         setState(.connecting)
     }
@@ -218,7 +218,7 @@ final class StatusBarIconAnimator {
         }
         tick()
         let animation = Timer(timeInterval: frameInterval, repeats: true) { [weak self] _ in
-            Task { @MainActor in self?.tick() }
+            Task { @MainActor [weak self] in self?.tick() }
         }
         animation.tolerance = frameInterval * 0.3
         // Keep the flow animation running while a menu or modal window is open.
