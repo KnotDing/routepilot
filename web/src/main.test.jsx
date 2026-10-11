@@ -203,3 +203,33 @@ it('checks the connected local Mac from a browser through the backend API',async
  fireEvent.click(screen.getByRole('button',{name:'立即检查更新'}));
  await waitFor(()=>expect(fetch.mock.calls.filter(([url])=>url==='/api/v1/updates/check')).toHaveLength(2));
 });
+
+it('shows the local GitHub token beside the update source only when GitHub is selected',async()=>{
+ const tokenBridge=vi.fn(payload=>queueMicrotask(()=>window.dispatchEvent(new CustomEvent('routepilot-github-token-saved',{detail:{requestID:payload.requestID,ok:true}}))));
+ window.webkit={messageHandlers:{routepilotPreferences:{postMessage:vi.fn()},routepilotGitHubToken:{postMessage:tokenBridge},routepilotUpdateAction:{postMessage:vi.fn()}}};
+ window.routepilotNativePreferences={updatePrompts:true,githubAccessTokenConfigured:false};
+ render(<Settings settings={{...updateSettings,updates:{...updateSettings.updates,update_source:'github'}}} refresh={()=>{}} notify={()=>{}}/>);
+ fireEvent.click(screen.getByRole('button',{name:'软件更新',exact:true}));
+ const source=screen.getByLabelText('更新源'),token=screen.getByLabelText('GitHub Access token');
+ expect(token).toHaveAttribute('type','password');
+ expect(token.closest('.form-grid')).toBe(source.closest('.form-grid'));
+ expect(token.closest('.github-access-token-controls')).not.toHaveClass('panel');
+ fireEvent.change(source,{target:{value:'gitea'}});
+ expect(screen.queryByLabelText('GitHub Access token')).not.toBeInTheDocument();
+ fireEvent.change(source,{target:{value:'github'}});
+ const restoredToken=screen.getByLabelText('GitHub Access token');
+ expect(restoredToken).toBeInTheDocument();
+ fireEvent.change(restoredToken,{target:{value:'  fixture-read-only-token  '}});
+ fireEvent.click(screen.getByRole('button',{name:'保存 Access token'}));
+ await waitFor(()=>expect(tokenBridge).toHaveBeenCalledWith(expect.objectContaining({action:'save',token:'fixture-read-only-token'})));
+});
+
+it('deletes a configured local GitHub token through the native bridge',async()=>{
+ const tokenBridge=vi.fn(payload=>queueMicrotask(()=>window.dispatchEvent(new CustomEvent('routepilot-github-token-saved',{detail:{requestID:payload.requestID,ok:true}}))));
+ window.webkit={messageHandlers:{routepilotPreferences:{postMessage:vi.fn()},routepilotGitHubToken:{postMessage:tokenBridge},routepilotUpdateAction:{postMessage:vi.fn()}}};
+ window.routepilotNativePreferences={updatePrompts:true,githubAccessTokenConfigured:true};
+ render(<Settings settings={{...updateSettings,updates:{...updateSettings.updates,update_source:'github'}}} refresh={()=>{}} notify={()=>{}}/>);
+ fireEvent.click(screen.getByRole('button',{name:'软件更新',exact:true}));
+ fireEvent.click(screen.getByRole('button',{name:'删除已保存的 token'}));
+ await waitFor(()=>expect(tokenBridge).toHaveBeenCalledWith(expect.objectContaining({action:'clear',token:''})));
+});

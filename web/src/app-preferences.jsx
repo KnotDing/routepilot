@@ -63,16 +63,14 @@ export function GitHubAccessTokenControls({preferences,notify}){
    notify?.(t(action==='save'?'GitHub Access token 已保存到 macOS 钥匙串':'GitHub Access token 已从 macOS 钥匙串删除'));
   }catch(e){notify?.(e.message,true)}finally{setTokenBusy(false)}
  };
- return <section className="panel">
-   <h3>{t('GitHub Access token')}</h3>
-   <p>{t('可选。用于本机 App 访问 GitHub Releases API，保存在此 Mac 的钥匙串；不会发送给 Gitea 或远端后台。')}</p>
+ return <div className="github-access-token-controls">
    {preferences.githubAccessTokenConfigured&&<p role="status">{t('GitHub Access token 已配置')}</p>}
    <FieldLabel label={t('GitHub Access token')}><input type="password" autoComplete="new-password" maxLength={255} value={token} disabled={tokenBusy} onChange={e=>setToken(e.target.value)} placeholder={t(preferences.githubAccessTokenConfigured?'输入新 token 以替换已保存的 token':'粘贴 GitHub 只读 Access token')}/></FieldLabel>
    <div className="toolbar">
     <button type="button" className="primary" disabled={tokenBusy||!token.trim()} onClick={()=>saveToken('save')}>{t(tokenBusy?'处理中…':'保存 Access token')}</button>
     {preferences.githubAccessTokenConfigured&&<button type="button" disabled={tokenBusy} onClick={()=>saveToken('clear')}>{t('删除已保存的 token')}</button>}
    </div>
-  </section>;
+  </div>;
 }
 // These controls only update the App hosting a local management window.
 // Remote connections use BackendUpdate and never send native update actions.

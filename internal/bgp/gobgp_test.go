@@ -6,10 +6,28 @@ import (
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/anypb"
 	"net"
+	"strings"
 	"surge-controller/internal/config"
 	"testing"
 	"time"
 )
+
+func TestPeerDetailsRedactCredentialsWithoutMutatingSnapshot(t *testing.T) {
+	peer := &api.Peer{
+		Conf:  &api.PeerConf{AuthPassword: "configured-secret"},
+		State: &api.PeerState{AuthPassword: "reported-secret"},
+	}
+	encoded, err := encodePeerDetails(peer)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(encoded), "configured-secret") || strings.Contains(string(encoded), "reported-secret") {
+		t.Fatalf("BGP details exposed authentication material: %s", encoded)
+	}
+	if peer.GetConf().GetAuthPassword() != "configured-secret" || peer.GetState().GetAuthPassword() != "reported-secret" {
+		t.Fatal("redacting details mutated the live GoBGP snapshot")
+	}
+}
 
 func freePort(t *testing.T) int32 {
 	t.Helper()

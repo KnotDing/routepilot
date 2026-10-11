@@ -238,14 +238,7 @@ func (g *GoBGP) Peers(ctx context.Context) ([]PeerStatus, error) {
 		// Publish the full GoBGP snapshot without exposing session credentials or
 		// modifying the speaker's configuration. A detail encoding failure must
 		// not turn a healthy neighbor into a BGP monitoring failure.
-		detail := proto.Clone(p).(*api.Peer)
-		if detail.Conf != nil {
-			detail.Conf.AuthPassword = ""
-		}
-		if detail.State != nil {
-			detail.State.AuthPassword = ""
-		}
-		encoded, err := (protojson.MarshalOptions{UseProtoNames: true, EmitUnpopulated: true}).Marshal(detail)
+		encoded, err := encodePeerDetails(p)
 		if err != nil {
 			row.DetailsError = "BGP neighbor details could not be encoded: " + err.Error()
 		} else {
@@ -255,6 +248,18 @@ func (g *GoBGP) Peers(ctx context.Context) ([]PeerStatus, error) {
 	})
 	return out, e
 }
+
+func encodePeerDetails(peer *api.Peer) ([]byte, error) {
+	detail := proto.Clone(peer).(*api.Peer)
+	if detail.Conf != nil {
+		detail.Conf.AuthPassword = ""
+	}
+	if detail.State != nil {
+		detail.State.AuthPassword = ""
+	}
+	return (protojson.MarshalOptions{UseProtoNames: true, EmitUnpopulated: true}).Marshal(detail)
+}
+
 func (g *GoBGP) Exported(ctx context.Context, address string) (map[string]bool, error) {
 	out := map[string]bool{}
 	for _, afi := range []api.Family_Afi{api.Family_AFI_IP, api.Family_AFI_IP6} {

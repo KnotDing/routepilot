@@ -2,6 +2,13 @@ import AppKit
 import Darwin
 import Foundation
 
+// automation.swift normally gets AppPreferences from notifications.swift; the
+// standalone core test intentionally avoids loading the notification runtime.
+struct AppPreferences {
+    var automation = AutomationPreferences()
+    static var current = AppPreferences()
+}
+
 @main
 struct NativeCoreTests {
     @MainActor static func main() throws {
@@ -12,6 +19,15 @@ struct NativeCoreTests {
         let betas = [try nativeRelease("v1.0.1-beta.1", prerelease:true), try nativeRelease("v1.0.1-beta.3", prerelease:true), try nativeRelease("v1.0.1-beta.2", draft:true, prerelease:true), try nativeRelease("v1.0.1-rc.1", prerelease:true), try nativeRelease("v1.1.0")]
         try nativeCheck(ReleaseUpdater.newestBeta(in: betas)?.tagName == "v1.0.1-beta.3", "latest valid beta not selected")
         let stableRelease = try nativeRelease("v1.0.1")
+        let githubRequest = try ReleaseUpdater.releaseRequest(path:"releases/latest", source:"github", accessToken:"fixture-token")
+        try nativeCheck(githubRequest.url?.absoluteString == "https://api.github.com/repos/KnotDing/routepilot/releases/latest", "GitHub update source URL changed")
+        try nativeCheck(githubRequest.value(forHTTPHeaderField:"Authorization") == "Bearer fixture-token", "GitHub access token was not sent as a bearer token")
+        let giteaRequest = try ReleaseUpdater.releaseRequest(path:"releases/latest", source:"gitea", accessToken:"fixture-token")
+        try nativeCheck(giteaRequest.url?.absoluteString == "https://gitea.knotding.com/api/v1/repos/knot/routepilot/releases/latest", "Gitea update source URL changed")
+        try nativeCheck(giteaRequest.value(forHTTPHeaderField:"Authorization") == nil, "GitHub access token was sent to Gitea")
+        let noTokenRequest = try ReleaseUpdater.releaseRequest(path:"releases/latest", source:"github")
+        try nativeCheck(noTokenRequest.value(forHTTPHeaderField:"Authorization") == nil, "GitHub request without a token added authorization")
+        try nativeReject("unsupported update source accepted") { _ = try ReleaseUpdater.releaseRequest(path:"releases/latest", source:"other", accessToken:"fixture-token") }
         let newerBetaRelease = try nativeRelease("v1.0.2-beta.1", prerelease:true)
         try nativeCheck(ReleaseUpdater.preferredRelease(stable:stableRelease, beta:newerBetaRelease).tagName == "v1.0.2-beta.1", "newer beta was not selected for automatic updates")
         try nativeCheck(ReleaseUpdater.preferredRelease(stable:stableRelease, beta:try nativeRelease("v1.0.1-beta.3", prerelease:true)).tagName == "v1.0.1", "beta was selected over a stable release with the same version")
@@ -19,6 +35,14 @@ struct NativeCoreTests {
         let oldAssistant = try JSONDecoder().decode(UpdateAssistantStatus.self, from: Data(#"{"ready":true}"#.utf8))
         let currentAssistant = try JSONDecoder().decode(UpdateAssistantStatus.self, from: Data(#"{"ready":true,"protocol_version":1}"#.utf8))
         try nativeCheck(oldAssistant.protocolVersion == nil && currentAssistant.protocolVersion == 1, "update assistant protocol compatibility changed")
+        let legacyAutomation = try JSONDecoder().decode(AutomationPreferences.self, from: Data(#"{"cliEnabled":true,"automaticSkillInstall":true,"skillTarget":"both"}"#.utf8))
+        try nativeCheck(legacyAutomation.cliEnabled && legacyAutomation.automaticSkillInstall && legacyAutomation.skillTargets == ["codex", "claude"] && legacyAutomation.valid, "legacy skill targets did not migrate")
+        let multipleAgents = try JSONDecoder().decode(AutomationPreferences.self, from: Data(#"{"automaticSkillInstall":true,"skillTargets":["codex","gemini"]}"#.utf8))
+        try nativeCheck(multipleAgents.valid, "multiple valid skill targets were rejected")
+        let duplicateAgents = try JSONDecoder().decode(AutomationPreferences.self, from: Data(#"{"automaticSkillInstall":true,"skillTargets":["codex","codex"]}"#.utf8))
+        try nativeCheck(!duplicateAgents.valid, "duplicate skill targets were accepted")
+        let unknownAgent = try JSONDecoder().decode(AutomationPreferences.self, from: Data(#"{"automaticSkillInstall":true,"skillTargets":["unknown"]}"#.utf8))
+        try nativeCheck(!unknownAgent.valid, "unknown skill target was accepted")
         try nativeCheck(ReleaseUpdater.newer(try nativeRelease("v1.0.0"),current:"0.5.2"), "major upgrade missed")
         try nativeCheck(ReleaseUpdater.newer(try nativeRelease("v1.0.1"),current:"1.0.1-beta.2"), "stable upgrade from beta missed")
         try nativeCheck(ReleaseUpdater.newerBeta(try nativeRelease("v1.0.1-beta.2",prerelease:true),current:"1.0.1-beta.1"), "newer beta was missed")

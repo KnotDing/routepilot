@@ -120,10 +120,10 @@
 
 ## 最近已核验发布（2026-10-11）
 
-- 正式版基线为 `v1.0.2`；最新测试版为 `v1.0.3-beta.10`，发布标签指向 `1870e7a`。GitHub 回归 #9（run `38129959463`）与 Release #3（run `38130240664`）成功。Gitea Release #98（run `2067`）的 Ubuntu 获取任务遇到 GitHub HTTP 403，macOS 回退构建成功；两边 Release 均为预发布，含 DMG、ZIP、SHA256SUMS。Gitea 附件校验和通过，App 与捆绑后台均为 `1.0.3-beta.10` / build `98`。
-- Gitea Release 工作流现可从 Actions Secret `RELEASE_SOURCE_TOKEN` 读取 GitHub 只读 token；配置 Secret 后的新标签运行可用它认证 GitHub API 和附件下载。beta.10 使用旧工作流运行，因此走了本地回退构建。
-- Beta.1 将 CLI 与 skill 设置改为管理当前连接的后端；Beta.2 增加管理 IP 免认证、可信代理、代理域名与请求来源处理。默认免认证白名单为空。真实反向代理部署尚未现场验收。
-- Beta.3 增加乐观缓存可靠性统计和 BGP 邻居详情。代码地图与本节发布结果作为后续文档提交更新，未移动发布标签；它们不改变已发布 App 的运行行为。
+- 最新已发布正式版基线为 `v1.0.2`；最新测试版标签为 `v1.0.3-beta.13`（`e40f067`）。beta.10 的历史验收仍见下方记录；其 Gitea Ubuntu 制品获取遇到 HTTP 403，macOS 回退构建成功。
+- v1.0.3 正式版候选为 build `82`。截至本次交接，本地 `make verify-release` 与 `make fuzz` 均通过，GitHub/Gitea 发布及 Actions 尚待完成；不得把本地候选包当作已发布版本。
+- 变更覆盖 CLI/skill 后端目标、管理 IP 与可信代理、分区备份恢复、乐观缓存可靠性、BGP 详情、GitHub/Gitea 更新源及本机 GitHub token。新增测试和当前测试边界记录在 [验收记录](docs/acceptance.md) 与 `.gitea/release-notes/v1.0.3.md`。
+- 自动化设置偏好迁移和参数校验已有原生测试；桌面 helper 实际文件冲突、备份/恢复和回滚事务仍缺端到端自动化覆盖。token bridge 与请求隔离有测试，未在当前用户钥匙串上执行写入验收。
 - 此节仅为带日期的快照。接手时以 `git status`、`internal/buildinfo/release.json`、远端标签与实际 Release/Actions 为准，不凭本文猜测最新版本。
 
 ## 代码地图：按任务定位

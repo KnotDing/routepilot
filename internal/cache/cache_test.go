@@ -167,3 +167,35 @@ func TestMarkStaleRetainsDecisionsAndRejectsOldWrites(t *testing.T) {
 		t.Fatal("optimistic caching bypassed configured TTL")
 	}
 }
+
+func TestOptimisticReliabilityCountsRequestsUntilAComparison(t *testing.T) {
+	c := New[string, string](4, Options{RetainExpired: true})
+	now := time.Unix(1, 0)
+	c.now = func() time.Time { return now }
+	generation := c.Generation()
+	c.Put("answer", "old", generation, time.Minute)
+	now = now.Add(time.Minute)
+	for i := 0; i < 3; i++ {
+		if value, ok, stale, _ := c.GetOptimisticState("answer"); !ok || !stale || value != "old" {
+			t.Fatal("stale response was not served")
+		}
+	}
+	c.StaleRecords(0, 10) // Background inspection is not a user request.
+	c.PutCompared("answer", "old", generation, time.Minute, func(old, next string) bool { return old == next })
+	if got, want := c.OptimisticStats(), (OptimisticStats{Hits: 3, Compared: 3}); got != want {
+		t.Fatalf("matching refresh stats=%+v want=%+v", got, want)
+	}
+
+	generation = c.MarkStale(func(string) bool { return true })
+	for i := 0; i < 2; i++ {
+		c.GetOptimisticState("answer")
+	}
+	c.PutCompared("answer", "changed", generation, time.Minute, func(old, next string) bool { return old == next })
+	if got, want := c.OptimisticStats(), (OptimisticStats{Hits: 5, Compared: 5, Mismatches: 2}); got != want {
+		t.Fatalf("changed refresh stats=%+v want=%+v", got, want)
+	}
+	c.ResetOptimisticStats()
+	if got := c.OptimisticStats(); got != (OptimisticStats{}) {
+		t.Fatalf("manual reset retained reliability stats: %+v", got)
+	}
+}

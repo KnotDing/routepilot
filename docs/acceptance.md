@@ -220,3 +220,40 @@ After correcting the fuzz assertion, `make verify-release` passed again for
 v1.0.2 with the same 108 frontend tests, full Go race/vet, native UI, responsive
 browser checks and DMG/ZIP package validation. `make fuzz` also passed with all
 regression seeds and 203,435 randomized executions over five seconds.
+
+## v1.0.3 candidate test coverage audit — 2026-10-11
+
+The feature audit added direct regressions for the user-visible and security
+boundaries introduced since v1.0.2:
+
+- GitHub token controls appear only for the GitHub source; save and clear actions
+  use the native bridge. Native request construction checks GitHub bearer auth,
+  no token on Gitea, source URLs, and invalid source rejection.
+- Scoped configuration backup/restore checks selected sections, preservation of
+  omitted sections and existing secrets, and invalid section selections.
+- Trusted-proxy tests check the configured client-IP header, trusted-chain
+  traversal, malformed values, forwarded allowlist identity, and rejection of
+  bypass through an unselected header.
+- BGP detail rendering checks deterministic remote capability ordering while
+  retaining local order. GoBGP detail serialization checks both credential
+  fields are redacted without mutating the live snapshot.
+- Optimistic cache tests check request-level hit/comparison/mismatch accounting,
+  maintenance reads, manual reset, and persistence across service restart.
+  Response fingerprints ignore wire ID, TTL, record ordering, and domain case,
+  while preserving opaque TXT changes.
+- Automation preference tests cover legacy `skillTarget` migration and valid,
+  duplicate, and unknown agent targets.
+
+Remaining automated-coverage gaps: native automation's actual filesystem
+conflict, backup/restore, and rollback transaction is not exercised end-to-end;
+GitHub token Keychain save/read/delete is tested through the bridge/request
+contract, not against a disposable Keychain; the new BGP UI test focuses on
+capability ordering rather than every peer-detail field. These checks do not
+replace live gateway commissioning.
+
+Final local release gates passed after these changes:
+
+- `make verify-release`: 24 frontend files / 111 tests, all Go packages with
+  `-race -count=1`, `go vet ./...`, native core/UI, 16-page responsive UI,
+  and DMG/ZIP version, resource, signature, checksum, and layout validation.
+- `make fuzz`: 230,438 version-parser executions over five seconds, passed.

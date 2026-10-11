@@ -93,6 +93,19 @@ enum ReleaseUpdater {
     }
 
     private static func releaseData(path: String, source: String, accessToken: String? = nil) async throws -> Data {
+        let request = try releaseRequest(path: path, source: source, accessToken: accessToken)
+        let session = URLSession(configuration: .ephemeral, delegate: ReleaseDownloadDelegate(source: source), delegateQueue: nil)
+        defer { session.finishTasksAndInvalidate() }
+        let (data, response) = try await session.data(for: request)
+        guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode),
+              response.url.map({ trustedDownloadURL($0, source: source) }) == true, data.count <= 2 * 1024 * 1024 else {
+            let code = (response as? HTTPURLResponse)?.statusCode ?? 0
+            throw AppFailure(message: L("获取最新版本失败（HTTP {code}）", ["code": code]))
+        }
+        return data
+    }
+
+    static func releaseRequest(path: String, source: String, accessToken: String? = nil) throws -> URLRequest {
         guard source == "github" || source == "gitea",
               let url = URL(string: source == "gitea"
                 ? "https://gitea.knotding.com/api/v1/repos/knot/routepilot/\(path)"
@@ -106,15 +119,7 @@ enum ReleaseUpdater {
         if source == "github", let accessToken, !accessToken.isEmpty {
             request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
         }
-        let session = URLSession(configuration: .ephemeral, delegate: ReleaseDownloadDelegate(source: source), delegateQueue: nil)
-        defer { session.finishTasksAndInvalidate() }
-        let (data, response) = try await session.data(for: request)
-        guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode),
-              response.url.map({ trustedDownloadURL($0, source: source) }) == true, data.count <= 2 * 1024 * 1024 else {
-            let code = (response as? HTTPURLResponse)?.statusCode ?? 0
-            throw AppFailure(message: L("获取最新版本失败（HTTP {code}）", ["code": code]))
-        }
-        return data
+        return request
     }
 
     static func stableVersion(_ raw: String) -> [Int]? {

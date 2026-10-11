@@ -162,6 +162,8 @@ tbody tr:last-child td { border-bottom: 0; }
 .toolbar:last-child { margin-bottom: 0; }
 .form-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 20px 24px; align-items: end; }
 .form-grid:not(.rule-form) { padding: 8px 0 24px; }
+.github-access-token-controls { min-width: 0; }
+.github-access-token-controls .toolbar { margin: 12px 0 0; }
 .form-grid label, .login label { display: flex; flex-direction: column; justify-content: flex-end; gap: 8px; min-width: 0; color: var(--muted); font-size: 13px; line-height: 22px; }
 :is(.form-grid,.option-grid) .check { flex-direction: row; justify-content: flex-start; align-items: center; align-self: end; gap: 10px; min-height: var(--control-height); padding: 9px 12px; border: 1px solid var(--border); border-radius: 9px; background: var(--hover); color: var(--text); cursor: pointer; }
 .form-grid > .check, .upstream > .check { grid-column: auto; width: fit-content; max-width: 100%; }
