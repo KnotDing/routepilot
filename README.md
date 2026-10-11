@@ -273,7 +273,7 @@ bin/surge-controller serve --database /ABSOLUTE/PRIVATE/DIRECTORY/controller.sql
 
 默认仅开放本机管理，BGP 与透明拦截关闭。未配置出口接口和源地址时，Fake-IP 门禁保持关闭。
 
-常驻服务可用 [安装脚本](scripts/install_macos.sh) 安装、[移除脚本](scripts/uninstall_macos.sh) 移除；移除保留数据库、密钥和日志。推送版本标签后，[Gitea Release 工作流](.gitea/workflows/release.yaml) 与 [GitHub Release 工作流](.github/workflows/release.yaml) 分别在 Apple Silicon macOS Runner 上构建并上传 **DMG、ZIP、SHA256SUMS**。推送 `main` 或创建 Pull Request 时，两边也会执行回归检查。
+常驻服务可用 [安装脚本](scripts/install_macos.sh) 安装、[移除脚本](scripts/uninstall_macos.sh) 移除；移除保留数据库、密钥和日志。推送版本标签后，[GitHub Release 工作流](.github/workflows/release.yaml) 在 Apple Silicon macOS runner 构建并发布 **DMG、ZIP、SHA256SUMS**；[Gitea Release 工作流](.gitea/workflows/release.yaml) 先由 Ubuntu runner 等待并下载、校验 GitHub 制品，再发布到 Gitea。若 Ubuntu 获取任务失败、GitHub 制品等待超时或下载校验失败，才由 Gitea 的 macOS runner 本地构建回退。回归测试仅由 GitHub Actions 在推送 `main` 或创建 Pull Request 时执行。
 
 ## 🧰 遇到问题，从这里查起
 

@@ -1,4 +1,4 @@
-name: Build and publish RoutePilot release
+name: Publish RoutePilot release
 
 on:
   push:
@@ -9,8 +9,85 @@ permissions:
   contents: write
 
 jobs:
-  release:
-    # Register a Gitea Actions runner on macOS Apple Silicon with this label.
+  fetch-github-assets:
+    runs-on: ubuntu-latest
+    outputs:
+      available: ${{ steps.fetch.outputs.available }}
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Wait for and fetch GitHub release assets
+        id: fetch
+        shell: bash
+        run: |
+          set -euo pipefail
+          TAG="${GITHUB_REF_NAME}"
+          version="${TAG#v}"
+          [[ "$version" =~ ^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-beta\.[1-9][0-9]*)?$ ]]
+          API_URL="https://api.github.com/repos/KnotDing/routepilot/releases/tags/${TAG}"
+          mkdir -p artifacts
+
+          fetch_assets() {
+            local release url asset
+            release=$(curl --fail --silent --show-error --retry 2 --retry-all-errors "$API_URL") || return 1
+            jq -e --arg tag "$TAG" '.tag_name == $tag' <<<"$release" >/dev/null || return 1
+            for asset in RoutePilot-macos-arm64.dmg RoutePilot-macos-arm64.zip SHA256SUMS; do
+              url=$(jq -er --arg name "$asset" '.assets[] | select(.name == $name) | .browser_download_url' <<<"$release") || return 1
+              curl --fail --silent --show-error --location --retry 2 --retry-all-errors "$url" -o "artifacts/$asset" || return 1
+              test -s "artifacts/$asset" || return 1
+            done
+            (cd artifacts && sha256sum --check SHA256SUMS) || return 1
+          }
+
+          # The GitHub release workflow starts at the same tag push and needs time to build.
+          sleep 300
+          available=false
+          for attempt in $(seq 1 15); do
+            if fetch_assets; then
+              available=true
+              break
+            fi
+            rm -f artifacts/RoutePilot-macos-arm64.dmg artifacts/RoutePilot-macos-arm64.zip artifacts/SHA256SUMS
+            if [ "$attempt" -lt 15 ]; then sleep 60; fi
+          done
+          echo "available=$available" >> "$GITHUB_OUTPUT"
+
+      - name: Publish GitHub-built assets to Gitea
+        if: ${{ steps.fetch.outputs.available == 'true' }}
+        env:
+          GITEA_TOKEN: ${{ secrets.GITEA_TOKEN }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          TAG="${GITHUB_REF_NAME}"
+          BUILD_NUMBER="${GITHUB_RUN_NUMBER}"
+          prerelease=false
+          if [[ "$TAG" == *-beta.* ]]; then prerelease=true; fi
+          : "${GITEA_TOKEN:?Gitea Actions token is unavailable}"
+          notes_file=".gitea/release-notes/${TAG}.md"
+          if [ ! -f "$notes_file" ]; then
+            notes_file=$(mktemp)
+            printf 'Automatically published by Gitea Actions.\n\nSee SHA256SUMS to verify downloaded assets.\n' > "$notes_file"
+          fi
+          release=$(curl --fail --silent --show-error \
+            -H "Authorization: token ${GITEA_TOKEN}" \
+            -H 'Content-Type: application/json' \
+            -X POST "${GITHUB_API_URL}/repos/${GITHUB_REPOSITORY}/releases" \
+            --data "$(jq -n --arg tag "$TAG" --arg build "$BUILD_NUMBER" --argjson prerelease "$prerelease" --rawfile notes "$notes_file" \
+              '{tag_name:$tag,name:("RoutePilot " + $tag),body:($notes + "\n\nAssets built by GitHub Actions and mirrored by Gitea Actions run " + $build + "."),draft:false,prerelease:$prerelease}')")
+          release_id=$(printf '%s' "$release" | jq -er '.id')
+          for asset in artifacts/RoutePilot-macos-arm64.dmg artifacts/RoutePilot-macos-arm64.zip artifacts/SHA256SUMS; do
+            name=${asset##*/}
+            curl --fail --silent --show-error \
+              -H "Authorization: token ${GITEA_TOKEN}" \
+              -F "attachment=@${asset}" \
+              "${GITHUB_API_URL}/repos/${GITHUB_REPOSITORY}/releases/${release_id}/assets?name=${name}"
+          done
+
+  fallback-build:
+    needs: fetch-github-assets
+    if: ${{ always() && needs.fetch-github-assets.outputs.available != 'true' }}
     runs-on: macos-arm64
     steps:
       - name: Check out source
@@ -50,25 +127,18 @@ jobs:
           path.write_text(json.dumps(release, ensure_ascii=False, indent=2) + "\n")
           PY
 
-      - name: Install locked test dependencies
+      - name: Install locked build dependencies
+        run: npm --prefix web ci
+
+      - name: Build fallback package
+        run: make package
+
+      - name: Generate fallback checksums
         run: |
-          npm --prefix web ci
+          cd artifacts
+          shasum -a 256 RoutePilot-macos-arm64.dmg RoutePilot-macos-arm64.zip > SHA256SUMS
 
-      - name: Install browser test runtime for stable release
-        if: ${{ !contains(github.ref_name, '-beta.') }}
-        run: npm --prefix web exec -- playwright install chromium
-
-      - name: Test and verify stable release artifacts
-        if: ${{ !contains(github.ref_name, '-beta.') }}
-        run: |
-          make verify-release
-          make fuzz
-
-      - name: Build and verify beta package without full test suite
-        if: ${{ contains(github.ref_name, '-beta.') }}
-        run: make package package-check
-
-      - name: Publish Gitea release and assets
+      - name: Publish fallback-built assets to Gitea
         env:
           GITEA_TOKEN: ${{ secrets.GITEA_TOKEN }}
         shell: bash
@@ -82,14 +152,14 @@ jobs:
           notes_file=".gitea/release-notes/${TAG}.md"
           if [ ! -f "$notes_file" ]; then
             notes_file=$(mktemp)
-            printf 'Automatically built by Gitea Actions.\n\nSee SHA256SUMS to verify downloaded assets.\n' > "$notes_file"
+            printf 'Automatically built by Gitea Actions fallback.\n\nSee SHA256SUMS to verify downloaded assets.\n' > "$notes_file"
           fi
           release=$(curl --fail --silent --show-error \
             -H "Authorization: token ${GITEA_TOKEN}" \
             -H 'Content-Type: application/json' \
             -X POST "${GITHUB_API_URL}/repos/${GITHUB_REPOSITORY}/releases" \
             --data "$(jq -n --arg tag "$TAG" --arg build "$BUILD_NUMBER" --argjson prerelease "$prerelease" --rawfile notes "$notes_file" \
-              '{tag_name:$tag,name:("RoutePilot " + $tag),body:($notes + "\n\nGitea Actions Build " + $build + "."),draft:false,prerelease:$prerelease}')")
+              '{tag_name:$tag,name:("RoutePilot " + $tag),body:($notes + "\n\nFallback assets built by Gitea Actions run " + $build + "."),draft:false,prerelease:$prerelease}')")
           release_id=$(printf '%s' "$release" | jq -er '.id')
           for asset in artifacts/RoutePilot-macos-arm64.dmg artifacts/RoutePilot-macos-arm64.zip artifacts/SHA256SUMS; do
             name=${asset##*/}

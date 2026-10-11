@@ -14,7 +14,7 @@
 - RoutePilot 同时维护 Gitea 与 GitHub：Gitea 为 `git@git.knotding.com:knot/routepilot.git`，GitHub 为 `git@github.com:KnotDing/routepilot.git`。
 - 每次提交后的分支和标签推送都必须同时到达两个仓库。配置 `origin` 的多个 `pushurl`（保留 Gitea 为 fetch URL），这样 `git push origin <分支>` 会推送到两个地址；推送后核对两个远端的提交或标签一致。不要只推其中一个。
 - 新克隆或远端配置未完成时，先检查并配置两个推送地址，再继续推送。任一仓库推送失败时明确报告部分成功，并在恢复后补齐；不要强推或改写远端历史。
-- `.gitea/workflows/` 是 Gitea Actions 的来源；对应的 GitHub Actions 工作流放在 `.github/workflows/`，两边的回归门禁和发布流程保持一致，发布分别由各自平台的 workflow 完成。
+- `.github/workflows/test.yaml` 是唯一回归测试门禁；Gitea 不运行本地测试。`.gitea/workflows/release.yaml` 的 Ubuntu runner 等待并获取 GitHub Release 制品、校验 SHA256 后发布到 Gitea；获取任务失败或制品不可用时，再由 macOS runner 本地构建回退。GitHub Release 仍由 `.github/workflows/release.yaml` 构建并发布。
 
 ## 修改与验证
 
@@ -72,7 +72,7 @@
 
 ### 共同要求
 
-- 网页/API 域名为 `https://gitea.knotding.com`；Git SSH remote 可能是 `git.knotding.com`。以 `.gitea/workflows/` 和 [验收记录](docs/acceptance.md) 为门禁依据，不绕过失败。
+- 网页/API 域名为 `https://gitea.knotding.com`；Git SSH remote 可能是 `git.knotding.com`。回归以 `.github/workflows/test.yaml` 为唯一门禁；GitHub Release 制品由 `.gitea/workflows/release.yaml` 优先下载复用，失败时才本地构建。发布门禁同时检查 GitHub 与 Gitea 对应 workflow 和 [验收记录](docs/acceptance.md)，不绕过失败。
 - 发布前同步远端，确认 `main` 基线、工作区范围、正式/测试版基线和未用标签。只暂存明确属于本次发布的文件，保留无关的未提交工作。
 - 所有提交使用 Conventional Commits，如 `feat:`、`fix:`、`docs:`。提交标题概括本次功能或修复，Gitea Actions 会将它作为运行标题；不使用泛化的 `Release RoutePilot vX.Y.Z`。
 - 更新 `internal/buildinfo/release.json`、README 中确实存在的版本引用，并新增 `.gitea/release-notes/vX.Y.Z.md`。说明只包含 App 用户可见变化，不加入 agent 工作规范或开发流程。
@@ -83,14 +83,14 @@
 
 1. 使用唯一的 `vX.Y.Z-beta.N`，同一目标版本的 N 严格递增。更新源码版本及对应说明，`scripts/install_skill.sh` 继续指向正式版。
 2. 按已授权范围完成本地检查，创建 Conventional Commit，推送 `main` 与注释标签。
-3. `main` 推送会触发 `test.yaml` 回归；Beta 标签触发 `release.yaml` 的精简打包与 `package-check`。Beta Release job 本身不跑完整回归/fuzz，不能因此宣称完整测试已通过。
-4. 等待两个工作流结果；回归失败需要修复，不以已生成安装包代替通过。Beta 发布页必须 `prerelease=true`、`draft=false`。
+3. `main` 推送由 GitHub `test.yaml` 执行回归；Beta 标签由 GitHub Release workflow 执行精简打包，同时 Gitea Release workflow 等待并复用 GitHub 制品，等待超时或获取失败时才在 Gitea macOS runner 回退构建。Beta 标签本身不运行完整回归/fuzz，不能因此宣称完整测试已通过。
+4. 确认 GitHub 回归成功及两个 Release workflow 完成；回归失败需要修复，不以已生成安装包代替通过。Beta 发布页必须 `prerelease=true`、`draft=false`。
 
 ### 正式版
 
 1. 选择未用的无后缀 `vX.Y.Z`，更新源码版本、`scripts/install_skill.sh` 正式 tag/提示版本、实际版本引用和用户说明。
 2. 按正式发布授权运行 `make verify-release` 与 `make fuzz`；失败先修复，不跳过门禁。
-3. 提交并推送 `main` 与注释标签，等待回归与完整 Release workflow 成功。正式发布页必须 `prerelease=false`、`draft=false`。
+3. 提交并推送 `main` 与注释标签，等待 GitHub 回归和完整 GitHub Release workflow 成功，再确认 Gitea 已下载并发布同一 GitHub 制品；只有获取失败时才接受 Gitea 本地构建回退。正式发布页必须 `prerelease=false`、`draft=false`。
 
 ### 对外报告前
 
@@ -165,7 +165,7 @@
 | 窗口尺寸、重开页面与 JS bridge | `native/main.swift` 的管理窗口与 `userContentController`；`window_frame.swift` | `web/src/credentials.js`、`app-preferences.jsx`、`window-visibility.js` |
 | 页面布局、主题与双语 | `web/src/style.css`、对应专用 JSX；导航在 `navigation.jsx` | `web/src/i18n.js`、`locale.js`；`localization/ui-en.json` / `errors-zh.json`；缓存与路由另有专用 i18n |
 | 数据库与重启恢复 | `internal/database/store.go`（迁移 / `Save` / `Load`）；`active_configuration.go` 区分已保存与已生效配置 | `internal/app/decision_cache.go`、`response_cache.go`、`statistics.go`；不要改变现有 secret 加密边界 |
-| 版本与安装包 | `internal/buildinfo/release.json` / `info.go`；`scripts/build_app.sh` / `check_package.py`；DMG 矢量 PDF 背景图 `native/dmg_background.swift`、Finder 布局 `scripts/dmg_layout.sh` / `scripts/dmg/DS_Store` | `Makefile`；`.gitea/workflows/test.yaml` / `release.yaml`；`.gitea/release-notes/`；`native/Info.plist` |
+| 版本与安装包 | `internal/buildinfo/release.json` / `info.go`；`scripts/build_app.sh` / `check_package.py`；DMG 矢量 PDF 背景图 `native/dmg_background.swift`、Finder 布局 `scripts/dmg_layout.sh` / `scripts/dmg/DS_Store` | `Makefile`；`.gitea/workflows/release.yaml`；`.github/workflows/test.yaml` / `release.yaml`；`.gitea/release-notes/`；`native/Info.plist` |
 
 ### 核心调用关系
 
