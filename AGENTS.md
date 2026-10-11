@@ -15,7 +15,7 @@
 - 每次提交后的分支和标签推送都必须同时到达两个仓库。配置 `origin` 的多个 `pushurl`（保留 Gitea 为 fetch URL），这样 `git push origin <分支>` 会推送到两个地址；推送后核对两个远端的提交或标签一致。不要只推其中一个。
 - 新克隆或远端配置未完成时，先检查并配置两个推送地址，再继续推送。任一仓库推送失败时明确报告部分成功，并在恢复后补齐；不要强推或改写远端历史。
 - 对外 README 链接优先使用 GitHub（Release 与 `raw.githubusercontent.com/KnotDing/routepilot/main`）；Gitea 链接作为清楚标注的备用入口。
-- `.github/workflows/test.yaml` 是唯一回归测试门禁；Gitea 不运行本地测试。`.gitea/workflows/release.yaml` 的 Ubuntu runner 先等待 5 分钟，再每分钟轮询 GitHub Release，最多 15 次；可从 Gitea Actions Secret `GITHUB_RELEASE_TOKEN` 读取 GitHub 只读 token，以认证 GitHub API 与附件下载。下载 DMG、ZIP 与 SHA256SUMS 并校验成功后发布到 Gitea。获取任务失败或制品不可用时，再由 macOS runner 本地打包回退，不在 Gitea 执行测试。GitHub Release 仍由 `.github/workflows/release.yaml` 构建并发布。
+- `.github/workflows/test.yaml` 是唯一回归测试门禁；Gitea 不运行本地测试。`.gitea/workflows/release.yaml` 的 Ubuntu runner 先等待 5 分钟，再每分钟轮询 GitHub Release，最多 15 次；可从 Gitea Actions Secret `RELEASE_SOURCE_TOKEN` 读取 GitHub 只读 token，以认证 GitHub API 与附件下载。下载 DMG、ZIP 与 SHA256SUMS 并校验成功后发布到 Gitea。获取任务失败或制品不可用时，再由 macOS runner 本地打包回退，不在 Gitea 执行测试。GitHub Release 仍由 `.github/workflows/release.yaml` 构建并发布。
 
 ## 修改与验证
 
@@ -121,7 +121,7 @@
 ## 最近已核验发布（2026-10-11）
 
 - 正式版基线为 `v1.0.2`；最新测试版为 `v1.0.3-beta.10`，发布标签指向 `1870e7a`。GitHub 回归 #9（run `38129959463`）与 Release #3（run `38130240664`）成功。Gitea Release #98（run `2067`）的 Ubuntu 获取任务遇到 GitHub HTTP 403，macOS 回退构建成功；两边 Release 均为预发布，含 DMG、ZIP、SHA256SUMS。Gitea 附件校验和通过，App 与捆绑后台均为 `1.0.3-beta.10` / build `98`。
-- Gitea Release 工作流现可从 Actions Secret `GITHUB_RELEASE_TOKEN` 读取 GitHub 只读 token；配置 Secret 后的新标签运行可用它认证 GitHub API 和附件下载。beta.10 使用旧工作流运行，因此走了本地回退构建。
+- Gitea Release 工作流现可从 Actions Secret `RELEASE_SOURCE_TOKEN` 读取 GitHub 只读 token；配置 Secret 后的新标签运行可用它认证 GitHub API 和附件下载。beta.10 使用旧工作流运行，因此走了本地回退构建。
 - Beta.1 将 CLI 与 skill 设置改为管理当前连接的后端；Beta.2 增加管理 IP 免认证、可信代理、代理域名与请求来源处理。默认免认证白名单为空。真实反向代理部署尚未现场验收。
 - Beta.3 增加乐观缓存可靠性统计和 BGP 邻居详情。代码地图与本节发布结果作为后续文档提交更新，未移动发布标签；它们不改变已发布 App 的运行行为。
 - 此节仅为带日期的快照。接手时以 `git status`、`internal/buildinfo/release.json`、远端标签与实际 Release/Actions 为准，不凭本文猜测最新版本。
