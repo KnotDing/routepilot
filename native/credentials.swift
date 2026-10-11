@@ -96,6 +96,55 @@ private enum KeychainCredentials {
     static func delete(account: String = "controller-login") { SecItemDelete(query(account) as CFDictionary) }
 }
 
+enum GitHubAccessTokenVault {
+    private static let service = Bundle.main.bundleIdentifier ?? "com.routepilot.app"
+    private static let account = "github-release-api-token"
+    private static func query() -> [String: Any] {
+        [kSecClass as String: kSecClassGenericPassword, kSecAttrService as String: service, kSecAttrAccount as String: account]
+    }
+
+    static var isConfigured: Bool { (try? load())?.isEmpty == false }
+
+    static func load() throws -> String? {
+        var request = query()
+        request[kSecReturnData as String] = true
+        request[kSecMatchLimit as String] = kSecMatchLimitOne
+        var item: CFTypeRef?
+        let result = SecItemCopyMatching(request as CFDictionary, &item)
+        if result == errSecItemNotFound { return nil }
+        guard result == errSecSuccess, let data = item as? Data,
+              let token = String(data: data, encoding: .utf8), !token.isEmpty else {
+            throw AppFailure(message: L("GitHub Access token 无法从钥匙串读取。"))
+        }
+        return token
+    }
+
+    static func save(_ raw: String) throws {
+        let token = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard (20...255).contains(token.utf8.count), token.utf8.allSatisfy({ (33...126).contains($0) }) else {
+            throw AppFailure(message: L("GitHub Access token 格式无效。"))
+        }
+        let attributes: [String: Any] = [kSecValueData as String: Data(token.utf8), kSecAttrAccessible as String: kSecAttrAccessibleWhenUnlockedThisDeviceOnly]
+        let result = SecItemUpdate(query() as CFDictionary, attributes as CFDictionary)
+        if result == errSecItemNotFound {
+            var request = query()
+            attributes.forEach { request[$0.key] = $0.value }
+            guard SecItemAdd(request as CFDictionary, nil) == errSecSuccess else {
+                throw AppFailure(message: L("GitHub Access token 无法保存到钥匙串。"))
+            }
+        } else if result != errSecSuccess {
+            throw AppFailure(message: L("GitHub Access token 无法保存到钥匙串。"))
+        }
+    }
+
+    static func delete() throws {
+        let result = SecItemDelete(query() as CFDictionary)
+        guard result == errSecSuccess || result == errSecItemNotFound else {
+            throw AppFailure(message: L("GitHub Access token 无法从钥匙串删除。"))
+        }
+    }
+}
+
 struct LocalCredentials {
     // Keep credentials separate from the backend's data directory and exports.
     static let shared = LocalCredentials(directory: FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]

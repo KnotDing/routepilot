@@ -7,7 +7,13 @@ private final class ReleaseDownloadDelegate: NSObject, URLSessionTaskDelegate {
     func urlSession(_ session: URLSession, task: URLSessionTask,
                     willPerformHTTPRedirection response: HTTPURLResponse, newRequest request: URLRequest,
                     completionHandler: @escaping (URLRequest?) -> Void) {
-        completionHandler(request.url.map { ReleaseUpdater.trustedDownloadURL($0, source: source) } == true ? request : nil)
+        guard request.url.map({ ReleaseUpdater.trustedDownloadURL($0, source: source) }) == true else {
+            completionHandler(nil)
+            return
+        }
+        var redirected = request
+        if request.url?.host != response.url?.host { redirected.setValue(nil, forHTTPHeaderField: "Authorization") }
+        completionHandler(redirected)
     }
 }
 
@@ -33,15 +39,15 @@ struct GiteaRelease: Decodable {
 }
 
 enum ReleaseUpdater {
-    static func latest(source: String = "github", includingBeta: Bool = false) async throws -> GiteaRelease {
-        let data = try await releaseData(path: "releases/latest", source: source)
+    static func latest(source: String = "github", includingBeta: Bool = false, accessToken: String? = nil) async throws -> GiteaRelease {
+        let data = try await releaseData(path: "releases/latest", source: source, accessToken: accessToken)
         var release = try JSONDecoder().decode(GiteaRelease.self, from: data)
         release.source = source
         guard release.draft != true, release.prerelease != true, stableVersion(release.tagName) != nil else {
             throw AppFailure(message: "更新服务返回了无效的正式版本信息")
         }
         guard includingBeta else { return release }
-        let betaData = try await releaseData(path: source == "gitea" ? "releases?limit=50" : "releases?per_page=100", source: source)
+        let betaData = try await releaseData(path: source == "gitea" ? "releases?limit=50" : "releases?per_page=100", source: source, accessToken: accessToken)
         guard var releases = try? JSONDecoder().decode([GiteaRelease].self, from: betaData) else {
             throw AppFailure(message: "Beta 更新服务返回了无效版本信息")
         }
@@ -71,8 +77,8 @@ enum ReleaseUpdater {
         return isNewer(release.tagName, than: current)
     }
 
-    static func latestBeta(source: String = "github") async throws -> GiteaRelease {
-        let data = try await releaseData(path: source == "gitea" ? "releases?limit=50" : "releases?per_page=100", source: source)
+    static func latestBeta(source: String = "github", accessToken: String? = nil) async throws -> GiteaRelease {
+        let data = try await releaseData(path: source == "gitea" ? "releases?limit=50" : "releases?per_page=100", source: source, accessToken: accessToken)
         var releases = try JSONDecoder().decode([GiteaRelease].self, from: data)
         releases.indices.forEach { releases[$0].source = source }
         guard let latest = newestBeta(in: releases) else {
@@ -86,7 +92,7 @@ enum ReleaseUpdater {
             .max(by: { isNewer($1.tagName, than: $0.tagName) })
     }
 
-    private static func releaseData(path: String, source: String) async throws -> Data {
+    private static func releaseData(path: String, source: String, accessToken: String? = nil) async throws -> Data {
         guard source == "github" || source == "gitea",
               let url = URL(string: source == "gitea"
                 ? "https://gitea.knotding.com/api/v1/repos/knot/routepilot/\(path)"
@@ -96,6 +102,10 @@ enum ReleaseUpdater {
         var request = URLRequest(url: url)
         request.timeoutInterval = 10
         request.setValue("application/json", forHTTPHeaderField: "Accept")
+        request.setValue("RoutePilot", forHTTPHeaderField: "User-Agent")
+        if source == "github", let accessToken, !accessToken.isEmpty {
+            request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
+        }
         let session = URLSession(configuration: .ephemeral, delegate: ReleaseDownloadDelegate(source: source), delegateQueue: nil)
         defer { session.finishTasksAndInvalidate() }
         let (data, response) = try await session.data(for: request)

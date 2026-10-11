@@ -1065,5 +1065,20 @@
   "备份配置版本：{version}": "Backup configuration version: {version}",
   "恢复所选配置": "Restore selected configuration",
   "请选择要恢复的配置分区": "Select configuration sections to restore",
-  "导出所选配置": "Export selected configuration"
+  "导出所选配置": "Export selected configuration",
+  "GitHub Access token": "GitHub access token",
+  "可选。用于本机 App 访问 GitHub Releases API，保存在此 Mac 的钥匙串；不会发送给 Gitea 或远端后台。": "Optional. Used by this local App to access the GitHub Releases API. Stored in this Mac's Keychain and never sent to Gitea or a remote backend.",
+  "GitHub Access token 已配置": "GitHub access token is configured",
+  "输入新 token 以替换已保存的 token": "Enter a new token to replace the saved one",
+  "粘贴 GitHub 只读 Access token": "Paste a read-only GitHub access token",
+  "GitHub Access token 保存失败": "Could not save the GitHub access token",
+  "GitHub Access token 保存结果未确认，请重试": "The GitHub access token save was not confirmed. Please retry.",
+  "GitHub Access token 已保存到 macOS 钥匙串": "GitHub access token saved to macOS Keychain",
+  "GitHub Access token 已从 macOS 钥匙串删除": "GitHub access token removed from macOS Keychain",
+  "保存 Access token": "Save access token",
+  "删除已保存的 token": "Remove saved token",
+  "GitHub Access token 无法从钥匙串读取。": "Could not read the GitHub access token from Keychain.",
+  "GitHub Access token 格式无效。": "The GitHub access token format is invalid.",
+  "GitHub Access token 无法保存到钥匙串。": "Could not save the GitHub access token to Keychain.",
+  "GitHub Access token 无法从钥匙串删除。": "Could not remove the GitHub access token from Keychain."
 }

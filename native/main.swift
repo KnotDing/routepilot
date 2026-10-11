@@ -447,6 +447,35 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
             }
             return
         }
+        if message.name == "routepilotGitHubToken" {
+            guard trusted, let values = message.body as? [String: Any],
+                  let requestID = values["requestID"] as? String, (1...64).contains(requestID.count),
+                  let action = values["action"] as? String else { return }
+            func reply(_ ok: Bool, error: String? = nil) {
+                let configured = GitHubAccessTokenVault.isConfigured
+                var result: [String: Any] = ["requestID": requestID, "ok": ok, "configured": configured]
+                if let error { result["error"] = error }
+                guard let data = try? JSONSerialization.data(withJSONObject: result), let json = String(data: data, encoding: .utf8) else { return }
+                let value = configured ? "true" : "false"
+                webView?.evaluateJavaScript("window.routepilotNativePreferences=window.routepilotNativePreferences||{};window.routepilotNativePreferences.githubAccessTokenConfigured=\(value);window.dispatchEvent(new CustomEvent('routepilot-github-token-saved',{detail:" + json + "}));", completionHandler: nil)
+            }
+            do {
+                switch action {
+                case "save":
+                    guard let token = values["token"] as? String else { throw AppFailure(message: L("GitHub Access token 格式无效。")) }
+                    try GitHubAccessTokenVault.save(token)
+                case "clear":
+                    try GitHubAccessTokenVault.delete()
+                default:
+                    return
+                }
+                configurePreferenceSeed(userContentController)
+                reply(true)
+            } catch {
+                reply(false, error: error.localizedDescription)
+            }
+            return
+        }
         if message.name == "routepilotUpdateAction" {
             guard trusted, let action = message.body as? String else { return }
             if action == "check" { Task { await checkReleaseUpdate() } }
@@ -549,6 +578,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
         preferences.removeValue(forKey: "automation")
         preferences["statusBarHealth"] = notificationHealth.compactMap { $0["name"] as? String }
         preferences["assistantReady"] = UpdateAssistant.configured
+        preferences["githubAccessTokenConfigured"] = GitHubAccessTokenVault.isConfigured
         preferences["updateAvailable"] = availableRelease != nil
         preferences["updateVersion"] = availableRelease?.tagName ?? ""
         preferences["updateDownloading"] = releaseDownloadInProgress
@@ -759,9 +789,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
             let latest: GiteaRelease
             let source = updateSource
             if beta {
-                latest = try await ReleaseUpdater.latestBeta(source: source)
+                latest = try await ReleaseUpdater.latestBeta(source: source, accessToken: source == "github" ? GitHubAccessTokenVault.load() : nil)
             } else {
-                latest = try await ReleaseUpdater.latest(source: source, includingBeta: backendUpdateSettings["check_beta"] as? Bool == true)
+                latest = try await ReleaseUpdater.latest(source: source, includingBeta: backendUpdateSettings["check_beta"] as? Bool == true,
+                                                         accessToken: source == "github" ? GitHubAccessTokenVault.load() : nil)
             }
             let appVersion = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? ""
             let backendVersion = (status["software"] as? [String: Any])?["version"] as? String ?? ""
@@ -961,6 +992,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
             configuration.userContentController.add(self, name: "routepilotLocale")
             configuration.userContentController.add(self, name: "routepilotCredentials")
             configuration.userContentController.add(self, name: "routepilotPreferences")
+            configuration.userContentController.add(self, name: "routepilotGitHubToken")
             configuration.userContentController.add(self, name: "routepilotServiceHealth")
             configuration.userContentController.add(self, name: "routepilotUpdateAction")
             configureLanguageSeed(configuration.userContentController)

@@ -16,7 +16,7 @@ import {CachePanel,OptimisticReliability} from './cache';
 import {Backends} from './backends';
 import {remoteCredentialsSupported,restoreRemoteLogin,restoreLocalLogin,rememberManagementBackend,saveRemoteCredential} from './credentials';
 import {About} from './about';
-import {AppPreferencesPanel,LocalAppUpdateControls,appPreferences,savePreferences,usePreferenceDraft,observeServices,nativeApp} from './app-preferences';
+import {AppPreferencesPanel,GitHubAccessTokenControls,LocalAppUpdateControls,appPreferences,savePreferences,usePreferenceDraft,observeServices,nativeApp} from './app-preferences';
 import {NotificationErrors} from './notification-errors';
 import {VersionNotice} from './version-notice';
 import {BackendUpdate} from './backend-update';
@@ -128,7 +128,8 @@ export function Settings({settings,refresh,notify,status={},backend=null,interce
     <header className="routing-heading"><h2>{category==='cache'?ct('settingsTitle'):category==='updates'?t('软件更新'):t('{section}设置',{section:t(groups[category])})}</h2>{category==='general'&&<LanguageSelector/>}</header>
     {category==='updates'?<>
      <p>{t('检查与升级针对当前连接的后端所在 Mac。')}</p>
-     {localApp?<LocalAppUpdateControls preferences={localPreferences}/>:onUpdateTarget?<div ref={onUpdateTarget}/>:<BackendUpdate backend={backend} capable={status.online_update} software={status.software} authentication={settings?.security?.authentication!==false} onReady={refresh} showCurrent embedded/>}
+     {nativeApp()&&<GitHubAccessTokenControls preferences={localPreferences} notify={notify}/>}
+     {localApp?<LocalAppUpdateControls preferences={localPreferences} notify={notify}/>:onUpdateTarget?<div ref={onUpdateTarget}/>:<BackendUpdate backend={backend} capable={status.online_update} software={status.software} authentication={settings?.security?.authentication!==false} onReady={refresh} showCurrent embedded/>}
     </>:<FormHint/>}
     <fieldset disabled={saving} style={{border:0,padding:0,margin:0,minWidth:0}}>
      {category==='routing'?<>

@@ -3,7 +3,7 @@ import React,{useEffect,useRef,useState} from 'react';
 import {useT,translate,valueLabel,message} from './i18n';
 import {notificationSelected} from './notification-errors';
 
-const defaults={assistantReady:false,updatePrompts:true,updateAvailable:false,updateVersion:'',updateDownloading:false,updateDownloadError:'',updateAutomationError:'',desktopNotifications:false,notificationSound:true};
+const defaults={assistantReady:false,updatePrompts:true,updateAvailable:false,updateVersion:'',updateDownloading:false,updateDownloadError:'',updateAutomationError:'',githubAccessTokenConfigured:false,desktopNotifications:false,notificationSound:true};
 export function nativeApp(){return Boolean(window.webkit?.messageHandlers?.routepilotPreferences)}
 export function appPreferences(){
  if(nativeApp())return {...defaults,...window.routepilotNativePreferences};
@@ -44,6 +44,35 @@ export function usePreferenceDraft(keys){
  const setDraft=value=>setValue(previous=>{const next=typeof value==='function'?value(previous):value;for(const key of owned.current)if(JSON.stringify(next[key])!==JSON.stringify(previous[key]))dirty.current.add(key);return next});
  const saved=()=>{dirty.current.clear();setValue(appPreferences())};
  return [draft,setDraft,saved];
+}
+export function GitHubAccessTokenControls({preferences,notify}){
+ const t=useT(),[token,setToken]=useState(''),[tokenBusy,setTokenBusy]=useState(false);
+ const saveToken=async(action='save')=>{
+  if(action==='save'&&!token.trim()){return}
+  setTokenBusy(true);
+  const requestID=globalThis.crypto?.randomUUID?.()||Date.now().toString(36)+'-'+Math.random().toString(36).slice(2);
+  try{
+   await new Promise((resolve,reject)=>{
+    const cleanup=()=>{clearTimeout(timer);window.removeEventListener('routepilot-github-token-saved',completed)};
+    const completed=e=>{if(e.detail?.requestID!==requestID)return;cleanup();e.detail.ok?resolve():reject(new Error(e.detail.error||t('GitHub Access token 保存失败')))};
+    const timer=setTimeout(()=>{cleanup();reject(new Error(t('GitHub Access token 保存结果未确认，请重试')))},10000);
+    window.addEventListener('routepilot-github-token-saved',completed);
+    try{window.webkit.messageHandlers.routepilotGitHubToken.postMessage({action,token:action==='save'?token.trim():'',requestID})}catch(e){cleanup();reject(e)}
+   });
+   setToken('');window.dispatchEvent(new Event('routepilot-preferences-changed'));
+   notify?.(t(action==='save'?'GitHub Access token 已保存到 macOS 钥匙串':'GitHub Access token 已从 macOS 钥匙串删除'));
+  }catch(e){notify?.(e.message,true)}finally{setTokenBusy(false)}
+ };
+ return <section className="panel">
+   <h3>{t('GitHub Access token')}</h3>
+   <p>{t('可选。用于本机 App 访问 GitHub Releases API，保存在此 Mac 的钥匙串；不会发送给 Gitea 或远端后台。')}</p>
+   {preferences.githubAccessTokenConfigured&&<p role="status">{t('GitHub Access token 已配置')}</p>}
+   <FieldLabel label={t('GitHub Access token')}><input type="password" autoComplete="new-password" maxLength={255} value={token} disabled={tokenBusy} onChange={e=>setToken(e.target.value)} placeholder={t(preferences.githubAccessTokenConfigured?'输入新 token 以替换已保存的 token':'粘贴 GitHub 只读 Access token')}/></FieldLabel>
+   <div className="toolbar">
+    <button type="button" className="primary" disabled={tokenBusy||!token.trim()} onClick={()=>saveToken('save')}>{t(tokenBusy?'处理中…':'保存 Access token')}</button>
+    {preferences.githubAccessTokenConfigured&&<button type="button" disabled={tokenBusy} onClick={()=>saveToken('clear')}>{t('删除已保存的 token')}</button>}
+   </div>
+  </section>;
 }
 // These controls only update the App hosting a local management window.
 // Remote connections use BackendUpdate and never send native update actions.
