@@ -7,6 +7,7 @@ import platform
 import plistlib
 import re
 import subprocess
+import tempfile
 import zipfile
 
 
@@ -100,9 +101,20 @@ def main():
     require(version["os"] == "darwin" and version["arch"] == {"arm64": "arm64", "x86_64": "amd64"}[arch], "Wrong backend platform")
     for file in (app, backend):
         subprocess.run(["codesign", "--verify", "--deep", "--strict", str(file)], check=True)
-    subprocess.run(["hdiutil", "verify", str(artifacts / names[0])], check=True)
-    report.write_text(json.dumps({"passed": True, "identity": identity, "sha256": checksums, "checks": ["bundle identity", "backend identity", "offline notes", "ZIP/App equality", "bundled service resources", "outer checksums", "code signatures", "DMG integrity"], "scope": "Read-only package validation; no installation, notarization or live upgrade acceptance"}, indent=2) + "\n")
-    print("PASS package: versions, resources, archives, checksums, signatures, DMG")
+    dmg = artifacts / names[0]
+    subprocess.run(["hdiutil", "verify", str(dmg)], check=True)
+    with tempfile.TemporaryDirectory(prefix="routepilot-dmg-check-") as mountpoint:
+        subprocess.run(["hdiutil", "attach", "-readonly", "-nobrowse", "-mountpoint", mountpoint, str(dmg)], check=True, stdout=subprocess.DEVNULL)
+        try:
+            volume = pathlib.Path(mountpoint)
+            background = volume / ".background" / "background.pdf"
+            require((volume / ".DS_Store").is_file() and (volume / ".DS_Store").stat().st_size > 0, "DMG is missing Finder layout")
+            require(background.is_file() and background.read_bytes().startswith(b"%PDF-"), "DMG is missing its vector PDF background")
+            require((volume / "RoutePilot.app").is_dir() and (volume / "Applications").is_symlink(), "DMG is missing the App or Applications link")
+        finally:
+            subprocess.run(["hdiutil", "detach", mountpoint], check=True, stdout=subprocess.DEVNULL)
+    report.write_text(json.dumps({"passed": True, "identity": identity, "sha256": checksums, "checks": ["bundle identity", "backend identity", "offline notes", "ZIP/App equality", "bundled service resources", "outer checksums", "code signatures", "DMG integrity", "DMG installer layout and vector background"], "scope": "Read-only package validation; no installation, notarization or live upgrade acceptance"}, indent=2) + "\n")
+    print("PASS package: versions, resources, archives, checksums, signatures, DMG layout and vector background")
 
 
 if __name__ == "__main__":

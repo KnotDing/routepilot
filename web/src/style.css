@@ -116,7 +116,8 @@ nav { display: flex; flex-direction: column; gap: 4px; min-height: 0; overflow-y
 nav button { width: 100%; justify-content: flex-start; height: 40px; padding: 0 12px; gap: 11px; border: 1px solid transparent; border-radius: 9px; background: transparent; color: inherit; font-size: 13px; }
 nav button:hover { border-color: transparent; background: #ffffff08; color: #edf3ff; }
 nav button.active { color: #fff; background: #3868e8; box-shadow: 0 4px 12px #0001; }
-.nav-icon { width: 18px; height: 18px; flex: 0 0 18px; opacity: .9; }
+.nav-icon { width: 20px; height: 20px; flex: 0 0 20px; opacity: .92; }
+nav button:hover .nav-icon, nav button.active .nav-icon { opacity: 1; }
 .aside-foot { margin-top: auto; padding: 22px 10px 2px; color: #b3bfd1; font-size: 12px; line-height: 20px; }
 .aside-foot small { display: block; color: #778aa7; font-size: 11px; }
 main { flex: 1; min-width: 0; margin-left: 236px; padding: 30px 36px 22px; }

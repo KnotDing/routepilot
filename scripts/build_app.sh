@@ -48,7 +48,11 @@ if [ -n "${old_dir:-}" ]; then rm -rf "$old_dir"; fi
 ditto -c -k --sequesterRsrc --keepParent "$app_dir" "artifacts/RoutePilot-macos-$(uname -m).zip"
 dmg_stage=$(mktemp -d "$project_dir/.cache/dmg-stage.XXXXXX")
 trap 'rm -rf "$build_dir" "$dmg_stage"' EXIT
+mkdir -p "$dmg_stage/.background"
 ditto "$app_dir" "$dmg_stage/RoutePilot.app"
 ln -s /Applications "$dmg_stage/Applications"
+xcrun swiftc -swift-version 5 -module-cache-path "$project_dir/.cache/swift-module" -framework AppKit "$project_dir/native/dmg_background.swift" -o "$project_dir/.cache/create-dmg-background"
+"$project_dir/.cache/create-dmg-background" "$dmg_stage/.background/background.pdf"
+cp "$project_dir/scripts/dmg/DS_Store" "$dmg_stage/.DS_Store"
 hdiutil create -volname RoutePilot -srcfolder "$dmg_stage" -ov -format UDZO "artifacts/RoutePilot-macos-$(uname -m).dmg"
 printf 'APP: %s\n' "$app_dir"

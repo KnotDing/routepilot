@@ -1,19 +1,23 @@
 import React from 'react';
-const paths={
- Dashboard:'M3 3h7v7H3z M14 3h7v7h-7z M3 14h7v7H3z M14 14h7v7h-7z',
- DNS:'M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18 M3 12h18 M12 3c-5 5-5 13 0 18 M12 3c5 5 5 13 0 18',
- Queries:'M5 3h14v18H5z M8 7h8 M8 11h8 M8 15h5',
- Cache:'M4 7h16v13H4z M3 3h18v4H3z M9 12h6',
- Interception:'M3 7h12 M12 4l3 3-3 3 M21 17H9 M12 14l-3 3 3 3 M5 13v7 M19 4v7',
- Hosts:'M4 4h16v6H4z M4 14h16v6H4z M7 7h.01 M7 17h.01 M11 7h6 M11 17h6',
- Overrides:'M4 7h16 M4 17h16 M8 4v6 M16 14v6',
- Rule:'M8 3v5l-4 10a2 2 0 0 0 2 3h12a2 2 0 0 0 2-3L16 8V3 M6 3h12 M7 14h10',
- Routing:'M12 3v6 M5 15v6 M19 15v6 M5 15V9h14v6 M9 3h6 M2 21h6 M16 21h6',
- BGP:'M9 3h6v6H9z M2 15h6v6H2z M16 15h6v6h-6z M12 9v3 M5 15v-3h14v3',
- Peers:'M8 12h8 M8 9l-3 3 3 3 M16 9l3 3-3 3 M3 5h18v14H3z',
- Routes:'M4 5h11 M12 2l3 3-3 3 M20 19H9 M12 16l-3 3 3 3 M4 5v14h1 M20 19V5h-1',
- Health:'M3 12h4l3-7 4 14 3-7h4',
- Events:'M5 4h14v16H5z M9 8h6 M9 12h6 M9 16h3',
- Settings:'M4 6h16 M4 12h16 M4 18h16 M8 3v6 M16 9v6 M10 15v6',
+
+const icons={
+ Dashboard:<><rect x="3.5" y="3.5" width="7" height="7" rx="1.5"/><rect x="13.5" y="3.5" width="7" height="7" rx="1.5"/><rect x="3.5" y="13.5" width="7" height="7" rx="1.5"/><rect x="13.5" y="13.5" width="7" height="7" rx="1.5"/></>,
+ DNS:<><circle cx="12" cy="12" r="8.75"/><path d="M3.5 12h17M12 3.25c-4.9 4.8-4.9 12.7 0 17.5M12 3.25c4.9 4.8 4.9 12.7 0 17.5"/></>,
+ Queries:<><path d="M6 3.5h8l4 4v13H6zM14 3.5v4h4M9 11h6M9 14.5h6M9 18h4"/></>,
+ Cache:<><path d="M5 4.5h14l2 3-2 3H5l-2-3zM5 11.5h14l2 3-2 3H5l-2-3zM12 19h8"/><circle cx="8" cy="7.5" r=".7"/><circle cx="8" cy="14.5" r=".7"/></>,
+ Interception:<><path d="M3.5 7h12m-3-3 3 3-3 3M20.5 17h-12m3-3-3 3 3 3M6 13v7M18 4v7"/></>,
+ Hosts:<><rect x="4" y="3.5" width="16" height="7" rx="1.5"/><rect x="4" y="13.5" width="16" height="7" rx="1.5"/><path d="M11 7h5M11 17h5"/><circle cx="7.5" cy="7" r=".7"/><circle cx="7.5" cy="17" r=".7"/></>,
+ Overrides:<><path d="M4 6h16M4 12h16M4 18h16"/><circle cx="9" cy="6" r="2"/><circle cx="15" cy="12" r="2"/><circle cx="7" cy="18" r="2"/></>,
+ Rule:<><path d="M8 3.5v5l-4.2 10a1.8 1.8 0 0 0 1.7 2.5h13a1.8 1.8 0 0 0 1.7-2.5L16 8.5v-5M7 3.5h10M7 15h10"/><path d="M10 11.5h4"/></>,
+ Routing:<><circle cx="12" cy="4.5" r="2"/><circle cx="5" cy="19" r="2"/><circle cx="19" cy="19" r="2"/><path d="M12 6.5v4M5 17v-3.5h14V17M12 10.5v3"/></>,
+ BGP:<><circle cx="12" cy="12" r="3"/><circle cx="5" cy="5" r="2"/><circle cx="19" cy="5" r="2"/><circle cx="5" cy="19" r="2"/><circle cx="19" cy="19" r="2"/><path d="m10 10-3.5-3.5M14 10l3.5-3.5M10 14l-3.5 3.5M14 14l3.5 3.5"/></>,
+ Peers:<><rect x="3.5" y="4.5" width="17" height="15" rx="2"/><path d="M7 9h10l-2.5-2.5M17 15H7l2.5 2.5"/></>,
+ Routes:<><path d="M6 20V5.5a2 2 0 0 1 2-2h9M14.5 1.5l4 2-4 2M18 4v14.5a2 2 0 0 1-2 2H8"/><circle cx="6" cy="20" r="1.5"/><path d="m10 16-3 4 3 2"/></>,
+ Health:<><path d="M3 12h4l2.5-6 4.5 12 2.5-6H21"/><circle cx="12" cy="12" r="9"/></>,
+ Events:<><rect x="4" y="5" width="16" height="16" rx="2"/><path d="M8 3v4M16 3v4M4 9h16M8 13h2M13 13h3M8 17h2"/></>,
+ Settings:<><path d="M4 6h16M4 12h16M4 18h16"/><circle cx="9" cy="6" r="2"/><circle cx="15" cy="12" r="2"/><circle cx="7" cy="18" r="2"/></>,
 };
-export function NavIcon({page}){return <svg className="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d={paths[page]||paths.Settings}/></svg>}
+
+export function NavIcon({page}){
+ return <svg className="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">{icons[page]||icons.Settings}</svg>;
+}
