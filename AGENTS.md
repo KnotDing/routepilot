@@ -120,11 +120,22 @@
 
 ## 最近已核验发布（2026-10-11）
 
-- 最新已发布正式版基线为 `v1.0.2`；最新测试版标签为 `v1.0.3-beta.13`（`e40f067`）。beta.10 的历史验收仍见下方记录；其 Gitea Ubuntu 制品获取遇到 HTTP 403，macOS 回退构建成功。
-- v1.0.3 正式版候选为 build `82`。截至本次交接，本地 `make verify-release` 与 `make fuzz` 均通过，GitHub/Gitea 发布及 Actions 尚待完成；不得把本地候选包当作已发布版本。
-- 变更覆盖 CLI/skill 后端目标、管理 IP 与可信代理、分区备份恢复、乐观缓存可靠性、BGP 详情、GitHub/Gitea 更新源及本机 GitHub token。新增测试和当前测试边界记录在 [验收记录](docs/acceptance.md) 与 `.gitea/release-notes/v1.0.3.md`。
+- 最新已发布正式版为 `v1.0.3`，标签指向 `5ca0fd97496776d9949dbe3218d57f982dc0e04f`；最新测试版为 `v1.0.3-beta.13`（`e40f067`）。
+- GitHub 回归 #17（run `38140875252`，正式版提交）和 #18（run `38141208396`，发布工作流修复提交）均成功；GitHub Release 首次 tag run #7（`38140882243`）因稳定版空 `prerelease` 数组触发 `set -u` 失败。通过 workflow_dispatch 对实际标签 `v1.0.3` 重跑后，Release run #8（`38141218351`）成功。发布工作流修复在 `main` 的提交为 `967b1a2265d24e5aa7dbbb3bc4083f9fb482fbfb`，标签保持不变。
+- Gitea Release #102（run `2071`）成功复用 GitHub 构建的制品；等待阶段先遇到多次 HTTP 404，随后成功获取并校验附件，macOS 回退任务未运行。Gitea Release 页面确认稳定版状态及 `RoutePilot-macos-arm64.dmg`、`RoutePilot-macos-arm64.zip`、`SHA256SUMS` 三个附件；本地 `make verify-release` 的包检查和 SHA256 校验通过。
+- 本次覆盖审计新增/扩展 API 分区备份恢复、安全代理客户端 IP、BGP 通告能力排序及邻居详情凭证脱敏、缓存可靠性持久化和逐请求统计、DNS 响应语义比较、更新源与 GitHub token 设置、ReleaseUpdater 请求构造、自动化偏好迁移/目标校验等测试。详情与边界见 [验收记录](docs/acceptance.md) 和 `.gitea/release-notes/v1.0.3.md`。
 - 自动化设置偏好迁移和参数校验已有原生测试；桌面 helper 实际文件冲突、备份/恢复和回滚事务仍缺端到端自动化覆盖。token bridge 与请求隔离有测试，未在当前用户钥匙串上执行写入验收。
 - 此节仅为带日期的快照。接手时以 `git status`、`internal/buildinfo/release.json`、远端标签与实际 Release/Actions 为准，不凭本文猜测最新版本。
+
+## 任务交接（2026-10-11）
+
+- 目标与验收条件：检查 v1.0.2 之后新增功能的测试覆盖；发布 v1.0.3 正式版；更新本文件记录工作流、版本与测试边界。
+- 当前状态：已完成。正式版已在 GitHub 和 Gitea 发布，双仓库 `main` 已同步。
+- 已完成与修改文件：测试补充见本次提交历史及 `docs/acceptance.md`；发行说明为 `.gitea/release-notes/v1.0.3.md`；`README.md`、`scripts/install_skill.sh` 已使用 GitHub 优先链接/版本；`AGENTS.md` 已更新发布和测试交接状态。发布工作流稳定版手动重跑修复位于 `.github/workflows/release.yaml`。
+- 验证：`make verify-release`、`env GOCACHE=/tmp/routepilot-go-build-v1.0.3 make fuzz` 均通过；fuzz 执行 230,438 次。GitHub 回归 run #17、#18 和发布 run #8 成功；Gitea Release run #102 成功复用 GitHub 制品。DMG、ZIP 和 SHA256SUMS 校验通过。发布门禁不代表真实安装升级、现场网络运行或钥匙串写入验收。
+- 已发布：`v1.0.3`，tag 指向 `5ca0fd97496776d9949dbe3218d57f982dc0e04f`。GitHub: https://github.com/KnotDing/routepilot/releases/tag/v1.0.3；Gitea: https://gitea.knotding.com/knot/routepilot/releases/tag/v1.0.3。两边各有 DMG、ZIP、SHA256SUMS 三个发布附件；GitHub Release run #8（`38141218351`），Gitea Release run #102（`2071`）。
+- 保留的无关改动：无。
+- 下一步与依赖：无。后续提交仍须同时推送 Gitea 与 GitHub。
 
 ## 代码地图：按任务定位
 
