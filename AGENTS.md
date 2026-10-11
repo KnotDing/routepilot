@@ -14,7 +14,8 @@
 - RoutePilot 同时维护 Gitea 与 GitHub：Gitea 为 `git@git.knotding.com:knot/routepilot.git`，GitHub 为 `git@github.com:KnotDing/routepilot.git`。
 - 每次提交后的分支和标签推送都必须同时到达两个仓库。配置 `origin` 的多个 `pushurl`（保留 Gitea 为 fetch URL），这样 `git push origin <分支>` 会推送到两个地址；推送后核对两个远端的提交或标签一致。不要只推其中一个。
 - 新克隆或远端配置未完成时，先检查并配置两个推送地址，再继续推送。任一仓库推送失败时明确报告部分成功，并在恢复后补齐；不要强推或改写远端历史。
-- `.github/workflows/test.yaml` 是唯一回归测试门禁；Gitea 不运行本地测试。`.gitea/workflows/release.yaml` 的 Ubuntu runner 等待并获取 GitHub Release 制品、校验 SHA256 后发布到 Gitea；获取任务失败或制品不可用时，再由 macOS runner 本地构建回退。GitHub Release 仍由 `.github/workflows/release.yaml` 构建并发布。
+- 对外 README 链接优先使用 GitHub（Release 与 `raw.githubusercontent.com/KnotDing/routepilot/main`）；Gitea 链接作为清楚标注的备用入口。
+- `.github/workflows/test.yaml` 是唯一回归测试门禁；Gitea 不运行本地测试。`.gitea/workflows/release.yaml` 的 Ubuntu runner 先等待 5 分钟，再每分钟轮询 GitHub Release，最多 15 次；下载 DMG、ZIP 与 SHA256SUMS 并校验成功后发布到 Gitea。获取任务失败或制品不可用时，再由 macOS runner 本地打包回退，不在 Gitea 执行测试。GitHub Release 仍由 `.github/workflows/release.yaml` 构建并发布。
 
 ## 修改与验证
 
@@ -72,7 +73,7 @@
 
 ### 共同要求
 
-- 网页/API 域名为 `https://gitea.knotding.com`；Git SSH remote 可能是 `git.knotding.com`。回归以 `.github/workflows/test.yaml` 为唯一门禁；GitHub Release 制品由 `.gitea/workflows/release.yaml` 优先下载复用，失败时才本地构建。发布门禁同时检查 GitHub 与 Gitea 对应 workflow 和 [验收记录](docs/acceptance.md)，不绕过失败。
+- 网页/API 域名为 `https://gitea.knotding.com`；Git SSH remote 可能是 `git.knotding.com`。回归以 `.github/workflows/test.yaml` 为唯一门禁；GitHub Release 制品由 `.gitea/workflows/release.yaml` 优先下载复用，失败时才本地构建。README 对外链接遵循 GitHub 优先、Gitea 备用。发布门禁同时检查 GitHub 与 Gitea 对应 workflow 和 [验收记录](docs/acceptance.md)，不绕过失败。
 - 发布前同步远端，确认 `main` 基线、工作区范围、正式/测试版基线和未用标签。只暂存明确属于本次发布的文件，保留无关的未提交工作。
 - 所有提交使用 Conventional Commits，如 `feat:`、`fix:`、`docs:`。提交标题概括本次功能或修复，Gitea Actions 会将它作为运行标题；不使用泛化的 `Release RoutePilot vX.Y.Z`。
 - 更新 `internal/buildinfo/release.json`、README 中确实存在的版本引用，并新增 `.gitea/release-notes/vX.Y.Z.md`。说明只包含 App 用户可见变化，不加入 agent 工作规范或开发流程。

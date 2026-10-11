@@ -39,7 +39,7 @@ RoutePilot 是一款 macOS 状态栏应用：向 Surge 查询分流策略，为 
 
 ## 🚀 快速开始
 
-1. 从 [GitHub Releases](https://github.com/KnotDing/routepilot/releases) 下载 **RoutePilot-macos-arm64.dmg**，也可从 [Gitea Releases](https://gitea.knotding.com/knot/routepilot/releases) 下载。将 **RoutePilot.app** 拖入 `/Applications`。目前发布包面向 **Apple Silicon，macOS 13 及以上**。DMG/ZIP 拖放用于首次安装；已有安装请从 App 的“设置 → 软件更新”执行完整升级，手动替换 App 不会更新已安装的常驻网络后台。手动替换后若 App 与后台版本不一致，App 启动时会提示用 App 携带的后台覆盖本机网络后台以修复。
+1. 从 [GitHub Releases](https://github.com/KnotDing/routepilot/releases) 下载 **RoutePilot-macos-arm64.dmg**；GitHub 无法访问时，可从 [Gitea Releases 备用下载](https://gitea.knotding.com/knot/routepilot/releases)。将 **RoutePilot.app** 拖入 `/Applications`。目前发布包面向 **Apple Silicon，macOS 13 及以上**。DMG/ZIP 拖放用于首次安装；已有安装请从 App 的“设置 → 软件更新”执行完整升级，手动替换 App 不会更新已安装的常驻网络后台。手动替换后若 App 与后台版本不一致，App 启动时会提示用 App 携带的后台覆盖本机网络后台以修复。
 2. 启动 App，从状态栏打开管理窗口。默认管理地址为 `http://127.0.0.1:1055`，也能通过浏览器访问；已有本机后台时直接连接。
 3. 按下面的步骤配置 Surge、DNS 和路由。需要透明 DNS / PF 时，在状态栏菜单安装**网络后台服务**，首次安装需管理员授权。
 
@@ -217,21 +217,23 @@ App 可自动安装 `routepilot-control` skill，通过复选框同时选择多�
 让 AI agent 执行以下命令，默认安装到 Codex：
 
 ```sh
-curl -fsSL https://gitea.knotding.com/knot/routepilot/raw/branch/main/scripts/install_skill.sh | sh
+curl -fsSL https://raw.githubusercontent.com/KnotDing/routepilot/main/scripts/install_skill.sh | sh
 ```
 
 安装到 Claude Code 或 Hermes，也可同时指定多个 agent：
 
 ```sh
 # Claude Code
-curl -fsSL https://gitea.knotding.com/knot/routepilot/raw/branch/main/scripts/install_skill.sh | sh -s -- --agent claude
+curl -fsSL https://raw.githubusercontent.com/KnotDing/routepilot/main/scripts/install_skill.sh | sh -s -- --agent claude
 
 # Hermes
-curl -fsSL https://gitea.knotding.com/knot/routepilot/raw/branch/main/scripts/install_skill.sh | sh -s -- --agent hermes
+curl -fsSL https://raw.githubusercontent.com/KnotDing/routepilot/main/scripts/install_skill.sh | sh -s -- --agent hermes
 
 # 同时安装到多个 agent
-curl -fsSL https://gitea.knotding.com/knot/routepilot/raw/branch/main/scripts/install_skill.sh | sh -s -- --agent codex --agent cursor --agent gemini
+curl -fsSL https://raw.githubusercontent.com/KnotDing/routepilot/main/scripts/install_skill.sh | sh -s -- --agent codex --agent cursor --agent gemini
 ```
+
+GitHub 脚本无法访问时，可用 [Gitea 备用安装脚本](https://gitea.knotding.com/knot/routepilot/raw/branch/main/scripts/install_skill.sh)，将上述命令中的 `https://raw.githubusercontent.com/KnotDing/routepilot/main/scripts/install_skill.sh` 替换为该链接。
 
 安装器从官方仓库获取 **v1.0.2** 的 skill，无需克隆、编译或管理员权限。默认覆盖并备份；追加 `--on-conflict skip` 可保留现有内容。安装 skill 不会启用 CLI 或保存登录凭证，使用前请在 App 设置中启用 CLI，并让 agent 重新加载 skills。
 
