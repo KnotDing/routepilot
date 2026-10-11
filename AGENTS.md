@@ -111,17 +111,69 @@
 
 ## 最近已核验发布（2026-10-11）
 
-- 正式版基线为 `v1.0.2`；最新已核验测试版为 `v1.0.3-beta.2`，提交 `7108de6`。Gitea 回归与 Release workflows 已成功，Release 为 prerelease，DMG/ZIP/校验和已下载核验。
+- 正式版基线为 `v1.0.2`；最新已核验测试版为 `v1.0.3-beta.3`，功能提交 `1058cb9`。回归 #79（run 2048）与 Release #80（run 2049）均成功，Release 为 prerelease，DMG/ZIP/校验和已下载核验；App 与捆绑后台均为 `1.0.3-beta.3` / build `80`。
 - Beta.1 将 CLI 与 skill 设置改为管理当前连接的后端；Beta.2 增加管理 IP 免认证、可信代理、代理域名与请求来源处理。默认免认证白名单为空。真实反向代理部署尚未现场验收。
-- 当前准备的 `v1.0.3-beta.3` 包含乐观缓存可靠性统计和 BGP 邻居详情；发布结果必须另行核验，不能把这里的候选信息当作已发布证据。
+- Beta.3 增加乐观缓存可靠性统计和 BGP 邻居详情。代码地图与本节发布结果作为后续文档提交更新，未移动发布标签；它们不改变已发布 App 的运行行为。
 - 此节仅为带日期的快照。接手时以 `git status`、`internal/buildinfo/release.json`、远端标签与实际 Release/Actions 为准，不凭本文猜测最新版本。
 
-## 快速入口
+## 代码地图：按任务定位
 
-- **安装与操作：** [README](README.md)，关注第一次配置、本地/远程、缓存、软件更新与 CLI。
-- **架构与验收：** [架构说明](docs/architecture.md)、[验收记录](docs/acceptance.md)。区分自动化、隔离网络与用户现场证据。
-- **DNS 与缓存：** `internal/dnsserver/`、`internal/classifier/`、`internal/resolver/`、`internal/cache/`。
-- **路由与状态：** `internal/bgp/`、`internal/routing/`、`internal/state/`；专题见 [路由配置](docs/routing-backends.md)。
-- **管理与安全：** `internal/api/`、`internal/remote/`、`internal/security/`、`internal/controlclient/`；CLI 入口 `cmd/routepilot/`。
-- **软件升级：** `internal/softwareupdate/`、`native/`、`web/src/backend-update.jsx`、`web/src/app-preferences.jsx`、`.gitea/workflows/`。
-- **界面与系统集成：** `web/src/`、`localization/`、`native/`。沿用现有主题、响应式布局、语言与凭证恢复流程。
+先查下表，通常从“首读”开始，再跟随调用读取“关联”。函数名比行号稳定；模块位置变化时同步更新这里。不要预先通读 `app.go`、`api.go`、`main.jsx` 或 `main.swift` 的全部内容。
+
+### 入口与装配
+
+| 入口 | 职责与定位点 |
+| --- | --- |
+| `cmd/controller/main.go` | 后台命令分发：`serve`、版本、更新 worker/agent；无 `serve` 的旧参数进入独立诊断工具，不是集成服务 |
+| `internal/app/app.go` | `Open` / `build` 装配 Runtime；`monitor` 驱动探测与路由；`View` / `CacheView` / `Metrics` 输出只读视图；`Serve` / `Close` 管理生命周期 |
+| `internal/api/api.go` | `Handler` / `serve` 分派 `/api/v1/`，CRUD、导入、健康与更新接口；具体逻辑优先找同目录专题文件 |
+| `cmd/routepilot/main.go` | CLI 参数、子命令及 JSON 输出；HTTP、认证与异步等待在 `internal/controlclient/client.go` |
+| `native/main.swift` | `AppDelegate`：状态栏菜单、管理 WKWebView、后台连接与启动、JS bridge、更新提示；独立行为优先找拆出的 Swift 文件 |
+| `web/src/main.jsx` | `App` / `Workspace`：会话、后端切换与按页面轮询；`Resource`：通用表项 CRUD；`Settings`：设置分组与提交；专用页面组件已拆分 |
+| `web/embed.go` | 嵌入 `web/dist`，后台提供管理页面；离线更新说明由 `web/src/native-notes.jsx` 另行构建并随 App 打包 |
+
+### 常见任务首读清单
+
+| 任务 | 首读文件 / 关键点 | 关联文件 |
+| --- | --- | --- |
+| 配置字段、默认值、校验 | `internal/config/config.go`（`Document` / `Settings`）；路由、安全、通知、Surge 重启校验在同目录专题文件 | `internal/database/store.go`；`web/src/form-fields.jsx`；`web/src/main.jsx` 的 `Settings` |
+| 保存慢、配置应用失败、监听变更 | `internal/app/configuration.go`（`SaveConfiguration` / `runConfigurationWorker`）；`app.go` 的 `activateConfiguration` / `Serve` | `internal/api/configuration_apply.go`；`web/src/configuration.js`、`configuration-status.jsx`；`docs/submission-responsiveness.md` |
+| 耗时操作与进度 | `internal/api/operations.go`（`startOperation`）；检查 `Prefer: respond-async` | `web/src/client.js`、`operation-status.jsx`；`internal/controlclient/client.go` 的 `Request` |
+| DNS 分流、AAAA 回落、Fake-IP 门禁 | `internal/dnsserver/dispatcher.go`（`Dispatch` / `resolveSurge`）；`internal/model/model.go` 定义查询上下文与结果 | `internal/localdns/local.go`；`internal/app/app.go` 的 `policy.Classify`；`internal/state/machine.go` |
+| Surge 策略求值、always-real-ip、Host/IPv6 同步 | `internal/surge/adapter.go`；`api.go` / `cli.go`；`real_ip.go` / `hosts.go` / `ipv6.go` | `internal/classifier/classifier.go`（`Classify` / `evaluate`）；`internal/app/decision_revision.go` |
+| 决策缓存、失效与空闲刷新 | `internal/classifier/classifier.go`、`idle_refresh.go`；`internal/cache/cache.go` | `internal/app/decision_cache.go`、`decision_revision.go`；`web/src/cache.jsx`、`cache-i18n.js` |
+| 响应缓存、TTL、持久化与可靠性比较 | `internal/resolver/real.go`（`Resolve` / `exchange` / `refresh`）；`response_cache.go`、`response_comparison.go`、`idle_refresh.go` | `internal/app/response_cache.go`、`app.go` 的 `responseCacheStats` / `Metrics`；`web/src/main.jsx` 的 Queries 页 |
+| 上游、出口绑定、策略专用 DNS | `internal/resolver/upstream_transport.go`、`egress*.go`；`internal/dnsserver/policy_dns.go` | `web/src/policy-dns.jsx`、`dns-settings.jsx`；`internal/config/config.go` |
+| 透明 DNS / PF | `internal/dnsserver/transparent.go`、`pf_rules.go`、`pf_control.go`、`pf_darwin.go`；普通 UDP/TCP 监听在 `server.go` | `docs/phase-2-acceptance.md`、`phase-2-docker-evidence.md`；`scripts/*phase2*` |
+| BGP 邻居、详情与路由发布 | `internal/bgp/gobgp.go`（`peerConfig` / `SyncPeers` / `Peers` / `Exported`）；`manager.go`（`Reconcile` / `Refresh`） | `internal/routing/manager.go`；`web/src/bgp-peer-details.jsx`、`routing.jsx`、`main.jsx` 的 `Resource`；`docs/routing-backends.md` |
+| URL 路由导入与定时同步 | `internal/routeimport/import.go`；`internal/api/api.go` 的 `RunRouteFeedScheduler` | `web/src/route-import.jsx`；配置中的 route feeds；导入与后台任务状态 |
+| 健康检查、异常通知、Surge 重启 | `internal/app/app.go` 的 `monitor`；`surge_recovery.go`；`internal/state/machine.go` | `internal/surge/recovery.go`；`internal/notifications/notifications.go`；`native/notifications.swift`；`web/src/surge-restart.jsx`、`notification-errors.jsx` |
+| DNS 累计统计、客户端与查询历史 | `internal/dnsserver/dispatcher.go` 的 `Counters` / `ClientStatistics` / `History`；`internal/app/statistics.go` | `web/src/dns-overview.jsx`、`clients.jsx`、`dns-result.jsx`；查询历史不要误当成持久化累计统计 |
+| 登录、管理 IP 白名单、反向代理 | `internal/security/security.go`（`Wrap`）；`client_ip.go`；`internal/config/management_security.go` | `internal/controlclient/access.go`；`web/src/credentials.js`、`backends.jsx`；`native/credentials.swift`、`remote_credentials.swift`；`docs/remote-management.md` |
+| 远程连接与接口兼容 | `internal/remote/remote.go` 的接口允许列表与中继；`web/src/client.js` 的 `request` / `requestOptional` / `selectBackend` | `web/src/backends.jsx`、`version-notice.jsx`；`Workspace` 的页面请求与登录恢复 |
+| 检查版本、自动下载/安装与跳过版本 | `internal/softwareupdate/update.go`（`Check` / `StartForChannel` / 版本比较）；`internal/api/update_scheduler.go` | `web/src/backend-update.jsx`、`app-preferences.jsx`；`native/release_updater.swift`、`update_dialog.swift`、`update_assistant.swift` |
+| 完整升级、回滚、远端 App 重启 | `internal/softwareupdate/application.go`、`worker.go`、`app_restart.go`；`agent.go`（更新助手） | `native/remote_update_restart.swift`、`installer.swift`；`internal/security/update_sessions.go`；凭证与管理窗口恢复 |
+| CLI / skill 开关、安装目标与冲突 | `internal/api/automation.go`；`internal/appautomation/automation.go`（目标后端的桌面用户 helper） | `native/automation.swift`；`web/src/automation-settings.jsx`；`scripts/install_cli.sh` / `install_skill.sh`；`skills/routepilot-control/` |
+| 状态栏菜单、动画与指标 | `native/main.swift` 的 `rebuildMenu` / `refreshFromBackend`；`status_icon.swift`、`status_preferences.swift` | `web/src/status-bar-settings.jsx`；`internal/app/surge_recovery.go` 的请求速率采样 |
+| 窗口尺寸、重开页面与 JS bridge | `native/main.swift` 的管理窗口与 `userContentController`；`window_frame.swift` | `web/src/credentials.js`、`app-preferences.jsx`、`window-visibility.js` |
+| 页面布局、主题与双语 | `web/src/style.css`、对应专用 JSX；导航在 `navigation.jsx` | `web/src/i18n.js`、`locale.js`；`localization/ui-en.json` / `errors-zh.json`；缓存与路由另有专用 i18n |
+| 数据库与重启恢复 | `internal/database/store.go`（迁移 / `Save` / `Load`）；`active_configuration.go` 区分已保存与已生效配置 | `internal/app/decision_cache.go`、`response_cache.go`、`statistics.go`；不要改变现有 secret 加密边界 |
+| 版本与安装包 | `internal/buildinfo/release.json` / `info.go`；`scripts/build_app.sh` / `check_package.py` | `Makefile`；`.gitea/workflows/test.yaml` / `release.yaml`；`.gitea/release-notes/`；`native/Info.plist` |
+
+### 核心调用关系
+
+- **服务启动：** `cmd/controller serve → app.Run / Open → build Runtime → Serve`；Runtime 将监听器、分流器、解析器、路由、健康状态和持久化装配在一起。
+- **DNS 请求：** `dnsserver.Server → Dispatcher.Dispatch → 本地/AAAA/always-real-ip 判断 → app.policy / classifier.Engine → resolver.Real 或 Surge Fake-IP`；实际优先级以 `Dispatch` 为准，修改时先读相关分支。
+- **配置提交：** `Settings / Resource → client.request → api.saveConfiguration → app.SaveConfiguration → SQLite`；后台 worker 再调用 `activateConfiguration`，页面通过 `configuration/status` 看生效结果。
+- **路由与详情：** `app.monitor → routing.Manager → bgp.Manager / GoBGP`；`bgp/status → app.View → Workspace → Resource / BGPPeerDetails`。
+- **远程管理：** `client.request → 本机 remote 中继 → 远端 /api/v1`；直接浏览器/CLI 访问远端时走远端 security/API。不要混淆代理来源 IP、Controller 出口 IP 与浏览器 IP。
+- **软件升级：** 页面或 CLI 调用 `updates/* → API/update scheduler → softwareupdate.Manager → application/worker → 服务就绪 + App 重启协调`；原生更新提示/助手另有 Swift 入口，排查时先确定更新发起方式。
+
+### 减少读取与避免误改
+
+- 按问题选择上表一行，先用 `rg -n '函数名|字段名|接口路径' 文件` 定位，再读目标函数和直接调用者；不要默认递归打印整个仓库。
+- 前端新增选项一般同时涉及：`Settings` 或专用组件、`form-fields.jsx` 的必填提示、语言映射、后端 config 默认/校验和保存链路。原生 App 偏好还需检查 JS bridge，不要直接加进后台配置。
+- 新增状态字段一般检查：运行模块 → `app.View` / `Metrics` → 远程允许列表 → 页面轮询/旧版降级。新增可选字段不一定需要新接口。
+- 测试文件通常在目标 Go 包内的 `*_test.go`、`web/src/*.test.*`；原生检查入口 `scripts/test_native.sh`，浏览器入口 `scripts/ui_forms_check.cjs`。测试执行遵循当前任务授权与上层指令。
+- 默认排除 `.git/`、`.cache/`、`web/node_modules/`、`web/dist*/`、`bin/`、`artifacts/` 和发布历史目录；需要版本追溯时才定向读取标签与说明。
+- 文件职责或关键调用改变后同步更新本表；新增模块只记录职责、入口和关联，不在 AGENTS.md 复制实现代码。
