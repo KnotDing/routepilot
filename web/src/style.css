@@ -138,6 +138,12 @@ main { flex: 1; min-width: 0; margin-left: 236px; padding: 30px 36px 22px; }
 .grid-two { display: grid; grid-template-columns: 1fr 1fr; gap: 22px; }
 .panel, .settings-form, .rule-form { min-width: 0; margin-bottom: 22px; padding: 24px; border: 1px solid var(--border); border-radius: var(--radius); background: var(--panel); box-shadow: var(--shadow); }
 .panel > :last-child { margin-bottom: 0; }
+.inline-help-panel { position: relative; }
+.inline-help-heading { display: flex; align-items: center; gap: 8px; }
+.inline-help-button { width: 22px; height: 22px; min-height: 22px; padding: 0; border-radius: 50%; color: var(--muted); font-size: 14px; line-height: 20px; }
+.inline-help-popover { position: absolute; z-index: 5; top: 62px; right: 18px; width: min(440px, calc(100vw - 48px)); padding: 14px 16px; border: 1px solid var(--border-strong); border-radius: 10px; background: var(--panel); box-shadow: 0 8px 28px #17243b26; color: var(--text); }
+.inline-help-popover p { margin: 0 0 10px; }
+.inline-help-popover p:last-child { margin-bottom: 0; }
 .table-wrap { max-width: 100%; overflow: auto; background: var(--panel); border: 1px solid var(--border); border-radius: 12px; }
 .panel .table-wrap { border-radius: 8px; }
 table { width: 100%; border-collapse: collapse; font-size: 13px; line-height: 22px; white-space: nowrap; }

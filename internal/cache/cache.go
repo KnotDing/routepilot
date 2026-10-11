@@ -43,6 +43,15 @@ type Stats struct {
 	LastInvalidationAt     time.Time `json:"last_invalidation_at"`
 	LastInvalidationReason string    `json:"last_invalidation_reason"`
 }
+
+// OptimisticStats tracks reliability samples independently from cache entries.
+// Callers can persist it across cache recreation and restore it until a user
+// explicitly clears the cache.
+type OptimisticStats struct {
+	Hits       uint64 `json:"optimistic_hits"`
+	Compared   uint64 `json:"optimistic_compared"`
+	Mismatches uint64 `json:"optimistic_mismatches"`
+}
 type Options struct {
 	// RetainExpired keeps bounded entries past expiry for stale-while-revalidate.
 	// Expired entries are reported as stale; their original deadlines are kept.
@@ -286,6 +295,24 @@ func (c *Cache[K, V]) Stats() Stats {
 		}
 	}
 	return Stats{Entries: n, StaleEntries: stale, Generation: c.Generation(), Hits: c.hits.Load(), Misses: c.misses.Load(), OptimisticHits: c.optimisticHits, OptimisticCompared: c.optimisticCompared, OptimisticMismatches: c.optimisticMismatches, Evictions: c.evictions.Load(), Invalidations: c.invalidations, LastInvalidationAt: c.lastInvalidationAt, LastInvalidationReason: c.lastInvalidationReason}
+}
+
+func (c *Cache[K, V]) OptimisticStats() OptimisticStats {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return OptimisticStats{Hits: c.optimisticHits, Compared: c.optimisticCompared, Mismatches: c.optimisticMismatches}
+}
+
+func (c *Cache[K, V]) RestoreOptimisticStats(stats OptimisticStats) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.optimisticHits = stats.Hits
+	c.optimisticCompared = stats.Compared
+	c.optimisticMismatches = stats.Mismatches
+}
+
+func (c *Cache[K, V]) ResetOptimisticStats() {
+	c.RestoreOptimisticStats(OptimisticStats{})
 }
 
 // Values exposes a bounded snapshot without affecting LRU order or hit counters.

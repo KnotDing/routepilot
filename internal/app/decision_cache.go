@@ -17,11 +17,12 @@ import (
 type decisionRecord = cache.Record[classifier.Key, model.DecisionResult]
 
 type decisionCacheSnapshot struct {
-	Version   int              `json:"version"`
-	Scope     string           `json:"scope"`
-	Digest    string           `json:"digest"`
-	Selection string           `json:"selection"`
-	Entries   []decisionRecord `json:"entries"`
+	Version         int                   `json:"version"`
+	Scope           string                `json:"scope"`
+	Digest          string                `json:"digest"`
+	Selection       string                `json:"selection"`
+	Entries         []decisionRecord      `json:"entries"`
+	OptimisticStats cache.OptimisticStats `json:"optimistic_stats,omitempty"`
 }
 
 // Only classification inputs belong in this fingerprint. Management addresses,
@@ -142,10 +143,12 @@ func (rt *Runtime) decisionSnapshot() decisionCacheSnapshot {
 		// until a current revision is confirmed, nor overwrite them with an empty cache.
 		snapshot := *pending
 		snapshot.Entries = retainedDecisions(pending.Entries, c.ExpireDecisions)
+		snapshot.OptimisticStats = rt.engine.Cache.OptimisticStats()
 		return snapshot
 	}
 	snapshot := decisionCacheSnapshot{Version: 2, Scope: rt.decisionScope,
-		Digest: rt.decisionRevision.digest, Selection: rt.decisionRevision.selection}
+		Digest: rt.decisionRevision.digest, Selection: rt.decisionRevision.selection,
+		OptimisticStats: rt.engine.Cache.OptimisticStats()}
 	if snapshot.Digest != "" {
 		snapshot.Entries = retainedDecisions(rt.engine.Cache.Snapshot(), c.ExpireDecisions)
 	}

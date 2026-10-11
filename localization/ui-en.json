@@ -285,6 +285,7 @@
   "取消": "Cancel",
   "远程服务需启用认证和 HTTPS，并允许本地 Controller 的出口地址访问。填写 IP 地址和端口；证书必须受本机信任。远程状态每 3 秒刷新。": "Remote services require authentication, HTTPS and access from the local Controller's egress address. Enter the IP address and port. The certificate must be trusted locally. Remote status refreshes every 3 seconds.",
   "导出 FRR 配置": "Export FRR configuration",
+  "FRR 导出说明": "FRR export help",
   "生成对端设备配置：对端的本地 ASN 对应 RoutePilot 邻居 ASN，对端的 remote-as 对应 RoutePilot 本地 ASN。对端会接受该 RoutePilot 邻居发布的全部 IPv4/IPv6 前缀，并以 maximum-prefix 限制数量；不会向 RoutePilot 发布路由，且保留 Surge 与 Controller 各自的下一跳。请只连接可信的 RoutePilot 邻居。": "Generate the peer configuration. Its local ASN matches the RoutePilot neighbor ASN; its remote-as matches RoutePilot's local ASN. Accept all IPv4/IPv6 prefixes from this RoutePilot neighbor, bounded by maximum-prefix. Do not advertise routes back to RoutePilot, preserve the separate Surge and Controller next hops, and connect only trusted RoutePilot neighbors.",
   "使用已配置的邻居": "Use a configured neighbor",
   "手动填写对端参数": "Enter peer parameters manually",

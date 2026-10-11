@@ -10,7 +10,17 @@ RoutePilot 是一款 macOS 状态栏应用：向 Surge 查询分流策略，为 
 
 从状态栏看运行情况，在管理窗口调整配置，也可以让 AI agent 通过 CLI 帮你打理网络。React 管理界面随 Go 后台一起打包，配置与持久化数据保存在 SQLite。
 
+**核心价值：直连更快，Surge 故障时新访问可回落直连。**
+
+- **缩短直连路径：** DIRECT 查询返回真实地址，客户端后续流量由网关直接送往 WAN，不必绕经 Surge；Fake-IP 和下一跳配置为 Surge 的受管理前缀仍按路由经过 Surge。
+- **Surge 故障时保留新连接的直连路径：** RoutePilot 停止发放新的 Fake-IP，后续查询改用独立真实 DNS 解析，让网关可将新连接直连出网（真实 DNS 与 WAN 可用时）。已发放 Fake-IP 在 TTL / 宽限期内仍可能依赖 Surge。
+
 [📦 下载最新版本](https://gitea.knotding.com/knot/routepilot/releases) · [🚀 快速开始](#quick-start) · [🤖 安装 skill](#agent-skill) · [📚 文档导航](#documentation)
+
+<p align="center">
+  <img src="docs/images/management-4k.png" width="100%" alt="RoutePilot App 管理界面 4K 截图">
+</p>
+<p align="center"><sub>管理界面预览 · 3840 × 2160 · 页面中的指标、地址和事件均为虚构示例数据</sub></p>
 
 ## ✨ 能做什么？
 
@@ -43,12 +53,32 @@ RoutePilot 是一款 macOS 状态栏应用：向 Surge 查询分流策略，为 
 
 ```mermaid
 flowchart LR
-    C[客户端 DNS 请求] --> G[网关]
-    G -->|DNS 拦截路由| R[RoutePilot]
-    R -->|查询分流策略 / Fake-IP| S[Surge]
-    R -->|真实解析| U[DNS 上游]
-    R -.->|BGP 发布受管理前缀| G
+    subgraph DNS[DNS 查询与应答]
+        direction LR
+        C[客户端] -->|DNS 查询| G[网关]
+        G -->|解析器前缀路由<br/>UDP / TCP 53| R[RoutePilot<br/>策略判断与 DNS 处理]
+        R -->|SURGE：策略求值与 Fake-IP DNS| S[Surge]
+        R -->|DIRECT：真实 DNS 或本地记录| U[DNS 上游 / 本地 DNS]
+        S -->|返回 Fake-IP| C
+        U -->|返回真实地址| C
+    end
+    subgraph Traffic[后续上网流量]
+        direction LR
+        C -->|访问 Fake-IP| G
+        G -->|Fake-IP 前缀，或 BGP 通告中下一跳为 Surge 的受管理前缀| S
+        S -->|按 Surge 策略直连或代理| N[Internet]
+        C -->|访问真实 IP| G
+        G -->|网关默认 WAN 路径| N
+    end
+    R -.->|BGP 通告受管理前缀| G
+    linkStyle 0,1,2,3,4,5 stroke:#3478c9,stroke-width:2.5px
+    linkStyle 6,7,8,9,10 stroke:#d88423,stroke-width:2.5px
+    linkStyle 11 stroke:#8996a8,stroke-width:1.5px,stroke-dasharray:5 4
 ```
+
+🔵 蓝色：DNS 请求与应答　 🟠 橙色：后续上网流量　 灰色虚线：BGP 路由通告
+
+RoutePilot 处理被送到它的 DNS 请求并发布受管理路由；普通应用流量由网关按路由送往 Surge 或 WAN，RoutePilot 不转发这些流量。
 
 | 步骤 | 配置与确认 |
 | --- | --- |

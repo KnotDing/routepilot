@@ -23,6 +23,7 @@ import (
 	"surge-controller/internal/api"
 	"surge-controller/internal/appautomation"
 	"surge-controller/internal/buildinfo"
+	"surge-controller/internal/cache"
 	"surge-controller/internal/classifier"
 	"surge-controller/internal/config"
 	"surge-controller/internal/database"
@@ -144,6 +145,7 @@ type Runtime struct {
 	decisionScope                                    string
 	responseScope                                    string
 	pendingDecisions                                 *decisionCacheSnapshot
+	responseOptimisticStats                          cache.OptimisticStats
 	routingMu                                        sync.RWMutex
 	routingWake                                      chan struct{}
 	hosts                                            *localdns.Resolver
@@ -397,6 +399,9 @@ func (a *App) build(d config.Document, saved *decisionCacheSnapshot, responses *
 	if err != nil {
 		return nil, err
 	}
+	if saved != nil {
+		rt.engine.Cache.RestoreOptimisticStats(saved.OptimisticStats)
+	}
 	rt.policy = &policy{engine: rt.engine, realIPDomains: rt.adapter}
 	rt.policy.update(s.General.Mode, d.Overrides)
 	rt.decisionScope = decisionCacheScope(d)
@@ -421,6 +426,7 @@ func (a *App) build(d config.Document, saved *decisionCacheSnapshot, responses *
 	}
 	if s.DNS.EgressInterface == "" {
 		rt.fault = "Configure a pinned DNS egress interface/source before enabling DNS"
+		rt.restoreResponses(responses)
 	} else {
 		dial, e := resolver.NewPinnedDialer(s.DNS.EgressInterface, s4, s6, time.Duration(s.DNS.TimeoutMS)*time.Millisecond, s.DNS.SourcePortFirst, s.DNS.SourcePortLast)
 		if e != nil {
@@ -1142,7 +1148,10 @@ func (a *App) cacheViewLocked(rt *Runtime, offset, limit int, domain, decision s
 func responseCacheStats(rt *Runtime) map[string]any {
 	responseEntries, responsePending := 0, 0
 	var responseHits, responseMisses, responseEvictions uint64
-	var optimisticHits, optimisticCompared, optimisticMismatches uint64
+	rt.decisionMu.Lock()
+	optimistic := rt.responseOptimisticStats
+	rt.decisionMu.Unlock()
+	optimisticHits, optimisticCompared, optimisticMismatches := optimistic.Hits, optimistic.Compared, optimistic.Mismatches
 	for _, upstream := range append([]*resolver.Real{rt.real}, rt.policyResolvers...) {
 		if upstream != nil {
 			stats := upstream.Cache.Stats()
@@ -1203,13 +1212,17 @@ func (a *App) Flush(ctx context.Context, domain string) error {
 			pending.Entries = kept
 		}
 	}
+	rt.responseOptimisticStats = cache.OptimisticStats{}
 	rt.decisionMu.Unlock()
 	if rt.real != nil {
 		rt.real.Cache.Flush()
+		rt.real.Cache.ResetOptimisticStats()
 	}
 	for _, upstream := range rt.policyResolvers {
 		upstream.Cache.Flush()
+		upstream.Cache.ResetOptimisticStats()
 	}
+	rt.engine.Cache.ResetOptimisticStats()
 	a.mu.RUnlock()
 	if err := a.saveDecisionCache(); err != nil {
 		return err

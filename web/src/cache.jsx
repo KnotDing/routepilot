@@ -7,10 +7,11 @@ import {useWindowVisible} from './window-visibility';
 const types={1:'A',28:'AAAA',64:'SVCB',65:'HTTPS'};
 export function OptimisticReliability({stats,kind='decision',enabled=false}) {
  const [locale]=useLocale(),t=cacheText(locale);
+ const [helpOpen,setHelpOpen]=useState(false);
  if(!stats||!Object.hasOwn(stats,'optimistic_hits')||(!enabled&&!stats.optimistic_hits))return null;
  const hits=stats.optimistic_hits??0,compared=stats.optimistic_compared??0,mismatches=stats.optimistic_mismatches??0;
  const rate=compared?`${(mismatches/compared*100).toLocaleString(locale,{maximumFractionDigits:2})}%`:'—';
- return <section className="panel"><h2>{t(kind==='response'?'responseReliability':'decisionReliability')}</h2><div className="metrics">{[['optimisticHits',hits],['optimisticCompared',compared],['optimisticMismatches',mismatches],['optimisticMismatchRate',rate],['optimisticUnverified',Math.max(0,hits-compared)]].map(([label,value])=><div className="metric" key={label}><span>{t(label)}</span><strong>{value}</strong></div>)}</div><p>{t(kind==='response'?'responseComparisonHelp':'decisionComparisonHelp')}</p><p>{t('optimisticStatisticsHelp')}</p></section>;
+ return <section className="panel inline-help-panel"><h2 className="inline-help-heading">{t(kind==='response'?'responseReliability':'decisionReliability')}<button type="button" className="inline-help-button" aria-label={t('reliabilityHelpLabel')} aria-expanded={helpOpen} aria-controls={`reliability-help-${kind}`} onClick={()=>setHelpOpen(open=>!open)}>？</button></h2>{helpOpen&&<div className="inline-help-popover" id={`reliability-help-${kind}`} role="tooltip" aria-label={t('reliabilityHelpLabel')}><p>{t(kind==='response'?'responseComparisonHelp':'decisionComparisonHelp')}</p><p>{t('optimisticStatisticsHelp')}</p></div>}<div className="metrics">{[['optimisticHits',hits],['optimisticCompared',compared],['optimisticMismatches',mismatches],['optimisticMismatchRate',rate],['optimisticUnverified',Math.max(0,hits-compared)]].map(([label,value])=><div className="metric" key={label}><span>{t(label)}</span><strong>{value}</strong></div>)}</div></section>;
 }
 export function CachePanel({notify}) {
  const [locale]=useLocale(),t=cacheText(locale);
