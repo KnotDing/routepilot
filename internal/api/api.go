@@ -522,7 +522,16 @@ func (a *API) serve(w http.ResponseWriter, r *http.Request) {
 			write(w, 200, d.Settings)
 		case "configuration/export":
 			w.Header().Set("Content-Disposition", "attachment; filename=surge-controller-backup.json")
-			write(w, 200, d)
+			sections := r.URL.Query()["sections"]
+			if len(sections) == 0 {
+				sections = configurationBackupSections
+			}
+			backup, err := makeConfigurationBackup(d, sections)
+			if err != nil {
+				fail(w, 400, err)
+				return
+			}
+			write(w, 200, backup)
 		case "mode":
 			write(w, 200, map[string]string{"mode": d.Settings.General.Mode})
 		case "dns/interception":
@@ -629,12 +638,50 @@ func (a *API) serve(w http.ResponseWriter, r *http.Request) {
 			w.WriteHeader(405)
 			return
 		}
-		var imported config.Document
-		if e := decode(w, r, &imported); e != nil {
+		var payload json.RawMessage
+		if e := decode(w, r, &payload); e != nil {
 			fail(w, 400, e)
 			return
 		}
-		d = imported
+		var restore configurationRestore
+		if e := json.Unmarshal(payload, &restore); e != nil {
+			fail(w, 400, e)
+			return
+		}
+		if restore.Backup.FormatVersion == 0 {
+			// Accept the original bare-document backup only at the exact schema
+			// version understood by this backend.
+			var legacy config.Document
+			if e := json.Unmarshal(payload, &legacy); e != nil || legacy.Version != 1 {
+				fail(w, 422, errors.New("configuration version is incompatible with this backend"))
+				return
+			}
+			restore.Backup = configurationBackup{FormatVersion: configurationBackupFormatVersion, ConfigVersion: legacy.Version, Sections: append([]string(nil), configurationBackupSections...), Configuration: legacy.Redacted()}
+			if len(restore.Sections) == 0 {
+				restore.Sections = append([]string(nil), configurationBackupSections...)
+			}
+		}
+		if e := restore.Backup.validate(); e != nil {
+			fail(w, 422, e)
+			return
+		}
+		available, _ := selectBackupSections(restore.Backup.Sections)
+		if len(restore.Sections) == 0 {
+			fail(w, 400, errors.New("select at least one configuration section to restore"))
+			return
+		}
+		for _, section := range restore.Sections {
+			if !available[section] {
+				fail(w, 400, fmt.Errorf("configuration section %q is not present in this backup", section))
+				return
+			}
+		}
+		var err error
+		d, err = mergeBackup(d, restore.Backup.Configuration, restore.Sections)
+		if err != nil {
+			fail(w, 400, err)
+			return
+		}
 		if e := mergeSecrets(&d, &old); e != nil {
 			fail(w, 400, e)
 			return
