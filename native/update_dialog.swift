@@ -159,26 +159,36 @@ final class ReleaseUpdateDialog: NSObject, NSWindowDelegate, WKNavigationDelegat
         notes.isHidden = true
         notesError.isHidden = !expanded
     }
-    func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
-        notes.updateAppearance()
-        webView.evaluateJavaScript("Boolean(document.querySelector('.markdown-notes'))") { [weak self] value, error in
+    nonisolated func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
+        Task { @MainActor [weak self] in
             guard let self else { return }
-            if error != nil || value as? Bool != true { self.showNotesFailure() }
+            self.notes.updateAppearance()
+            self.notes.evaluateJavaScript("Boolean(document.querySelector('.markdown-notes'))") { [weak self] value, error in
+                guard let self else { return }
+                if error != nil || value as? Bool != true { self.showNotesFailure() }
+            }
         }
     }
-    func webView(_ webView: WKWebView, didFail navigation: WKNavigation!, withError error: Error) { showNotesFailure() }
-    func webView(_ webView: WKWebView, didFailProvisionalNavigation navigation: WKNavigation!, withError error: Error) { showNotesFailure() }
-    func webViewWebContentProcessDidTerminate(_ webView: WKWebView) { showNotesFailure() }
-    func webView(_ webView: WKWebView, decidePolicyFor navigationAction: WKNavigationAction,
-                 decisionHandler: @escaping (WKNavigationActionPolicy) -> Void) {
+    nonisolated func webView(_ webView: WKWebView, didFail navigation: WKNavigation!, withError error: Error) {
+        Task { @MainActor [weak self] in self?.showNotesFailure() }
+    }
+    nonisolated func webView(_ webView: WKWebView, didFailProvisionalNavigation navigation: WKNavigation!, withError error: Error) {
+        Task { @MainActor [weak self] in self?.showNotesFailure() }
+    }
+    nonisolated func webViewWebContentProcessDidTerminate(_ webView: WKWebView) {
+        Task { @MainActor [weak self] in self?.showNotesFailure() }
+    }
+    nonisolated func webView(_ webView: WKWebView, decidePolicyFor navigationAction: WKNavigationAction,
+                             decisionHandler: @escaping (WKNavigationActionPolicy) -> Void) {
+        let url = navigationAction.request.url
         if navigationAction.navigationType == .linkActivated {
-            if let url = navigationAction.request.url, ["https", "http"].contains(url.scheme?.lowercased() ?? "") {
-                NSWorkspace.shared.open(url)
+            if let url, ["https", "http"].contains(url.scheme?.lowercased() ?? "") {
+                Task { @MainActor in NSWorkspace.shared.open(url) }
             }
             decisionHandler(.cancel)
         } else {
             // Only the packaged, offline viewer can navigate within this web view.
-            decisionHandler(navigationAction.request.url?.isFileURL == true ? .allow : .cancel)
+            decisionHandler(url?.isFileURL == true ? .allow : .cancel)
         }
     }
     func run(activate: Bool = true) async -> Choice {
