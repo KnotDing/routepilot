@@ -210,6 +210,16 @@ p.error { padding: 12px 14px; border-radius: 9px; }
 dl { display: grid; grid-template-columns: minmax(140px, 180px) minmax(0, 1fr); gap: 12px 20px; margin: 0 0 20px; font-size: 13px; line-height: 22px; }
 dt { color: var(--muted); }
 dd { min-width: 0; margin: 0; color: var(--text); overflow-wrap: anywhere; }
+.modal > .peer-details { width: 1080px; }
+.peer-detail-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
+.peer-detail-grid .panel { margin: 0 0 16px; min-width: 0; }
+.peer-details dl { grid-template-columns: minmax(110px, 150px) minmax(0, 1fr); }
+.peer-details h3 { margin: 0 0 16px; }
+.peer-capabilities { list-style: none; padding: 0; margin: 0; }
+.peer-capabilities li + li { margin-top: 12px; }
+.peer-details pre { max-height: 420px; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; }
+.peer-raw { margin-top: 16px; }
+@media (max-width: 760px) { .peer-detail-grid { grid-template-columns: minmax(0, 1fr); gap: 0; } }
 pre { margin: 12px 0 20px; max-height: 480px; padding: 16px; overflow: auto; border: 1px solid var(--border); border-radius: 9px; background: var(--hover); color: var(--text); font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; line-height: 20px; white-space: pre-wrap; overflow-wrap: anywhere; }
 .policy-chain { color: var(--accent); font-size: 14px; line-height: 2; }
 .policy-chain b { margin: 0 10px; color: var(--muted); }

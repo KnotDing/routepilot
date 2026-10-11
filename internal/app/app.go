@@ -1142,6 +1142,7 @@ func (a *App) cacheViewLocked(rt *Runtime, offset, limit int, domain, decision s
 func responseCacheStats(rt *Runtime) map[string]any {
 	responseEntries, responsePending := 0, 0
 	var responseHits, responseMisses, responseEvictions uint64
+	var optimisticHits, optimisticCompared, optimisticMismatches uint64
 	for _, upstream := range append([]*resolver.Real{rt.real}, rt.policyResolvers...) {
 		if upstream != nil {
 			stats := upstream.Cache.Stats()
@@ -1150,15 +1151,21 @@ func responseCacheStats(rt *Runtime) map[string]any {
 			responseHits += stats.Hits
 			responseMisses += stats.Misses
 			responseEvictions += stats.Evictions
+			optimisticHits += stats.OptimisticHits
+			optimisticCompared += stats.OptimisticCompared
+			optimisticMismatches += stats.OptimisticMismatches
 		}
 	}
 	return map[string]any{
-		"entries":       responseEntries,
-		"stale_entries": responsePending,
-		"hits":          responseHits,
-		"misses":        responseMisses,
-		"evictions":     responseEvictions,
-		"capacity":      rt.settings.Settings.Cache.ResponseCapacity,
+		"entries":               responseEntries,
+		"stale_entries":         responsePending,
+		"hits":                  responseHits,
+		"misses":                responseMisses,
+		"evictions":             responseEvictions,
+		"capacity":              rt.settings.Settings.Cache.ResponseCapacity,
+		"optimistic_hits":       optimisticHits,
+		"optimistic_compared":   optimisticCompared,
+		"optimistic_mismatches": optimisticMismatches,
 	}
 }
 func (a *App) Flush(ctx context.Context, domain string) error {
@@ -1263,6 +1270,13 @@ func (a *App) Metrics() string {
 	cache := rt.engine.Cache.Stats()
 	bs := manager.Status()
 	values := map[string]uint64{"dns_queries_total": c.Queries, "dns_direct_total": c.Direct, "dns_surge_total": c.Surge, "dns_reject_total": c.Reject, "dns_intercepted_total": c.Intercepted, "dns_direct_addressed_total": c.Addressed, "decision_cache_hits_total": cache.Hits, "decision_cache_misses_total": cache.Misses, "fake_ip_queries_total": rt.fakeQueries.Load(), "fake_ip_errors_total": rt.fakeErrors.Load(), "real_dns_queries_total": rt.realQueries.Load(), "real_dns_errors_total": rt.realErrors.Load(), "bgp_routes_announced": uint64(bs.Advertised), "surge_rule_match_errors_total": rt.engine.RuleErrors.Load()}
+	response := responseCacheStats(rt)
+	values["decision_cache_optimistic_hits_total"] = cache.OptimisticHits
+	values["decision_cache_optimistic_compared_total"] = cache.OptimisticCompared
+	values["decision_cache_optimistic_mismatches_total"] = cache.OptimisticMismatches
+	for _, field := range []string{"optimistic_hits", "optimistic_compared", "optimistic_mismatches"} {
+		values["response_cache_"+field+"_total"] = response[field].(uint64)
+	}
 	var b strings.Builder
 	keys := []string{}
 	for k := range values {

@@ -16,6 +16,7 @@ import (
 )
 
 type response struct {
+	Fingerprint      [32]byte
 	Msg              *dns.Msg
 	Stored           time.Time
 	Endpoint         string
@@ -149,7 +150,11 @@ func (r *Real) Resolve(ctx context.Context, req model.ResolveRequest) (*dns.Msg,
 		}
 		b.Write(raw)
 		key = b.String()
-		v, ok, stale, generation := r.Cache.GetState(key)
+		lookup := r.Cache.GetState
+		if r.optimistic {
+			lookup = r.Cache.GetOptimisticState
+		}
+		v, ok, stale, generation := lookup(key)
 		gen = generation
 		if ok && (!stale || r.optimistic) {
 			if stale {
@@ -231,14 +236,20 @@ func (r *Real) exchange(ctx context.Context, req model.ResolveRequest, endpoints
 			continue
 		}
 		if cacheable {
+			var fingerprint [32]byte
+			if r.optimistic {
+				fingerprint = responseFingerprint(reply)
+			}
 			if ttl := ResponseTTL(reply); ttl > 0 {
 				refreshQuery := req.Message.Copy()
 				refreshQuery.Id = 0
 				refreshQuery.Question[0].Name = dns.CanonicalName(refreshQuery.Question[0].Name)
-				r.Cache.Put(key, response{Msg: reply.Copy(), Stored: r.now(), Endpoint: ep.Protocol + "://" + ep.Address,
-					RefreshQuery: refreshQuery, RefreshEndpoints: append([]ResolverEndpoint(nil), endpoints...), RefreshOriginal: original}, gen, ttl)
+				r.Cache.PutCompared(key, response{Fingerprint: fingerprint, Msg: reply.Copy(), Stored: r.now(), Endpoint: ep.Protocol + "://" + ep.Address,
+					RefreshQuery: refreshQuery, RefreshEndpoints: append([]ResolverEndpoint(nil), endpoints...), RefreshOriginal: original}, gen, ttl, sameResponse)
 			} else {
-				r.Cache.Delete(key, gen)
+				// Successful NODATA / zero-TTL answers still verify the stale
+				// requests even when the new result cannot be retained.
+				r.Cache.DeleteCompared(key, response{Fingerprint: fingerprint}, gen, sameResponse)
 			}
 		}
 		if req.Trace != nil {

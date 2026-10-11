@@ -116,7 +116,7 @@ func (r *Real) RestoreResponses(records []ResponseCacheRecord) int {
 			refreshEndpoints = append([]ResolverEndpoint(nil), r.endpoints...)
 		}
 		values = append(values, cache.Record[string, response]{Key: key,
-			Value: response{Msg: msg, Stored: record.Stored, Endpoint: record.Endpoint, RefreshQuery: refreshQuery,
+			Value: response{Fingerprint: responseFingerprint(msg), Msg: msg, Stored: record.Stored, Endpoint: record.Endpoint, RefreshQuery: refreshQuery,
 				RefreshEndpoints: refreshEndpoints, RefreshOriginal: refreshOriginal}, ExpiresAt: expiry, Stale: r.optimistic})
 	}
 	return r.Cache.Restore(values)

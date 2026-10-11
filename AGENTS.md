@@ -1,81 +1,127 @@
 # Agent 工作规范
 
-本文件适用于在 RoutePilot 仓库中工作的所有 AI agent。开始任务前先阅读相关代码和文档；以用户当前请求为准，并遵守仓库现有约定。
+适用于 RoutePilot 仓库中的所有 AI agent。用户当前请求决定任务范围；先阅读相关代码和文档，再实施。这里记录工作约定与快速入口，具体实现以当前源码为准。
 
-## 工作方式
+## 开始任务
 
-- 先确认任务目标、范围和验收条件。需求明确时直接实施；会显著影响行为或设计的歧义，先向用户澄清。
-- 修改前查看 `git status` 和目标文件，识别并保留已有工作区改动。不得覆盖、撤销或顺手整理与任务无关的修改。
-- 优先做小而完整的改动，复用现有模式；同步更新直接相关的文档和测试。
-- 错误应清晰暴露；不要用宽泛捕获、静默失败或成功形状的默认值掩盖问题。
-- 不提交代码、不推送、不执行破坏性操作，除非用户明确要求。
-- 不把仓库代码、凭证或用户数据发送到第三方服务；不要将密钥写入代码、测试输出或交接内容。
+1. 执行 `git status --short --branch`，阅读目标文件和已有差异，识别本次任务、前序未提交工作与无关文件。保留所有无关改动，不使用 `git add .` 混入发布。
+2. 从 [README](README.md) 了解用户流程，按需阅读 [架构说明](docs/architecture.md) 与对应专题文档。先搜索已有实现，复用现有组件和接口。
+3. 需求清楚时直接实施；会改变用户行为或安全边界的歧义才询问。已有授权在当前任务中持续有效。
+4. 开始前简述处理方向；执行较长工作时说明实际进展、结果和阻碍。完成时区分“已实现”“已编译”“已测试”“已发布”，不要把其中一个当作其他项的证据。
 
-## RoutePilot 项目约定
+## 修改与验证
 
-- RoutePilot 是 macOS 状态栏应用；Go 后端负责 DNS、分流、缓存、配置与路由，React 管理界面随 Go 后台打包，配置和持久化状态使用 SQLite。
-- 先查看 [架构说明](docs/architecture.md) 与 [README](README.md) 中与任务相关的章节；不要在本文件重复整份项目文档。
-- Go 源码使用 `gofmt`；前端沿用 `web/src` 的 React / JavaScript 结构和 `web/package.json` 脚本。
-- 前端资源由 Vite 构建并嵌入 Go 应用；`web/dist` 是生成产物，不提交源码，也不要手工编辑。`make test`、`make cli` 和 `make build` 会先构建这些资源。
-- 验证优先采用覆盖改动的最小测试；完整验证入口为 `make verify`（前端测试、Go race 测试、`go vet` 和构建）。`make verify-release` 还会执行原生、浏览器及打包检查，按需运行。
-- 对运行时配置、网络行为、缓存和安全边界的变更，应验证默认值、旧配置兼容性及失败路径。
-- 远程管理必须考虑本地 App 与远程后端可能运行不同版本。新增或修改远程功能时，确保中继允许列表、请求与响应处理及 UI 降级行为都兼容旧版后端；旧版缺少可选接口或字段时应清晰、局部地降级，不得误报为连接故障或导致其他管理功能不可用。为远程 API 变更补充旧版后端兼容测试。
+- 改动应小而完整，同步直接相关的文档。新增依赖、接口或配置字段前检查现有模式；不要顺手重构无关代码。
+- Go 使用 `gofmt`；React / JavaScript 沿用 `web/src` 和 `web/package.json` 的结构。新增用户文案提供中英文；更新 `localization/ui-en.json` 时保留已有内容，避免整文件重新序列化意外移除旧键。
+- 配置需兼容旧文档；新增功能提供合理默认值。保持“校验并持久化完成即反馈，耗时应用在后台执行”，并显示应用进度、失败原因和重试入口。
+- 错误清晰暴露；不以宽泛捕获、静默失败或成功形状的默认值掩盖错误。无数据应显示未知或不可用，不伪造正常状态。
+- 测试的添加与执行遵循当前任务授权和上层指令。需要验证时，优先选择覆盖改动的最小检查；记录实际命令、结果与未覆盖范围。编译通过不能替代运行时验收。
+- `web/dist` 与 `web/dist-native` 是构建产物，不手工编辑或提交。Go 嵌入管理页面前先执行 `npm --prefix web run build`。
+- `make build`、`make verify`、`make verify-release` 和 `make package` 会通过 `clean-artifacts` 清理旧安装包。执行前检查 `artifacts/`、`bin/` 和构建缓存；需要保留的产物先备份。仅需源码编译时使用前端构建与 `go build ./...`。
+- 不提交、不推送、不安装或重启实际部署，除非用户已授权相应动作。发布授权包含必要的版本文件、提交、标签和推送，不等于授权升级用户正在使用的环境。
 
-## 发布版本
+## 产品与安全边界
 
-- Gitea 网页与 API 使用 `https://gitea.knotding.com`；Git SSH remote 可能使用 `git.knotding.com`，不要把 SSH 主机名误作网页/API 域名。
-- 发布遵循 [实际验收记录](docs/acceptance.md)、`.gitea/workflows/release.yaml` 和下列发布约定，不绕过自动化门禁。
-- 发布前确认 `main` 基线、工作区改动范围、下一个未使用的语义化版本标签及远端状态；不得覆盖已有标签，不得把无关或他人未提交改动混入发布。
-- Gitea Actions 列表中每次运行的主标题取自触发提交标题，工作流名称显示在其下方。所有提交（包括发布提交）都遵循 Conventional Commits（如 `feat:`、`fix:`、`docs:`）；发布提交标题应简洁概括本次面向用户的功能或修复，不要写成 `Release RoutePilot vX.Y.Z`。不要为了改标题重写或移动已推送的提交与标签。
-- 更新 `internal/buildinfo/release.json` 的版本、`scripts/install_skill.sh` 中的官方 tag 和提示版本、README 中的当前版本引用，并新增 `.gitea/release-notes/vX.Y.Z.md`。Release Notes 只写 App 用户可见的功能、修复和行为变化；排除 agent/仓库工作规范、开发流程等与 App 无关的内容。资产由工作流生成。
-- 正式版发布前运行 `make verify-release` 和 `make fuzz`；任何门禁失败都先修复，不得跳过。正式版 Release 必须不是 prerelease，并通过 `release.yaml` 的完整测试与包验证。
-- Beta 版本使用 `vX.Y.Z-beta.N` 标签（例如 `v1.0.1-beta.1`、`v1.0.1-beta.2`），每个 tag 唯一且 N 对同一个目标版本严格递增；不要覆盖或复用已推送的 Beta tag。为每个 Beta 新增对应 `.gitea/release-notes/vX.Y.Z-beta.N.md`，只写用户可见变化，并在 `internal/buildinfo/release.json` 保持同一版本值，供本地构建一致使用（CI 也会从 tag 设置版本及构建号）。
-- Beta tag 推送到 `main` 后由同一个 `release.yaml` 自动识别为 prerelease；Beta CI 精简为安装锁定依赖、构建 App/后台及前端、校验 DMG/ZIP/校验和和包内容（`make package package-check`），不运行 `make verify-release`、完整 Go/UI 回归及 fuzz。正式版仍执行完整门禁。Beta 发布前至少确认代码已推送到 `main`，目标 tag 不存在，且 Beta 说明文件已加入该提交。
-- 建议的 Beta 发布步骤：确认工作区干净且 `main` 已同步；选择当前正式版基础上的下一个稳定版本号及未用的 Beta 序号；更新 `internal/buildinfo/release.json`、README 中与本次行为有关的说明及对应 Beta Release Notes；提交 Conventional Commit；创建注释 tag（如 `git tag -a v1.0.1-beta.1 -m "RoutePilot v1.0.1-beta.1"`）并推送 `main` 与 tag。等待 Release workflow 成功后检查 Gitea Release 标记为 prerelease，三项资产齐全且可下载，再向测试者提供链接。下一轮继续递增 Beta 序号；正式候选版本则按下列稳定版流程发布正式版本。Beta 发布不要把 `scripts/install_skill.sh` 的官方稳定版 tag 改指到 Beta。
-- 正式版发布步骤：选择尚未使用的稳定 tag `vX.Y.Z`（不带后缀），更新 `internal/buildinfo/release.json`、`scripts/install_skill.sh` 官方 tag/提示版本、README 当前版本及 `.gitea/release-notes/vX.Y.Z.md`；确认变更和工作区仅包含本次发布内容，运行 `make verify-release` 与 `make fuzz`。通过后按 Conventional Commits 提交、创建注释 tag 并推送 `main` 与 tag。确认 Gitea 回归和 Release workflows 均成功，Release 不是 prerelease，DMG、ZIP、SHA256SUMS 均可下载后才报告完成。
-- `make verify-release` 和 `make package` 会重建 `web/dist` 并替换 `artifacts/` 内的生成安装包；执行前检查这些路径中的现有文件。
-- `web/dist` 由发布工作流在构建时生成，不应加入版本提交；只提交 Web 源码和必要的构建配置。
-- 不得使用强制推送或移动已发布标签。未确认工作流、Release 类型与三项资产前不得宣称版本已发布。
+### 本地、远程与管理认证
 
-## 多 agent 协作与交接
+- 管理窗口、浏览器和 CLI 操作当前连接的后端。后端配置不得误写到本机；App 偏好与系统集成需明确属于本机还是目标 Mac。
+- 本地 App 与远端可能运行不同版本。可选接口或字段缺失时局部降级并说明原因，不把不支持的功能误报成整个后台离线。
+- 修改远程接口时一起检查 `internal/remote/remote.go` 的允许列表、请求和响应格式、旧版后端兼容及 API 错误处理。已有可读状态中新增可选字段时优先复用接口。
+- 管理认证可通过明确配置的 IP 白名单豁免；写操作仍校验 CSRF。只信任配置中的代理来源，按选中的客户端 IP 请求头确认代理链；不使用任意转发头或代理自身 IP 给客户端免认证。
+- 不读取、输出或提交密码、令牌、私钥、App 凭证与 CLI Cookie 文件。需要控制正在运行的服务时使用已安装的 `routepilot-control` skill 与授权的 CLI 登录方式；状态和完整诊断快照也必须隐藏密钥。
 
-- 仅在工作能清楚拆分且有实际收益时并行委派。委派前写明目标、负责范围、禁止触碰的区域、依赖和验收方式；避免两个 agent 同时编辑同一文件或重复调查同一问题。
-- 委派者负责合并与最终验证。接收结果后检查实际文件和工作区状态，不把“已完成”的口头报告视作验证。
-- 交接时使用以下格式；未知或未验证的信息明确标为“未知”或“未验证”，不要猜测。
+### DNS、缓存与统计
 
-### 通用交接模板
+- 乐观决策和乐观响应是独立配置：先用允许保留的旧值响应，再异步刷新。响应缓存的乐观模式允许超过 TTL 的旧响应；关闭并应用成功时清理过期项，保留 TTL 内项与原始到期时间。
+- 响应缓存仅在启用乐观响应时持久化，恢复时不延长原始 TTL。稳定决策可跨重启保留；UNKNOWN 和求值失败不持久化。
+- 缓存失效、刷新与恢复必须维护 generation 和单次刷新约束，拒绝旧代任务写回。保留客户端、查询类型与策略上游隔离，不把空闲维护读取记作用户命中。
+- 乐观可靠性按请求统计：旧值命中、已核对、不一致；不一致率分母为已核对请求。刷新失败、未确认结果、失效或淘汰前未完成核对的请求不得记为一致。
+- 决策比较分流结果与最终策略；DNS 响应比较实际记录与响应语义，忽略 ID、TTL 倒计时、记录顺序和域名大小写等变化。不能忽略 TXT 等不透明内容的变化。
+- 区分持久化的累计 DNS 统计与缓存实例内的命中/可靠性计数。后者在缓存实例重建或进程重启时重置；文案不得暗示它们已持久化。新增统计同时检查页面、状态 API 和 `/metrics`。
+
+### BGP 与网络路径
+
+- GoBGP 只发布配置所管理的前缀；接收的邻居路由被拒绝，不能变成中转或反射器。DNS 请求不生成单 IP BGP 路由。
+- 邻居 ESTABLISHED、本机 RIB、Adj-RIB-Out、外部网关 RIB/FIB 和实际包路径分别表示不同事实。发布状态与详情不能宣称网关已安装路由。
+- 邻居详情展示实时快照与保存配置，隐藏认证密钥。未运行、已禁用、旧后端和详情编码失败时保留基本管理能力，不将详情问题影响 BGP 健康判定。
+- Static 路由由用户在网关配置，应用不自动安装或验证。保持 Surge / Controller / DNS 健康门禁、TTL / 宽限期和稳定等待。
+- IPv4 透明入口已有 macOS PF 与 Docker macvlan 抓包证据，见 [部署验收](docs/phase-2-docker-evidence.md)。真实 IPv6 PF/WAN 路径尚未验收，IPv6 透明拦截默认关闭；不要把 IPv4 证据延伸成 IPv6 已验证。
+
+## 构建入口
+
+| 入口 | 实际范围 |
+| --- | --- |
+| `npm --prefix web run build` | 构建管理界面和离线更新说明，不清理安装包 |
+| `go build ./...` | 编译 Go 源码，要求嵌入的前端资源已存在 |
+| `make verify` | 前端测试、Go race 测试、vet、构建；会清理旧安装包 |
+| `make native-test ui-test` | 原生 UI 检查、浏览器与响应式页面检查 |
+| `make verify-release` | 基础验证、原生与浏览器检查、打包与包校验 |
+| `make fuzz` | 版本解析 fuzz |
+| `make package package-check` | 构建完整 App，验证版本、资源、签名、DMG/ZIP 和 SHA256SUMS |
+
+完整升级包含 App、管理页面、CLI 和网络服务。发布不再附带独立后台安装包。手动拖放替换 App 不保证常驻后台同步更新；在线更新需继续遵守正在使用 App 时确认重启、仅后台运行时通知后自动重启的约定。
+
+## 发布约定
+
+### 共同要求
+
+- 网页/API 域名为 `https://gitea.knotding.com`；Git SSH remote 可能是 `git.knotding.com`。以 `.gitea/workflows/` 和 [验收记录](docs/acceptance.md) 为门禁依据，不绕过失败。
+- 发布前同步远端，确认 `main` 基线、工作区范围、正式/测试版基线和未用标签。只暂存明确属于本次发布的文件，保留无关的未提交工作。
+- 所有提交使用 Conventional Commits，如 `feat:`、`fix:`、`docs:`。提交标题概括本次功能或修复，Gitea Actions 会将它作为运行标题；不使用泛化的 `Release RoutePilot vX.Y.Z`。
+- 更新 `internal/buildinfo/release.json`、README 中确实存在的版本引用，并新增 `.gitea/release-notes/vX.Y.Z.md`。说明只包含 App 用户可见变化，不加入 agent 工作规范或开发流程。
+- CI 从标签写入版本，以 Actions run number 作为制品 build。核验下载包中的 `Info.plist` 和后台版本身份，不要求 CI build 与发布前源码中的 build 相同。
+- 不强制推送、不移动或复用已发布标签、不删除旧发布附件，除非用户另有明确要求。
+
+### 测试版
+
+1. 使用唯一的 `vX.Y.Z-beta.N`，同一目标版本的 N 严格递增。更新源码版本及对应说明，`scripts/install_skill.sh` 继续指向正式版。
+2. 按已授权范围完成本地检查，创建 Conventional Commit，推送 `main` 与注释标签。
+3. `main` 推送会触发 `test.yaml` 回归；Beta 标签触发 `release.yaml` 的精简打包与 `package-check`。Beta Release job 本身不跑完整回归/fuzz，不能因此宣称完整测试已通过。
+4. 等待两个工作流结果；回归失败需要修复，不以已生成安装包代替通过。Beta 发布页必须 `prerelease=true`、`draft=false`。
+
+### 正式版
+
+1. 选择未用的无后缀 `vX.Y.Z`，更新源码版本、`scripts/install_skill.sh` 正式 tag/提示版本、实际版本引用和用户说明。
+2. 按正式发布授权运行 `make verify-release` 与 `make fuzz`；失败先修复，不跳过门禁。
+3. 提交并推送 `main` 与注释标签，等待回归与完整 Release workflow 成功。正式发布页必须 `prerelease=false`、`draft=false`。
+
+### 对外报告前
+
+- 确认发布标签指向本次提交，两个工作流均成功，发布类型正确。
+- 确认仅有 `RoutePilot-macos-arm64.dmg`、`RoutePilot-macos-arm64.zip`、`SHA256SUMS` 三项发布附件，均可下载且非空。
+- 下载附件校验 SHA256SUMS，检查 App 与捆绑后台的版本/build；包校验只说明制品完整，不等于实际安装、升级、联网或公证验收。
+- 最后提供版本号、面向用户的主要变化和 Release 链接。尚未完成的门禁或现场验证应准确说明。
+
+## 协作与交接
+
+- 多 agent 委派遵循当前会话和上层指令；需要委派时先明确负责文件、依赖、禁止触碰范围和验收方式。共享工作区不得相互覆盖。
+- 接收结果后检查实际差异与命令证据，不把口头“已完成”作为验证。
+- 交接只写继续工作需要的信息；不要重复完整发布历史，不携带凭证。使用以下格式：
 
 ```text
 ## 任务交接
 - 目标与验收条件：
 - 当前状态：未开始 / 进行中 / 已完成 / 受阻
-- 已完成：
-- 修改文件及目的：
-- 验证：命令与结果；未运行的检查及原因
-- 未解决问题、风险或重要约束：
-- 下一步行动与依赖：
+- 已完成与修改文件：
+- 验证：实际命令与结果；未覆盖范围：
+- 已发布：tag、commit、workflow、Release 与附件证据；未发布则明确说明：
+- 保留的无关改动：
+- 下一步与依赖：
 ```
 
-- 交接时只提供完成后续工作所需的信息；引用仓库文件使用相对路径，避免包含凭证、个人信息或无关对话。
+## 最近已核验发布（2026-10-11）
 
-### 当前项目交接（2026-10-10）
+- 正式版基线为 `v1.0.2`；最新已核验测试版为 `v1.0.3-beta.2`，提交 `7108de6`。Gitea 回归与 Release workflows 已成功，Release 为 prerelease，DMG/ZIP/校验和已下载核验。
+- Beta.1 将 CLI 与 skill 设置改为管理当前连接的后端；Beta.2 增加管理 IP 免认证、可信代理、代理域名与请求来源处理。默认免认证白名单为空。真实反向代理部署尚未现场验收。
+- 当前准备的 `v1.0.3-beta.3` 包含乐观缓存可靠性统计和 BGP 邻居详情；发布结果必须另行核验，不能把这里的候选信息当作已发布证据。
+- 此节仅为带日期的快照。接手时以 `git status`、`internal/buildinfo/release.json`、远端标签与实际 Release/Actions 为准，不凭本文猜测最新版本。
 
-```text
-## 项目交接
-- 目标与验收条件：维护 RoutePilot；保持 IPv6 透明 DNS“未验证”的明确声明与默认关闭，远程 API 变更需兼容不同版本后端。
-- 当前状态：正式版基线仍为 `v1.0.0`；测试版 `v1.0.1-beta.3` 已作为 Gitea prerelease 发布。发布提交 `82f0667`、标签已推送，Release workflow #61 成功，DMG、ZIP、SHA256SUMS 均可下载。
-- 已完成：v0.6.10、v1.0.0 正式版及 v1.0.1-beta.1、v1.0.1-beta.2、v1.0.1-beta.3 测试版发布。Beta.3 将“检查 Beta 版本更新”按钮移至“自动检查 Beta 版本”选项附近并突出显示。Beta.2 增加默认关闭的“自动检查 Beta 版本”选项；启用后与正式版比较并遵循现有更新提示、立即下载、自动安装和计划时间，正式版与 Beta 版本号相同时优先正式版。文档说明手动替换 App 不会同步更新本机后台。Beta.1 增加独立的自动检查周期与计划安装时间、发现更新后立即下载和手动提前安装；移除服务端配置名称、状态 API 名称及通知/Webhook 名称字段，旧配置 `general.name` 仍可读取但不再写出。用户确认本地实例实际使用 BGP，本机 App 和远程后台升级已多次实测。IPv4 透明 DNS/PF 的隔离 macvlan 验收见 `docs/phase-2-docker-evidence.md`。
-- 修改文件及目的：Beta.3 版本写入 `internal/buildinfo/release.json`，新增 `.gitea/release-notes/v1.0.1-beta.3.md`；更新设置 UI、英文 UI 文案及 UI 测试；`scripts/install_skill.sh` 保持稳定版 v1.0.0，不指向 Beta。
-- 验证：`make native-test`、Web 偏好测试（3 项）、Beta.3 发布前的 `cd web && npm run build`、JSON 检查及 `git diff --check` 通过。Gitea Release workflow #61（Beta 精简打包及 package-check）成功；Release 标记 prerelease，DMG、ZIP、SHA256SUMS 均返回 HTTP 200。为保留工作区已有打包产物，未运行本地 `make package`；Beta 包由 CI 构建及校验。未运行正式版 `make verify-release` / `make fuzz` 门禁，本次是 Beta 发布。
-- 未解决问题、风险或重要约束：真实 IPv6 PF/WAN 路径未验证，IPv6 透明拦截默认关闭；App 使用 ad-hoc 签名而非 Developer ID/公证。Beta 可能含未完成行为，需测试后再考虑正式版。用户报告的 BGP 与升级实测无详细矩阵归档，不要将主流程描述为未实测，也不要推断所有边缘场景均覆盖。Surge 策略与缓存使用有界轮询同步。
-- 下一步行动与依赖：让测试者通过 App 的“检查 Beta 版本更新”或 Release 页面安装 `v1.0.1-beta.3` 并反馈问题；修复后递增 Beta 序号。发布 `v1.0.1` 正式版前按正式流程运行 `make verify-release` 和 `make fuzz`，更新稳定版文档/skill 版本并再次验证 Release 资产。
-```
+## 快速入口
 
-### 新接手者快速入口
-
-- **产品、安装和用户操作：** 从 [README](README.md) 开始，按需读“第一次配置”“本地、远程，一个管理窗口”“数据与凭证”。
-- **架构与安全边界：** [架构说明](docs/architecture.md) 描述 DNS 请求路径、保守 DIRECT、Fake-IP 发放、缓存一致性、PF、路由与安全；[验收记录](docs/acceptance.md) 区分自动化、隔离网络证据与现场验证。不要把历史隔离测试推断为整个用户部署均已验收。
-- **主要代码：** `cmd/` 为程序入口；`internal/dnsserver/` 和 `internal/classifier/` 为 DNS 分发与决策；`internal/resolver/` 为真实 DNS 上游；`internal/bgp/`、`internal/routing/`、`internal/state/` 管理路由与运行状态；`internal/api/`、`internal/remote/` 管理 API 与远程中继；`native/` 是 macOS 状态栏 App；`web/src/` 是管理界面。Go 包边界与数据流以架构文档为准。
-- **构建与测试：** `make verify` 跑前端测试、全 Go race 测试、vet 和构建；`make verify-release` 另外做原生/浏览器验收与 DMG/ZIP 打包校验；`make fuzz` 单独测版本解析。发布门禁会重建 `web/dist` 并替换 `artifacts/` 生成包，运行前检查并确认这些产物可重建。不要直接编辑 `web/dist`。
-- **运行及发布现实边界：** IPv4 Docker macvlan/PF 证据见 `docs/phase-2-docker-evidence.md`；IPv6 真实入口和 WAN 回程仍未验证。服务端路由状态、BGP Adj-RIB-Out 与外部网关 RIB/FIB 不是同一确认信号；Static 路由由外部管理，不要描述为应用已安装或验证。远程 API 变更必须测试旧后端缺接口/字段的局部降级。
-- **发布基线：** 当前稳定版基线 `v1.0.0`（版本提交 `578c51d`），最新测试版 `v1.0.1-beta.3`（`82f0667`；Release workflow #61 成功）。发布流程及禁止移动标签等约束见本文件“发布版本”和 `.gitea/workflows/`。每次接手代码先执行 `git status --short --branch`，再决定是否运行会覆盖构建产物的门禁；不得覆盖或丢弃已有工作区内容。
+- **安装与操作：** [README](README.md)，关注第一次配置、本地/远程、缓存、软件更新与 CLI。
+- **架构与验收：** [架构说明](docs/architecture.md)、[验收记录](docs/acceptance.md)。区分自动化、隔离网络与用户现场证据。
+- **DNS 与缓存：** `internal/dnsserver/`、`internal/classifier/`、`internal/resolver/`、`internal/cache/`。
+- **路由与状态：** `internal/bgp/`、`internal/routing/`、`internal/state/`；专题见 [路由配置](docs/routing-backends.md)。
+- **管理与安全：** `internal/api/`、`internal/remote/`、`internal/security/`、`internal/controlclient/`；CLI 入口 `cmd/routepilot/`。
+- **软件升级：** `internal/softwareupdate/`、`native/`、`web/src/backend-update.jsx`、`web/src/app-preferences.jsx`、`.gitea/workflows/`。
+- **界面与系统集成：** `web/src/`、`localization/`、`native/`。沿用现有主题、响应式布局、语言与凭证恢复流程。

@@ -14,11 +14,12 @@ const Forever time.Duration = -1
 func validExpiry(now, expiry time.Time) bool { return expiry.IsZero() || now.Before(expiry) }
 
 type entry[K comparable, V any] struct {
-	key        K
-	value      V
-	generation uint64
-	expiry     time.Time
-	stale      bool
+	key                K
+	value              V
+	generation         uint64
+	expiry             time.Time
+	stale              bool
+	optimisticRequests uint64
 }
 
 // Record preserves the key and absolute expiry, in addition to the cached value.
@@ -34,6 +35,9 @@ type Stats struct {
 	Generation             uint64    `json:"generation"`
 	Hits                   uint64    `json:"hits"`
 	Misses                 uint64    `json:"misses"`
+	OptimisticHits         uint64    `json:"optimistic_hits"`
+	OptimisticCompared     uint64    `json:"optimistic_compared"`
+	OptimisticMismatches   uint64    `json:"optimistic_mismatches"`
 	Evictions              uint64    `json:"evictions"`
 	Invalidations          uint64    `json:"invalidations"`
 	LastInvalidationAt     time.Time `json:"last_invalidation_at"`
@@ -45,17 +49,18 @@ type Options struct {
 	RetainExpired bool
 }
 type Cache[K comparable, V any] struct {
-	mu                      sync.Mutex
-	items                   map[K]*list.Element
-	order                   *list.List
-	capacity                int
-	generation              atomic.Uint64
-	hits, misses, evictions atomic.Uint64
-	now                     func() time.Time
-	invalidations           uint64
-	lastInvalidationAt      time.Time
-	lastInvalidationReason  string
-	retainExpired           bool
+	mu                                                       sync.Mutex
+	items                                                    map[K]*list.Element
+	order                                                    *list.List
+	capacity                                                 int
+	generation                                               atomic.Uint64
+	hits, misses, evictions                                  atomic.Uint64
+	now                                                      func() time.Time
+	invalidations                                            uint64
+	lastInvalidationAt                                       time.Time
+	lastInvalidationReason                                   string
+	retainExpired                                            bool
+	optimisticHits, optimisticCompared, optimisticMismatches uint64
 }
 
 func New[K comparable, V any](capacity int, options ...Options) *Cache[K, V] {
@@ -80,25 +85,37 @@ func (c *Cache[K, V]) Get(k K) (V, bool) {
 
 // GetState reads freshness and the generation together with the value.
 func (c *Cache[K, V]) GetState(k K) (V, bool, bool, uint64) {
-	return c.getState(k, true)
+	return c.getState(k, true, false)
+}
+
+// GetOptimisticState records each request served a stale value atomically with
+// lookup. Requests arriving during the same refresh are counted individually.
+func (c *Cache[K, V]) GetOptimisticState(k K) (V, bool, bool, uint64) {
+	return c.getState(k, true, true)
 }
 
 // PeekState checks a maintenance candidate without affecting LRU or counters.
 func (c *Cache[K, V]) PeekState(k K) (V, bool, bool, uint64) {
-	return c.getState(k, false)
+	return c.getState(k, false, false)
 }
-func (c *Cache[K, V]) getState(k K, touch bool) (V, bool, bool, uint64) {
+func (c *Cache[K, V]) getState(k K, touch, optimistic bool) (V, bool, bool, uint64) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	if e, ok := c.items[k]; ok {
 		v := e.Value.(entry[K, V])
 		now := c.now()
 		if v.generation == c.Generation() && c.retained(now, v.expiry) {
+			stale := v.stale || !validExpiry(now, v.expiry)
+			if optimistic && stale {
+				v.optimisticRequests++
+				e.Value = v
+				c.optimisticHits++
+			}
 			if touch {
 				c.order.MoveToFront(e)
 				c.hits.Add(1)
 			}
-			return v.value, true, v.stale || !validExpiry(now, v.expiry), v.generation
+			return v.value, true, stale, v.generation
 		}
 		c.remove(e)
 	}
@@ -138,19 +155,27 @@ func (c *Cache[K, V]) StaleRecords(offset, limit int) ([]Record[K, V], uint64) {
 
 // Put rejects a result evaluated before an invalidation, including an in-flight miss.
 func (c *Cache[K, V]) Put(k K, v V, g uint64, ttl time.Duration) bool {
+	return c.PutCompared(k, v, g, ttl, nil)
+}
+
+// PutCompared settles outstanding stale requests only for an accepted result
+// in the same generation. Failure, idle reads and rejected writes are not samples.
+// same must be a fast, pure comparison; it runs under the cache lock.
+func (c *Cache[K, V]) PutCompared(k K, v V, g uint64, ttl time.Duration, same func(V, V) bool) bool {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	if g != c.Generation() || (ttl <= 0 && ttl != Forever) {
 		return false
 	}
 	if e, ok := c.items[k]; ok {
+		c.compare(e, v, same)
 		c.remove(e)
 	}
 	var expiry time.Time
 	if ttl != Forever {
 		expiry = c.now().Add(ttl)
 	}
-	e := c.order.PushFront(entry[K, V]{k, v, g, expiry, false})
+	e := c.order.PushFront(entry[K, V]{key: k, value: v, generation: g, expiry: expiry})
 	c.items[k] = e
 	if c.order.Len() > c.capacity {
 		c.remove(c.order.Back())
@@ -159,14 +184,31 @@ func (c *Cache[K, V]) Put(k K, v V, g uint64, ttl time.Duration) bool {
 	return true
 }
 
+func (c *Cache[K, V]) compare(e *list.Element, value V, same func(V, V) bool) {
+	old := e.Value.(entry[K, V])
+	if same != nil && old.generation == c.Generation() && old.optimisticRequests > 0 {
+		c.optimisticCompared += old.optimisticRequests
+		if !same(old.value, value) {
+			c.optimisticMismatches += old.optimisticRequests
+		}
+	}
+}
+
 // Delete rejects a removal requested by an older evaluation generation.
 func (c *Cache[K, V]) Delete(k K, generation uint64) bool {
+	var zero V
+	return c.DeleteCompared(k, zero, generation, nil)
+}
+
+// DeleteCompared also verifies a successful refresh whose TTL forbids caching.
+func (c *Cache[K, V]) DeleteCompared(k K, value V, generation uint64, same func(V, V) bool) bool {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	if generation != c.Generation() {
 		return false
 	}
 	if e, ok := c.items[k]; ok {
+		c.compare(e, value, same)
 		c.remove(e)
 	}
 	return true
@@ -243,7 +285,7 @@ func (c *Cache[K, V]) Stats() Stats {
 			}
 		}
 	}
-	return Stats{Entries: n, StaleEntries: stale, Generation: c.Generation(), Hits: c.hits.Load(), Misses: c.misses.Load(), Evictions: c.evictions.Load(), Invalidations: c.invalidations, LastInvalidationAt: c.lastInvalidationAt, LastInvalidationReason: c.lastInvalidationReason}
+	return Stats{Entries: n, StaleEntries: stale, Generation: c.Generation(), Hits: c.hits.Load(), Misses: c.misses.Load(), OptimisticHits: c.optimisticHits, OptimisticCompared: c.optimisticCompared, OptimisticMismatches: c.optimisticMismatches, Evictions: c.evictions.Load(), Invalidations: c.invalidations, LastInvalidationAt: c.lastInvalidationAt, LastInvalidationReason: c.lastInvalidationReason}
 }
 
 // Values exposes a bounded snapshot without affecting LRU order or hit counters.
@@ -288,7 +330,7 @@ func (c *Cache[K, V]) Restore(records []Record[K, V]) int {
 		if _, exists := c.items[r.Key]; exists {
 			continue
 		}
-		e := c.order.PushBack(entry[K, V]{r.Key, r.Value, generation, r.ExpiresAt, r.Stale})
+		e := c.order.PushBack(entry[K, V]{key: r.Key, value: r.Value, generation: generation, expiry: r.ExpiresAt, stale: r.Stale})
 		c.items[r.Key] = e
 		restored++
 	}

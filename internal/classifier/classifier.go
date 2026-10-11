@@ -173,7 +173,11 @@ func (e *Engine) Classify(ctx context.Context, q model.DNSQueryContext) (model.D
 	q.Question.Name = domain
 	// Per-client isolation is the safe default for Surge source-address rules.
 	key := Key{domain, q.ClientIP.String(), fmt.Sprint(q.Question.Qtype, "/", q.Question.Qclass)}
-	d, ok, stale, gen := e.Cache.GetState(key)
+	lookup := e.Cache.GetState
+	if e.config.Optimistic {
+		lookup = e.Cache.GetOptimisticState
+	}
+	d, ok, stale, gen := lookup(key)
 	if ok && (!stale || e.config.Optimistic) {
 		if stale {
 			e.refresh(q, key, gen, false)
@@ -292,7 +296,13 @@ func (e *Engine) evaluate(parent context.Context, q model.DNSQueryContext, key K
 			out.decision.ExpiresAt = out.decision.CreatedAt.Add(ttl)
 		}
 		if !refresh || out.err == nil && out.decision.Decision != model.Unknown {
-			e.Cache.Put(key, out.decision, gen, ttl)
+			if out.err == nil && out.decision.Decision != model.Unknown {
+				e.Cache.PutCompared(key, out.decision, gen, ttl, func(old, next model.DecisionResult) bool {
+					return old.Decision == next.Decision && old.FinalPolicy == next.FinalPolicy
+				})
+			} else {
+				e.Cache.Put(key, out.decision, gen, ttl)
+			}
 		}
 		return out, nil
 	})

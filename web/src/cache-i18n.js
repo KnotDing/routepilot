@@ -39,6 +39,10 @@ const messages={
  }
 };
 Object.assign(messages['zh-CN'],{
+ decisionReliability:'乐观决策缓存可靠性',responseReliability:'乐观响应缓存可靠性',optimisticHits:'过期 / 待刷新命中请求',optimisticCompared:'已核对请求',optimisticMismatches:'不一致请求',optimisticMismatchRate:'不一致率',optimisticUnverified:'未核对请求',
+ decisionComparisonHelp:'比较分流决策（DIRECT / SURGE / REJECT）和最终策略；忽略规则说明、时间和缓存来源等元数据。',
+ responseComparisonHelp:'比较 DNS 返回码及各区段记录内容；忽略请求 ID、TTL、记录排列、域名大小写和 EDNS 传输信息。',
+ optimisticStatisticsHelp:'按实际命中旧缓存的请求数计数，一次刷新可以核对多次命中。不一致率 = 不一致请求 / 已核对请求；无样本时显示 —。刷新失败、UNKNOWN、取消或清理 / 淘汰前尚未成功刷新的请求列为未核对，不算一致。空闲刷新未命中的条目不增加样本。统计保留至缓存实例重建或服务重启，清理条目不重置统计。',
  optimistic:'乐观决策缓存',
  optimistic_responses:'乐观查询缓存',
  optimistic_idle_refresh:'决策缓存空闲刷新',
@@ -49,6 +53,10 @@ Object.assign(messages['zh-CN'],{
  invalidate_reject_on_selection_change:'REJECT 选择变化时失效'
 });
 Object.assign(messages.en,{
+ decisionReliability:'Optimistic decision cache reliability',responseReliability:'Optimistic response cache reliability',optimisticHits:'Stale requests served',optimisticCompared:'Verified requests',optimisticMismatches:'Mismatched requests',optimisticMismatchRate:'Mismatch rate',optimisticUnverified:'Unverified requests',
+ decisionComparisonHelp:'Compares the routing decision (DIRECT / SURGE / REJECT) and final policy. Rule explanations, timestamps and cache source metadata are ignored.',
+ responseComparisonHelp:'Compares DNS response codes and record contents in each section. IDs, TTLs, record order, domain-name case and EDNS transport metadata are ignored.',
+ optimisticStatisticsHelp:'Counts requests served from stale cache, not refresh jobs. One refresh can verify multiple hits. Mismatch rate = mismatched / verified requests; no samples shows —. Failed, UNKNOWN or cancelled refreshes and requests whose entries were cleared or evicted before verification remain unverified, not matching. Idle refreshes without stale hits add no samples. Counters last until cache recreation or service restart; clearing entries does not reset them.',
  optimistic:'Optimistic decision cache',
  optimistic_responses:'Optimistic query cache',
  optimistic_idle_refresh:'Decision cache idle refresh',

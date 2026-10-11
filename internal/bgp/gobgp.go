@@ -2,10 +2,13 @@ package bgp
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	api "github.com/osrg/gobgp/v3/api"
 	"github.com/osrg/gobgp/v3/pkg/server"
+	"google.golang.org/protobuf/encoding/protojson"
+	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/anypb"
 	"net/netip"
 	"reflect"
@@ -15,12 +18,14 @@ import (
 )
 
 type PeerStatus struct {
-	Address       string `json:"address"`
-	ASN           uint32 `json:"asn"`
-	State         string `json:"state"`
-	UptimeSeconds int64  `json:"uptime_seconds"`
-	LastError     string `json:"last_error"`
-	Prefixes      int    `json:"prefixes"`
+	Address       string          `json:"address"`
+	ASN           uint32          `json:"asn"`
+	State         string          `json:"state"`
+	UptimeSeconds int64           `json:"uptime_seconds"`
+	LastError     string          `json:"last_error"`
+	Prefixes      int             `json:"prefixes"`
+	Details       json.RawMessage `json:"details,omitempty"`
+	DetailsError  string          `json:"details_error,omitempty"`
 }
 type Advertisement struct {
 	Prefix          string   `json:"prefix"`
@@ -224,12 +229,29 @@ func (g *GoBGP) Delete(ctx context.Context, id []byte) error {
 }
 func (g *GoBGP) Peers(ctx context.Context) ([]PeerStatus, error) {
 	out := []PeerStatus{}
-	e := g.server.ListPeer(ctx, &api.ListPeerRequest{}, func(p *api.Peer) {
+	e := g.server.ListPeer(ctx, &api.ListPeerRequest{EnableAdvertised: true}, func(p *api.Peer) {
 		up := int64(0)
-		if p.State.SessionState == api.PeerState_ESTABLISHED && p.Timers.State.Uptime != nil {
-			up = int64(time.Since(p.Timers.State.Uptime.AsTime()).Seconds())
+		if p.GetState().GetSessionState() == api.PeerState_ESTABLISHED && p.GetTimers().GetState().GetUptime() != nil {
+			up = max(0, int64(time.Since(p.GetTimers().GetState().GetUptime().AsTime()).Seconds()))
 		}
-		out = append(out, PeerStatus{Address: p.Conf.NeighborAddress, ASN: p.Conf.PeerAsn, State: p.State.SessionState.String(), UptimeSeconds: up})
+		row := PeerStatus{Address: p.GetConf().GetNeighborAddress(), ASN: p.GetConf().GetPeerAsn(), State: p.GetState().GetSessionState().String(), UptimeSeconds: up}
+		// Publish the full GoBGP snapshot without exposing session credentials or
+		// modifying the speaker's configuration. A detail encoding failure must
+		// not turn a healthy neighbor into a BGP monitoring failure.
+		detail := proto.Clone(p).(*api.Peer)
+		if detail.Conf != nil {
+			detail.Conf.AuthPassword = ""
+		}
+		if detail.State != nil {
+			detail.State.AuthPassword = ""
+		}
+		encoded, err := (protojson.MarshalOptions{UseProtoNames: true, EmitUnpopulated: true}).Marshal(detail)
+		if err != nil {
+			row.DetailsError = "BGP neighbor details could not be encoded: " + err.Error()
+		} else {
+			row.Details = encoded
+		}
+		out = append(out, row)
 	})
 	return out, e
 }
