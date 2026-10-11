@@ -81,6 +81,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
 	let serviceNotifications = ServiceNotifications()
 	var notificationSettings: [String: Any] = [:]
     var backendUpdateSettings: [String: Any] = [:]
+    var updateSource: String {
+        (backendUpdateSettings["update_source"] as? String) == "gitea" ? "gitea" : "github"
+    }
     var notificationHealth: [[String: Any]] = []
 	var backendFailures = 0
     var remoteNotificationWatch: RemoteNotificationWatch?
@@ -754,10 +757,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
         defer { checkingRelease = false; rebuildMenu() }
         do {
             let latest: GiteaRelease
+            let source = updateSource
             if beta {
-                latest = try await ReleaseUpdater.latestBeta()
+                latest = try await ReleaseUpdater.latestBeta(source: source)
             } else {
-                latest = try await ReleaseUpdater.latest(includingBeta: backendUpdateSettings["check_beta"] as? Bool == true)
+                latest = try await ReleaseUpdater.latest(source: source, includingBeta: backendUpdateSettings["check_beta"] as? Bool == true)
             }
             let appVersion = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? ""
             let backendVersion = (status["software"] as? [String: Any])?["version"] as? String ?? ""
@@ -849,17 +853,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
         do {
             if !UpdateAssistant.configured { try await UpdateAssistant.enable() }
             if let controller = webView?.configuration.userContentController { configurePreferenceSeed(controller) }
-            if release.prerelease == true {
-                let assistant = try await UpdateAssistant.request("status")
-                if (assistant.protocolVersion ?? 0) < 1 {
-                    label.stringValue = L("正在升级 Beta 更新助手…")
-                    try await UpdateAssistant.enable()
-                }
+            let assistant = try await UpdateAssistant.request("status")
+            if (assistant.protocolVersion ?? 0) < 3 {
+                label.stringValue = L("正在升级更新助手…")
+                try await UpdateAssistant.enable()
             }
             // Every explicit installation entry point overrides a previous skip.
             // A disconnected backend must not prevent a manual App upgrade.
             _ = try? await client.call("updates/skip", method: "POST", body: ["version": ""])
-            _ = try await UpdateAssistant.request("check", channel: release.prerelease == true ? "beta" : nil)
+            _ = try await UpdateAssistant.request("check", channel: release.prerelease == true ? "beta" : nil,
+                                                  source: updateSource)
             if !(await stopChild()) { throw AppFailure(message: "后台进程尚未停止，升级已取消") }
             var status = try await UpdateAssistant.request("install", version: release.tagName)
             let deadline = Date().addingTimeInterval(10 * 60)

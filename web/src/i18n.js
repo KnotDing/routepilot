@@ -52,7 +52,7 @@ const values={
  Controller:['控制器','Controller'],'Real DNS':['真实 DNS','Real DNS'],'Surge CLI':['Surge CLI','Surge CLI'],'Surge Fake-IP DNS':['Surge Fake-IP DNS','Surge Fake-IP DNS'],'Managed routes':['受管理路由','Managed routes'],'Transparent DNS':['透明 DNS','Transparent DNS'],'Local DNS':['本地 DNS','Local DNS'],'DNS listener':['DNS 监听','DNS listener'],'BGP engine':['BGP 引擎','BGP engine'],'Fake-IP routing':['Fake-IP 路由','Fake-IP routing'],'DNS interception routing':['DNS 拦截路由','DNS interception routing'],
  Queries:['总查询','Queries'],Direct:['DIRECT','DIRECT'],Surge:['SURGE','SURGE'],Reject:['REJECT','REJECT'],Unknown:['UNKNOWN','UNKNOWN'],Intercepted:['透明拦截','Intercepted'],Addressed:['直接请求','Addressed'],Errors:['错误','Errors'],
  hit:['命中','Hit'],miss:['未命中','Miss'],intercepted:['透明拦截','Intercepted'],direct:['直接请求','Addressed']
- ,certain:['确定','Certain'],configured:['按配置采用','Configured'],uncertain:['未确定','Uncertain'],bgp:['BGP','BGP'],static:['静态','Static'],hybrid:['混合','Hybrid'],
+ ,certain:['确定','Certain'],configured:['按配置采用','Configured'],uncertain:['未确定','Uncertain'],github:['GitHub','GitHub'],gitea:['Gitea','Gitea'],bgp:['BGP','BGP'],static:['静态','Static'],hybrid:['混合','Hybrid'],
  'fake-ip':['Fake-IP','Fake-IP'],'dns-interception':['DNS 拦截','DNS interception'],'bgp-announced':['BGP 已发布','BGP announced'],'bgp-installed':['已加入 BGP','BGP installed'],'bgp-pending':['等待 BGP','BGP pending'],'operator-confirmed':['操作员已确认','Operator confirmed'],'declared-unverified':['声明但未验证','Declared, unverified'],Database:['数据库','Database'],'Surge API':['Surge API','Surge API']
 };
 export function valueLabel(value,locale=currentLocale()){

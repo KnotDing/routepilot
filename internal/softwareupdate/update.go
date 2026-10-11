@@ -26,7 +26,8 @@ import (
 )
 
 const (
-	origin       = "https://gitea.knotding.com"
+	giteaOrigin  = "https://gitea.knotding.com"
+	githubAPI    = "https://api.github.com/repos/KnotDing/routepilot"
 	serviceDir   = "/usr/local/libexec/surge-controller"
 	serviceBin   = serviceDir + "/surge-controller"
 	servicePlist = "/Library/LaunchDaemons/com.routepilot.surge-controller.plist"
@@ -65,6 +66,7 @@ type release struct {
 		Name string `json:"name"`
 		URL  string `json:"browser_download_url"`
 	} `json:"assets"`
+	Source string `json:"-"`
 }
 type Manager struct {
 	mu              sync.Mutex
@@ -77,6 +79,8 @@ type Manager struct {
 	latest          release
 	checkedAt       time.Time
 	checkedBeta     bool
+	checkedSource   string
+	source          string
 	checkError      string
 	beforeRestart   func() error
 	appRestartOnce  sync.Once
@@ -95,7 +99,7 @@ type updateOperations struct {
 }
 
 func New(ctx context.Context, database string, beforeRestart func() error) *Manager {
-	m := &Manager{ctx: ctx, beforeRestart: beforeRestart, ops: updateOperations{
+	m := &Manager{ctx: ctx, beforeRestart: beforeRestart, source: "github", ops: updateOperations{
 		fetch: download, read: readState, write: func(s Status) error { return writeJSON(stateFile, s) },
 		pid: workerPID, prepare: prepare, appVersion: func() string { return appVersion(ctx) },
 	}}
@@ -282,6 +286,25 @@ func (m *Manager) snapshot() Status {
 	return s
 }
 func (m *Manager) Status() Status { m.mu.Lock(); defer m.mu.Unlock(); return m.snapshot() }
+func updateSource(source string) (string, string) {
+	if source == "gitea" {
+		return "gitea", giteaOrigin + "/api/v1/repos/knot/routepilot"
+	}
+	return "github", githubAPI
+}
+
+func releaseEndpoint(source, path string) string {
+	_, api := updateSource(source)
+	return api + path
+}
+
+func (m *Manager) SetSource(source string) {
+	source, _ = updateSource(source)
+	m.mu.Lock()
+	m.source = source
+	m.mu.Unlock()
+}
+
 func (m *Manager) Check(ctx context.Context, includeBeta bool) (result Status, checkErr error) {
 	m.checkMu.Lock()
 	defer m.checkMu.Unlock()
@@ -296,8 +319,9 @@ func (m *Manager) Check(ctx context.Context, includeBeta bool) (result Status, c
 	m.mu.Lock()
 	ctx, cancel := context.WithTimeout(ctx, 15*time.Second)
 	defer cancel()
-	// Reuse a result briefly so dashboard mounts and multiple clients do not flood Gitea.
-	if m.checkedBeta == includeBeta && time.Since(m.checkedAt) < time.Minute {
+	source, api := updateSource(m.source)
+	// Reuse a result briefly so dashboard mounts and multiple clients do not flood the release API.
+	if m.checkedBeta == includeBeta && m.checkedSource == source && time.Since(m.checkedAt) < time.Minute {
 		m.checkError = ""
 		value := m.snapshot()
 		m.mu.Unlock()
@@ -305,7 +329,7 @@ func (m *Manager) Check(ctx context.Context, includeBeta bool) (result Status, c
 	}
 	m.mu.Unlock()
 	var r release
-	b, err := m.ops.fetch(ctx, origin+"/api/v1/repos/knot/routepilot/releases/latest", 2<<20)
+	b, err := m.ops.fetch(ctx, api+"/releases/latest", 2<<20)
 	if err != nil {
 		return m.Status(), err
 	}
@@ -322,7 +346,11 @@ func (m *Manager) Check(ctx context.Context, includeBeta bool) (result Status, c
 	if includeBeta {
 		// A numbered beta is only preferred when it is newer than the stable
 		// release; equal base versions keep the stable release.
-		b, err = m.ops.fetch(ctx, origin+"/api/v1/repos/knot/routepilot/releases?limit=50", 2<<20)
+		listPath := "/releases?per_page=100"
+		if source == "gitea" {
+			listPath = "/releases?limit=50"
+		}
+		b, err = m.ops.fetch(ctx, api+listPath, 2<<20)
 		if err != nil {
 			return m.Status(), err
 		}
@@ -334,11 +362,13 @@ func (m *Manager) Check(ctx context.Context, includeBeta bool) (result Status, c
 			r = beta
 		}
 	}
+	r.Source = source
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.latest = r
 	m.checkedAt = time.Now().UTC()
 	m.checkedBeta = includeBeta
+	m.checkedSource = source
 	m.checkError = ""
 	return m.snapshot(), nil
 }
@@ -346,16 +376,20 @@ func active(phase string) bool {
 	return phase == "downloading" || phase == "validating" || phase == "restarting"
 }
 func (m *Manager) Start(version string) (Status, error) {
-	return m.start(version, nil)
+	return m.startForSource(version, nil, "")
 }
 
-// StartForChannel prevents a configuration change from installing a release
-// checked under a different channel, even while that check is still recent.
+// StartForChannel prevents channel or source changes from installing an older
+// result, even while that check is still recent.
+
 func (m *Manager) StartForChannel(version string, includeBeta bool) (Status, error) {
-	return m.start(version, &includeBeta)
+	m.mu.Lock()
+	source := m.source
+	m.mu.Unlock()
+	return m.startForSource(version, &includeBeta, source)
 }
 
-func (m *Manager) start(version string, includeBeta *bool) (Status, error) {
+func (m *Manager) startForSource(version string, includeBeta *bool, source string) (Status, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	if !m.supported {
@@ -365,7 +399,7 @@ func (m *Manager) start(version string, includeBeta *bool) (Status, error) {
 	if m.running || m.ops.pid() > 0 || active(previous.Phase) && time.Since(previous.UpdatedAt) < 10*time.Minute {
 		return m.snapshot(), errors.New("A backend update is already in progress")
 	}
-	if includeBeta != nil && *includeBeta != m.checkedBeta || version != m.latest.Tag || !applicationUpdateAvailable(version, buildinfo.Current().Version, m.ops.appVersion()) || time.Since(m.checkedAt) > 10*time.Minute {
+	if includeBeta != nil && *includeBeta != m.checkedBeta || source != "" && source != m.checkedSource || version != m.latest.Tag || !applicationUpdateAvailable(version, buildinfo.Current().Version, m.ops.appVersion()) || time.Since(m.checkedAt) > 10*time.Minute {
 		return m.snapshot(), errors.New("Check the latest release again before updating")
 	}
 	s := Status{Phase: "downloading", Target: version, UpdatedAt: time.Now().UTC()}
@@ -398,11 +432,11 @@ func download(ctx context.Context, address string, limit int64) ([]byte, error) 
 // relaxing the fixed release origin or changing process-wide HTTP defaults.
 func downloadWithTransport(ctx context.Context, address string, limit int64, transport http.RoundTripper) ([]byte, error) {
 	u, err := url.Parse(address)
-	if err != nil || u.Scheme != "https" || u.Host != "gitea.knotding.com" || u.User != nil || u.Fragment != "" || u.Opaque != "" {
+	if err != nil || u.Scheme != "https" || u.Port() != "" || !trustedUpdateURL(u) || u.User != nil || u.Fragment != "" || u.Opaque != "" {
 		return nil, errors.New("Release download origin is not trusted")
 	}
 	client := &http.Client{Transport: transport, Timeout: 3 * time.Minute, CheckRedirect: func(req *http.Request, via []*http.Request) error {
-		if len(via) > 5 || req.URL.Scheme != "https" || req.URL.Host != u.Host || req.URL.User != nil || req.URL.Fragment != "" || req.URL.Opaque != "" {
+		if len(via) > 5 || req.URL.Scheme != "https" || req.URL.Port() != "" || !trustedUpdateURL(req.URL) || req.URL.User != nil || req.URL.Fragment != "" || req.URL.Opaque != "" {
 			return errors.New("Untrusted release redirect")
 		}
 		return nil
@@ -430,6 +464,21 @@ func downloadWithTransport(ctx context.Context, address string, limit int64, tra
 		return nil, errors.New("Release asset exceeds the size limit")
 	}
 	return b, nil
+}
+
+func trustedUpdateURL(u *url.URL) bool {
+	switch u.Hostname() {
+	case "gitea.knotding.com":
+		return true
+	case "api.github.com":
+		return strings.HasPrefix(u.Path, "/repos/KnotDing/routepilot/")
+	case "github.com":
+		return strings.HasPrefix(u.Path, "/KnotDing/routepilot/releases/download/")
+	case "release-assets.githubusercontent.com", "objects.githubusercontent.com":
+		return true
+	default:
+		return false
+	}
 }
 func prepare(ctx context.Context, r release, beforeRestart func() error) error {
 	name := "RoutePilot-macos-arm64.zip"
@@ -487,7 +536,7 @@ func prepare(ctx context.Context, r release, beforeRestart func() error) error {
 	if err := copyExecutable(serviceBin, filepath.Join(stagingDir, "worker")); err != nil {
 		return err
 	}
-	if err := writeJSON(filepath.Join(stagingDir, "job.json"), workerJob{Target: r.Tag, PreviousPID: os.Getpid()}); err != nil {
+	if err := writeJSON(filepath.Join(stagingDir, "job.json"), workerJob{Target: r.Tag, PreviousPID: os.Getpid(), Source: r.Source}); err != nil {
 		return err
 	}
 	plist := `<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd"><plist version="1.0"><dict><key>Label</key><string>com.routepilot.update-worker</string><key>ProgramArguments</key><array><string>` + stagingDir + `/worker</string><string>update-worker</string></array><key>UserName</key><string>root</string><key>RunAtLoad</key><true/><key>ProcessType</key><string>Background</string><key>StandardOutPath</key><string>/var/log/surge-controller/update.log</string><key>StandardErrorPath</key><string>/var/log/surge-controller/update.log</string><key>Umask</key><integer>63</integer></dict></plist>`

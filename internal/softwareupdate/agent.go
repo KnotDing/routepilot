@@ -27,9 +27,9 @@ const agentSocket = "/var/run/com.routepilot.updater.sock"
 const agentPlist = "/Library/LaunchDaemons/com.routepilot.update-agent.plist"
 const appTarget = "/Applications/RoutePilot.app"
 
-// Protocol 2 adds the fixed-source "repair" action that overwrites the
-// installed network service with the backend bundled in the installed App.
-const agentProtocolVersion = 2
+// Protocol 3 adds the selected release source to update-check requests while
+// retaining fixed official repositories and tag-only install identities.
+const agentProtocolVersion = 3
 
 type agentConfig struct {
 	UID int `json:"uid"`
@@ -38,6 +38,7 @@ type agentRequest struct {
 	Action  string `json:"action"`
 	Version string `json:"version,omitempty"`
 	Channel string `json:"channel,omitempty"`
+	Source  string `json:"source,omitempty"`
 }
 type agentStatus struct {
 	Status
@@ -309,18 +310,23 @@ func (a *agent) serve(ctx context.Context, c *net.UnixConn) {
 		defer cancel()
 		a.latest = release{}
 		a.state.CheckedAt = time.Time{}
+		if req.Source != "" && req.Source != "github" && req.Source != "gitea" {
+			failure = errors.New("Unsupported release source")
+			break
+		}
+		source, _ := updateSource(req.Source)
 		switch req.Channel {
 		case "", "stable":
 			var r release
 			var e error
-			r, e = fetchStableRelease(checkCtx)
+			r, e = fetchStableRelease(checkCtx, source)
 			failure = e
 			if failure == nil {
 				a.latest = r
 			}
 		case "beta":
 			var r release
-			r, failure = fetchBetaRelease(checkCtx)
+			r, failure = fetchBetaRelease(checkCtx, source)
 			if failure == nil {
 				a.latest = r
 			}
@@ -404,8 +410,8 @@ func (a *agent) serve(ctx context.Context, c *net.UnixConn) {
 	}
 }
 
-func fetchStableRelease(ctx context.Context) (release, error) {
-	b, err := download(ctx, origin+"/api/v1/repos/knot/routepilot/releases/latest", 2<<20)
+func fetchStableRelease(ctx context.Context, source string) (release, error) {
+	b, err := download(ctx, releaseEndpoint(source, "/releases/latest"), 2<<20)
 	if err != nil {
 		return release{}, err
 	}
@@ -419,11 +425,16 @@ func fetchStableRelease(ctx context.Context) (release, error) {
 	if _, isBeta := betaNumber(r.Tag); isBeta {
 		return release{}, errors.New("Latest release metadata is not a stable release")
 	}
+	r.Source, _ = updateSource(source)
 	return r, nil
 }
 
-func fetchBetaRelease(ctx context.Context) (release, error) {
-	b, err := download(ctx, origin+"/api/v1/repos/knot/routepilot/releases?limit=50", 2<<20)
+func fetchBetaRelease(ctx context.Context, source string) (release, error) {
+	listPath := "/releases?per_page=100"
+	if source == "gitea" {
+		listPath = "/releases?limit=50"
+	}
+	b, err := download(ctx, releaseEndpoint(source, listPath), 2<<20)
 	if err != nil {
 		return release{}, err
 	}
@@ -435,6 +446,7 @@ func fetchBetaRelease(ctx context.Context) (release, error) {
 	if !ok {
 		return release{}, errors.New("No beta release is available")
 	}
+	latest.Source, _ = updateSource(source)
 	return latest, nil
 }
 

@@ -12,6 +12,7 @@ type softwareUpdateController interface {
 	Status() softwareupdate.Status
 	Check(context.Context, bool) (softwareupdate.Status, error)
 	StartForChannel(string, bool) (softwareupdate.Status, error)
+	SetSource(string)
 	MarkReady()
 }
 
@@ -82,6 +83,7 @@ func (a *API) checkUpdates(ctx context.Context) (softwareupdate.Status, error) {
 	a.updateCheckMu.Lock()
 	defer a.updateCheckMu.Unlock()
 	policy := a.Service.Configuration().Settings.Updates
+	a.SoftwareUpdates.SetSource(policy.UpdateSource)
 	_, checkErr := a.SoftwareUpdates.Check(ctx, policy.CheckBeta)
 	// A timeout or a disconnected client must not erase the check outcome.
 	stateCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
@@ -140,7 +142,9 @@ func (a *API) installUpdate(ctx context.Context, version string) (softwareupdate
 	state.InstallError, state.NextRetryAt = "", time.Time{}
 	err := a.saveUpdateState(ctx, state)
 	if err == nil {
-		_, err = a.SoftwareUpdates.StartForChannel(version, a.Service.Configuration().Settings.Updates.CheckBeta)
+		policy := a.Service.Configuration().Settings.Updates
+		a.SoftwareUpdates.SetSource(policy.UpdateSource)
+		_, err = a.SoftwareUpdates.StartForChannel(version, policy.CheckBeta)
 	}
 	a.updateMu.Unlock()
 	return a.updateStatus(ctx), err
@@ -219,6 +223,7 @@ func (a *API) updateSchedulerTick(ctx context.Context, now time.Time) error {
 	if err := a.saveUpdateState(ctx, next); err != nil {
 		return err // Never launch a worker without its durable daily reservation.
 	}
+	a.SoftwareUpdates.SetSource(policy.UpdateSource)
 	if _, err := a.SoftwareUpdates.StartForChannel(status.Latest, policy.CheckBeta); err != nil {
 		// No worker was accepted, so retry after a delay without consuming the day.
 		state.InstallError, state.NextRetryAt = err.Error(), now.Add(updateRetryDelay)

@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"net/url"
 	"os"
 	"path/filepath"
 	"syscall"
@@ -15,6 +16,7 @@ import (
 type workerJob struct {
 	Target      string `json:"target"`
 	PreviousPID int    `json:"previous_pid"`
+	Source      string `json:"source,omitempty"`
 }
 type ready struct {
 	Version string    `json:"version"`
@@ -82,7 +84,8 @@ func RunWorker() (result error) {
 	}
 	s.Target = job.Target
 	// The job never supplies asset URLs. Refetch the fixed official tag metadata.
-	b, err = download(ctx, origin+"/api/v1/repos/knot/routepilot/releases/tags/"+job.Target, 2<<20)
+	job.Source, _ = updateSource(job.Source)
+	b, err = download(ctx, releaseEndpoint(job.Source, "/releases/tags/"+url.PathEscape(job.Target)), 2<<20)
 	if err != nil {
 		return err
 	}

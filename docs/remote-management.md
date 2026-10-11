@@ -130,7 +130,7 @@ DMG/ZIP 手动替换 `/Applications/RoutePilot.app` 只更新图形 App，不会
 
 新后台未在 60 秒内启动管理监听器时，助手尝试恢复旧 App 和服务执行文件并重启；失败原因保存在后台升级状态中。回滚针对 App 和服务执行文件，不会撤销新版可能执行过的数据库迁移。本机 App 需要单独更新，远程操作更新当前选中远端的完整安装，不更新发起操作的本机 App。
 
-接口：`GET /api/v1/updates/check`、`GET /api/v1/updates/status`、`POST /api/v1/updates/install`（请求体 `{"version":"vX.Y.Z"}`）。安装接口仅接受最近检查出的版本（默认正式稳定版；启用“自动检查 Beta 版本”后可为编号 Beta），且 App 或后台至少一个需要更新，不允许降级，不接受任意下载地址、程序上传或执行命令。发布仓库及其 HTTPS 下载来源是升级信任源；SHA-256 和当前临时代码签名校验不等同于开发者身份签名。
+接口：`GET /api/v1/updates/check`、`GET /api/v1/updates/status`、`POST /api/v1/updates/install`（请求体 `{"version":"vX.Y.Z"}`）。安装接口仅接受最近检查出的版本（默认正式稳定版；启用“自动检查 Beta 版本”后可为编号 Beta），且 App 或后台至少一个需要更新，不允许降级，不接受任意下载地址、程序上传或执行命令。设置中的更新源默认 GitHub，也可选择 Gitea；检查、下载和安装复核均使用该来源。只信任对应官方 HTTPS 发布域名和 GitHub Release 附件域名；SHA-256 和当前临时代码签名校验不等同于开发者身份签名。
 
 ## App 保存远程登录凭证
 

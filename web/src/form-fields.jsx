@@ -35,6 +35,7 @@ export function settingsRequirement(category,name,draft,interception=[]){
   if(name==='bypass_verified')result.required=Boolean(dns.interception_enabled);
  }
  if(category==='surge'&&name==='api_url'&&surge.restart?.enabled&&surge.restart?.api)result.required=true;	if(category==='updates'){
+		if(name==='update_source')result.hint='GitHub 默认提供最新版本，Gitea 可作为备用更新源。';
 		if(name==='automatic_install')result.disabled=!section.automatic_check;
 		if(name==='check_interval_hours')result.disabled=!section.automatic_check;
 		if(name==='update_time'){result.required=Boolean(section.automatic_check&&section.automatic_install);result.disabled=!section.automatic_check||!section.automatic_install;if(result.required)result.hint='每天到达该本地时间后自动安装；当天最多尝试一次。'}

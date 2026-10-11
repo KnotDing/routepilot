@@ -21,7 +21,7 @@ enum UpdateAssistant {
         var info = stat()
         return lstat(socketPath, &info) == 0 && info.st_mode & S_IFMT == S_IFSOCK && info.st_uid == getuid() && info.st_mode & 0o077 == 0
     }
-    static func request(_ action: String, version: String? = nil, channel: String? = nil) async throws -> UpdateAssistantStatus {
+    static func request(_ action: String, version: String? = nil, channel: String? = nil, source: String? = nil) async throws -> UpdateAssistantStatus {
         try await Task.detached {
             guard configured else { throw AppFailure(message: "更新助手尚未启用，请先授权安装更新助手") }
             let fd = Darwin.socket(AF_UNIX, SOCK_STREAM, 0)
@@ -45,6 +45,7 @@ enum UpdateAssistant {
             var payload = ["action": action]
             if let version { payload["version"] = version }
             if let channel { payload["channel"] = channel }
+            if let source { payload["source"] = source }
             var data = try JSONSerialization.data(withJSONObject: payload)
             data.append(10)
             try data.withUnsafeBytes { bytes in

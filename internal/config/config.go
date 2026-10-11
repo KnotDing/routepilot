@@ -136,6 +136,7 @@ type Updates struct {
 	AutomaticInstall   bool   `json:"automatic_install"`
 	CheckIntervalHours int    `json:"check_interval_hours"`
 	UpdateTime         string `json:"update_time"`
+	UpdateSource       string `json:"update_source"`
 }
 type Backend struct {
 	ID   string `json:"id"`
@@ -327,7 +328,7 @@ func Default() Document {
 		Health:  Health{1000, 3, 3, 60, 3, "example.com"}, Logging: Logging{"info", true, 1000, true, 2000},
 		Notifications: Notifications{Surge: true, BGP: true, DNS: true, Controller: true, CooldownSeconds: 300},
 		Security:      Security{Username: "admin", SessionMinutes: 60, AllowedNetworks: []string{"127.0.0.0/8", "::1/128"}, AuthBypassNetworks: []string{}, TrustedProxies: []string{}, ProxyOrigins: []string{}, ProxyClientIPHeader: "X-Forwarded-For"},
-		Updates:       Updates{AutomaticCheck: true, CheckIntervalHours: 12, UpdateTime: "03:00"},
+		Updates:       Updates{AutomaticCheck: true, CheckIntervalHours: 12, UpdateTime: "03:00", UpdateSource: "github"},
 	}, Peers: []Peer{}, Routes: []Route{}, RouteFeeds: []RouteFeed{}, Interception: []Interception{}, Overrides: []Override{}}
 }
 
@@ -393,6 +394,9 @@ func (d Document) Validate() error {
 	}
 	if s.Updates.CheckIntervalHours < 1 || s.Updates.CheckIntervalHours > 168 {
 		return errors.New("update check interval must be between 1 and 168 hours")
+	}
+	if s.Updates.UpdateSource != "" && s.Updates.UpdateSource != "github" && s.Updates.UpdateSource != "gitea" {
+		return errors.New("update source must be github or gitea")
 	}
 	if _, _, ok := ParseUpdateTime(s.Updates.UpdateTime); !ok {
 		return errors.New("update time must be a local HH:MM time")

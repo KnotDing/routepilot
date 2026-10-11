@@ -37,6 +37,7 @@ func (u *updateStub) StartForChannel(string, bool) (softwareupdate.Status, error
 	}
 	return u.status, u.startError
 }
+func (u *updateStub) SetSource(string) {}
 
 func updateFixture(t *testing.T) (*API, *updateStub) {
 	t.Helper()

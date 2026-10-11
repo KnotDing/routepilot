@@ -143,7 +143,7 @@
 
 | 任务 | 首读文件 / 关键点 | 关联文件 |
 | --- | --- | --- |
-| 配置字段、默认值、校验 | `internal/config/config.go`（`Document` / `Settings`）；路由、安全、通知、Surge 重启校验在同目录专题文件 | `internal/database/store.go`；`web/src/form-fields.jsx`；`web/src/main.jsx` 的 `Settings` |
+| 配置字段、默认值、校验 | `internal/config/config.go`（`Document` / `Settings`）；路由、安全、通知、Surge 重启和更新源校验在同目录专题文件 | `internal/database/store.go`；`web/src/form-fields.jsx`；`web/src/main.jsx` 的 `Settings` |
 | 保存慢、配置应用失败、监听变更 | `internal/app/configuration.go`（`SaveConfiguration` / `runConfigurationWorker`）；`app.go` 的 `activateConfiguration` / `Serve` | `internal/api/configuration_apply.go`；`web/src/configuration.js`、`configuration-status.jsx`；`docs/submission-responsiveness.md` |
 | 耗时操作与进度 | `internal/api/operations.go`（`startOperation`）；检查 `Prefer: respond-async` | `web/src/client.js`、`operation-status.jsx`；`internal/controlclient/client.go` 的 `Request` |
 | DNS 分流、AAAA 回落、Fake-IP 门禁 | `internal/dnsserver/dispatcher.go`（`Dispatch` / `resolveSurge`）；`internal/model/model.go` 定义查询上下文与结果 | `internal/localdns/local.go`；`internal/app/app.go` 的 `policy.Classify`；`internal/state/machine.go` |
@@ -158,7 +158,7 @@
 | DNS 累计统计、客户端与查询历史 | `internal/dnsserver/dispatcher.go` 的 `Counters` / `ClientStatistics` / `History`；`internal/app/statistics.go` | `web/src/dns-overview.jsx`、`clients.jsx`、`dns-result.jsx`；查询历史不要误当成持久化累计统计 |
 | 登录、管理 IP 白名单、反向代理 | `internal/security/security.go`（`Wrap`）；`client_ip.go`；`internal/config/management_security.go` | `internal/controlclient/access.go`；`web/src/credentials.js`、`backends.jsx`；`native/credentials.swift`、`remote_credentials.swift`；`docs/remote-management.md` |
 | 远程连接与接口兼容 | `internal/remote/remote.go` 的接口允许列表与中继；`web/src/client.js` 的 `request` / `requestOptional` / `selectBackend` | `web/src/backends.jsx`、`version-notice.jsx`；`Workspace` 的页面请求与登录恢复 |
-| 检查版本、自动下载/安装与跳过版本 | `internal/softwareupdate/update.go`（`Check` / `StartForChannel` / 版本比较）；`internal/api/update_scheduler.go` | `web/src/backend-update.jsx`、`app-preferences.jsx`；`native/release_updater.swift`、`update_dialog.swift`、`update_assistant.swift` |
+| 检查版本、更新源、自动下载/安装与跳过版本 | `internal/config/config.go` 的 `Updates.UpdateSource`；`internal/softwareupdate/update.go`（`Check` / `StartForChannel` / 版本比较）；`internal/softwareupdate/worker.go` 保留已选来源；`internal/api/update_scheduler.go` | `web/src/main.jsx` 的 `Settings`、`form-fields.jsx`；`native/release_updater.swift`、`update_dialog.swift`、`update_assistant.swift` |
 | 完整升级、回滚、远端 App 重启 | `internal/softwareupdate/application.go`、`worker.go`、`app_restart.go`；`agent.go`（更新助手） | `native/remote_update_restart.swift`、`installer.swift`；`internal/security/update_sessions.go`；凭证与管理窗口恢复 |
 | CLI / skill 开关、安装目标与冲突 | `internal/api/automation.go`；`internal/appautomation/automation.go`（目标后端的桌面用户 helper） | `native/automation.swift`；`web/src/automation-settings.jsx`；`scripts/install_cli.sh` / `install_skill.sh`；`skills/routepilot-control/` |
 | 状态栏菜单、动画与指标 | `native/main.swift` 的 `rebuildMenu` / `refreshFromBackend`；`status_icon.swift`、`status_preferences.swift` | `web/src/status-bar-settings.jsx`；`internal/app/surge_recovery.go` 的请求速率采样 |

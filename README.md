@@ -15,7 +15,7 @@ RoutePilot 是一款 macOS 状态栏应用：向 Surge 查询分流策略，为 
 - **缩短直连路径：** DIRECT 查询返回真实地址，客户端后续流量由网关直接送往 WAN，不必绕经 Surge；Fake-IP 和下一跳配置为 Surge 的受管理前缀仍按路由经过 Surge。
 - **Surge 故障时保留新连接的直连路径：** RoutePilot 停止发放新的 Fake-IP，后续查询改用独立真实 DNS 解析，让网关可将新连接直连出网（真实 DNS 与 WAN 可用时）。已发放 Fake-IP 在 TTL / 宽限期内仍可能依赖 Surge。
 
-[📦 下载最新版本](https://gitea.knotding.com/knot/routepilot/releases) · [🚀 快速开始](#quick-start) · [🤖 安装 skill](#agent-skill) · [📚 文档导航](#documentation)
+[📦 下载最新版本](https://github.com/KnotDing/routepilot/releases) · [Gitea 备用下载](https://gitea.knotding.com/knot/routepilot/releases) · [🚀 快速开始](#quick-start) · [🤖 安装 skill](#agent-skill) · [📚 文档导航](#documentation)
 
 <p align="center">
   <img src="docs/images/management-4k.png" width="100%" alt="RoutePilot App 管理界面 4K 截图">
@@ -39,7 +39,7 @@ RoutePilot 是一款 macOS 状态栏应用：向 Surge 查询分流策略，为 
 
 ## 🚀 快速开始
 
-1. 从 [Releases](https://gitea.knotding.com/knot/routepilot/releases) 下载 **RoutePilot-macos-arm64.dmg**，将 **RoutePilot.app** 拖入 `/Applications`。目前发布包面向 **Apple Silicon，macOS 13 及以上**。DMG/ZIP 拖放用于首次安装；已有安装请从 App 的“设置 → 软件更新”执行完整升级，手动替换 App 不会更新已安装的常驻网络后台。手动替换后若 App 与后台版本不一致，App 启动时会提示用 App 携带的后台覆盖本机网络后台以修复。
+1. 从 [GitHub Releases](https://github.com/KnotDing/routepilot/releases) 下载 **RoutePilot-macos-arm64.dmg**，也可从 [Gitea Releases](https://gitea.knotding.com/knot/routepilot/releases) 下载。将 **RoutePilot.app** 拖入 `/Applications`。目前发布包面向 **Apple Silicon，macOS 13 及以上**。DMG/ZIP 拖放用于首次安装；已有安装请从 App 的“设置 → 软件更新”执行完整升级，手动替换 App 不会更新已安装的常驻网络后台。手动替换后若 App 与后台版本不一致，App 启动时会提示用 App 携带的后台覆盖本机网络后台以修复。
 2. 启动 App，从状态栏打开管理窗口。默认管理地址为 `http://127.0.0.1:1055`，也能通过浏览器访问；已有本机后台时直接连接。
 3. 按下面的步骤配置 Surge、DNS 和路由。需要透明 DNS / PF 时，在状态栏菜单安装**网络后台服务**，首次安装需管理员授权。
 
@@ -184,7 +184,7 @@ App 菜单的 **应用偏好 → 登录凭证保存方式** 可选 macOS 钥匙�
 
 ### 更新完整应用，不再分开升级
 
-**设置 → 软件更新** 的**自动更新**设置（自动检查、自动检查 Beta 版本、自动安装、检查间隔与自动更新时间）保存在当前连接的后端，控制该后端所在 Mac 的完整应用（App、管理页面与网络服务）自动检查与自动安装；自动安装每天最多启动一次安装任务，调度记录在重启和升级后保留；未在计划时间运行的服务会在启动后补装。检查或启动任务失败时会显示原因，并在 5 分钟后重试。跳过版本保存在对应后端，App 和浏览器共同遵守，自动安装也会跳过它；手动选择立即升级或取消跳过可恢复该版本的安装。软件更新页面将手动检查和自动更新选项放在一起：**立即检查更新**始终针对当前连接的后端所在 Mac；App 连接本机后端时显示**发现新版本时提示**，连接远程后端时隐藏。升级窗口提供**跳过该版本 / 稍后升级 / 立即升级**，可展开 Markdown 更新说明；自动检查和自动安装由后端设置控制。
+**设置 → 软件更新** 的**自动更新**设置（更新源、自动检查、自动检查 Beta 版本、自动安装、检查间隔与自动更新时间）保存在当前连接的后端，控制该后端所在 Mac 的完整应用（App、管理页面与网络服务）自动检查与自动安装。默认从 GitHub 检查并下载更新，也可切换到 Gitea。自动安装每天最多启动一次安装任务，调度记录在重启和升级后保留；未在计划时间运行的服务会在启动后补装。检查或启动任务失败时会显示原因，并在 5 分钟后重试。跳过版本保存在对应后端，App 和浏览器共同遵守，自动安装也会跳过它；手动选择立即升级或取消跳过可恢复该版本的安装。软件更新页面将手动检查和自动更新选项放在一起：**立即检查更新**始终针对当前连接的后端所在 Mac；App 连接本机后端时显示**发现新版本时提示**，连接远程后端时隐藏。升级窗口提供**跳过该版本 / 稍后升级 / 立即升级**，可展开 Markdown 更新说明；自动检查和自动安装由后端设置控制。
 
 - **自动检查 Beta 版本**（后端的自动更新设置）默认关闭。启用后，检查会同时比较最新正式版和编号 Beta，版本号相同时优先正式版。测试版可能包含未完成的功能；首次从旧版更新助手安装 Beta 时，可能需要再次管理员授权来刷新更新助手。发布正式版后，可随正式版升级回稳定版。
 - **本机升级**：同步更新 App、管理页面与已安装的网络服务。App 放在 `/Applications` 后可从**状态栏菜单 → 启用更新助手**启用助手，首次管理员授权后避免每次升级重复输入密码。
@@ -273,7 +273,7 @@ bin/surge-controller serve --database /ABSOLUTE/PRIVATE/DIRECTORY/controller.sql
 
 默认仅开放本机管理，BGP 与透明拦截关闭。未配置出口接口和源地址时，Fake-IP 门禁保持关闭。
 
-常驻服务可用 [安装脚本](scripts/install_macos.sh) 安装、[移除脚本](scripts/uninstall_macos.sh) 移除；移除保留数据库、密钥和日志。推送版本标签后，[Gitea Release 工作流](.gitea/workflows/release.yaml) 在 Apple Silicon 的 `macos-arm64` Runner 上构建并上传 **DMG、ZIP、SHA256SUMS**。
+常驻服务可用 [安装脚本](scripts/install_macos.sh) 安装、[移除脚本](scripts/uninstall_macos.sh) 移除；移除保留数据库、密钥和日志。推送版本标签后，[Gitea Release 工作流](.gitea/workflows/release.yaml) 与 [GitHub Release 工作流](.github/workflows/release.yaml) 分别在 Apple Silicon macOS Runner 上构建并上传 **DMG、ZIP、SHA256SUMS**。推送 `main` 或创建 Pull Request 时，两边也会执行回归检查。
 
 ## 🧰 遇到问题，从这里查起
 

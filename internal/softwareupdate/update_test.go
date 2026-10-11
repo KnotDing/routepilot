@@ -22,6 +22,8 @@ import (
 	"surge-controller/internal/buildinfo"
 )
 
+const origin = giteaOrigin
+
 func TestStableVersionsAndUpdateOrdering(t *testing.T) {
 	for _, value := range []string{"0.5.2", "v1.0.0", "v12.30.40", "v1.0.1-beta.1"} {
 		if _, err := versionParts(value); err != nil {
@@ -243,6 +245,7 @@ func isolatedManager(t *testing.T) *managerFixture {
 	t.Helper()
 	f := &managerFixture{state: Status{Phase: "idle"}}
 	m := New(context.Background(), filepath.Join(t.TempDir(), "database"), func() error { return nil })
+	m.SetSource("gitea")
 	m.supported = true
 	m.reason = ""
 	m.latest = fixtureRelease("package", "SHA256SUMS")

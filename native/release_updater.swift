@@ -2,10 +2,12 @@ import CryptoKit
 import Foundation
 
 private final class ReleaseDownloadDelegate: NSObject, URLSessionTaskDelegate {
+    let source: String
+    init(source: String) { self.source = source; super.init() }
     func urlSession(_ session: URLSession, task: URLSessionTask,
                     willPerformHTTPRedirection response: HTTPURLResponse, newRequest request: URLRequest,
                     completionHandler: @escaping (URLRequest?) -> Void) {
-        completionHandler(request.url.map(ReleaseUpdater.trustedDownloadURL) == true ? request : nil)
+        completionHandler(request.url.map { ReleaseUpdater.trustedDownloadURL($0, source: source) } == true ? request : nil)
     }
 }
 
@@ -23,6 +25,7 @@ struct GiteaRelease: Decodable {
     let body: String?
     let draft: Bool?
     let prerelease: Bool?
+    var source: String? = nil
     enum CodingKeys: String, CodingKey {
         case tagName = "tag_name"
         case assets, body, draft, prerelease
@@ -30,20 +33,19 @@ struct GiteaRelease: Decodable {
 }
 
 enum ReleaseUpdater {
-    static let repository = "https://gitea.knotding.com/knot/routepilot"
-    private static let host = "gitea.knotding.com"
-
-    static func latest(includingBeta: Bool = false) async throws -> GiteaRelease {
-        let data = try await releaseData(path: "releases/latest")
-        let release = try JSONDecoder().decode(GiteaRelease.self, from: data)
+    static func latest(source: String = "github", includingBeta: Bool = false) async throws -> GiteaRelease {
+        let data = try await releaseData(path: "releases/latest", source: source)
+        var release = try JSONDecoder().decode(GiteaRelease.self, from: data)
+        release.source = source
         guard release.draft != true, release.prerelease != true, stableVersion(release.tagName) != nil else {
             throw AppFailure(message: "更新服务返回了无效的正式版本信息")
         }
         guard includingBeta else { return release }
-        let betaData = try await releaseData(path: "releases?limit=50")
-        guard let releases = try? JSONDecoder().decode([GiteaRelease].self, from: betaData) else {
+        let betaData = try await releaseData(path: source == "gitea" ? "releases?limit=50" : "releases?per_page=100", source: source)
+        guard var releases = try? JSONDecoder().decode([GiteaRelease].self, from: betaData) else {
             throw AppFailure(message: "Beta 更新服务返回了无效版本信息")
         }
+        releases.indices.forEach { releases[$0].source = source }
         return preferredRelease(stable: release, beta: newestBeta(in: releases))
     }
 
@@ -69,9 +71,10 @@ enum ReleaseUpdater {
         return isNewer(release.tagName, than: current)
     }
 
-    static func latestBeta() async throws -> GiteaRelease {
-        let data = try await releaseData(path: "releases?limit=50")
-        let releases = try JSONDecoder().decode([GiteaRelease].self, from: data)
+    static func latestBeta(source: String = "github") async throws -> GiteaRelease {
+        let data = try await releaseData(path: source == "gitea" ? "releases?limit=50" : "releases?per_page=100", source: source)
+        var releases = try JSONDecoder().decode([GiteaRelease].self, from: data)
+        releases.indices.forEach { releases[$0].source = source }
         guard let latest = newestBeta(in: releases) else {
             throw AppFailure(message: "没有可用的 Beta 版本")
         }
@@ -83,18 +86,21 @@ enum ReleaseUpdater {
             .max(by: { isNewer($1.tagName, than: $0.tagName) })
     }
 
-    private static func releaseData(path: String) async throws -> Data {
-        guard let url = URL(string: "https://\(host)/api/v1/repos/knot/routepilot/\(path)") else {
+    private static func releaseData(path: String, source: String) async throws -> Data {
+        guard source == "github" || source == "gitea",
+              let url = URL(string: source == "gitea"
+                ? "https://gitea.knotding.com/api/v1/repos/knot/routepilot/\(path)"
+                : "https://api.github.com/repos/KnotDing/routepilot/\(path)") else {
             throw AppFailure(message: "更新服务地址无效")
         }
         var request = URLRequest(url: url)
         request.timeoutInterval = 10
         request.setValue("application/json", forHTTPHeaderField: "Accept")
-        let session = URLSession(configuration: .ephemeral, delegate: ReleaseDownloadDelegate(), delegateQueue: nil)
+        let session = URLSession(configuration: .ephemeral, delegate: ReleaseDownloadDelegate(source: source), delegateQueue: nil)
         defer { session.finishTasksAndInvalidate() }
         let (data, response) = try await session.data(for: request)
         guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode),
-              response.url.map(trustedDownloadURL) == true, data.count <= 2 * 1024 * 1024 else {
+              response.url.map({ trustedDownloadURL($0, source: source) }) == true, data.count <= 2 * 1024 * 1024 else {
             let code = (response as? HTTPURLResponse)?.statusCode ?? 0
             throw AppFailure(message: L("获取最新版本失败（HTTP {code}）", ["code": code]))
         }
@@ -161,8 +167,14 @@ enum ReleaseUpdater {
         return release.prerelease == true ? newerBeta(release, current: backend) : newer(release, current: backend)
     }
 
-    static func trustedDownloadURL(_ url: URL) -> Bool {
-        url.scheme == "https" && url.host == host && (url.port == nil || url.port == 443)
+    static func trustedDownloadURL(_ url: URL, source: String = "gitea") -> Bool {
+        let host = url.host?.lowercased() ?? ""
+        let path = url.path
+        let allowed = source == "gitea" ? host == "gitea.knotding.com"
+            : source == "github" && (host == "api.github.com" && path.hasPrefix("/repos/KnotDing/routepilot/")
+                || host == "github.com" && path.hasPrefix("/KnotDing/routepilot/releases/download/")
+                || host == "release-assets.githubusercontent.com" || host == "objects.githubusercontent.com")
+        return url.scheme == "https" && allowed && (url.port == nil || url.port == 443)
             && url.user == nil && url.password == nil && url.fragment == nil
     }
     static func checksum(_ text: String, archiveName: String) throws -> String {
@@ -189,7 +201,8 @@ enum ReleaseUpdater {
         guard archives.count == 1, sums.count == 1, let archive = archives.first, let checksums = sums.first else {
             throw AppFailure(message: L("此版本没有适用于本机的安装包"))
         }
-        let checksumData = try await download(checksums.browserDownloadURL, maximumBytes: 1024 * 1024)
+        let source = release.source ?? "github"
+        let checksumData = try await download(checksums.browserDownloadURL, maximumBytes: 1024 * 1024, source: source)
         guard let checksumText = String(data: checksumData, encoding: .utf8) else {
             throw AppFailure(message: "Release 校验文件中没有本机安装包的 SHA-256")
         }
@@ -201,7 +214,7 @@ enum ReleaseUpdater {
         if let size = try? cachedArchive.resourceValues(forKeys: [.fileSizeKey]).fileSize, size <= 1024 * 1024 * 1024,
            let cached = try? Data(contentsOf: cachedArchive),
            SHA256.hash(data: cached).map({ String(format: "%02x", $0) }).joined() == expected { return cachedArchive }
-        let archiveData = try await download(archive.browserDownloadURL, maximumBytes: 1024 * 1024 * 1024)
+        let archiveData = try await download(archive.browserDownloadURL, maximumBytes: 1024 * 1024 * 1024, source: source)
         let actual = SHA256.hash(data: archiveData).map { String(format: "%02x", $0) }.joined()
         guard actual == expected else { throw AppFailure(message: "安装包 SHA-256 校验失败，未执行升级") }
 
@@ -239,17 +252,17 @@ enum ReleaseUpdater {
         }
     }
 
-    private static func download(_ url: URL, maximumBytes: Int) async throws -> Data {
-        guard trustedDownloadURL(url) else {
+    private static func download(_ url: URL, maximumBytes: Int, source: String) async throws -> Data {
+        guard trustedDownloadURL(url, source: source) else {
             throw AppFailure(message: "Release 下载地址不可信")
         }
         var request = URLRequest(url: url)
         request.timeoutInterval = 180
-        let session = URLSession(configuration: .ephemeral, delegate: ReleaseDownloadDelegate(), delegateQueue: nil)
+        let session = URLSession(configuration: .ephemeral, delegate: ReleaseDownloadDelegate(source: source), delegateQueue: nil)
         defer { session.finishTasksAndInvalidate() }
         let (data, response) = try await session.data(for: request)
         guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode),
-              response.url.map(trustedDownloadURL) == true else {
+              response.url.map({ trustedDownloadURL($0, source: source) }) == true else {
             throw AppFailure(message: "Release 文件下载失败")
         }
         guard data.count <= maximumBytes else { throw AppFailure(message: "Release 文件超过大小限制") }
