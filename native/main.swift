@@ -1,5 +1,5 @@
 import AppKit
-import WebKit
+@preconcurrency import WebKit
 import ServiceManagement
 import Darwin
 
@@ -48,7 +48,7 @@ final class ControllerClient {
 }
 
 @MainActor
-final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, @preconcurrency WKNavigationDelegate, @preconcurrency WKUIDelegate, @preconcurrency WKDownloadDelegate, NSMenuDelegate, @preconcurrency WKScriptMessageHandler {
+final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNavigationDelegate, WKUIDelegate, WKDownloadDelegate, NSMenuDelegate, WKScriptMessageHandler {
     let arguments = CommandLine.arguments
     var client: ControllerClient!
     var statusItem: NSStatusItem!
