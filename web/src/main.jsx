@@ -128,7 +128,6 @@ export function Settings({settings,refresh,notify,status={},backend=null,interce
     <header className="routing-heading"><h2>{category==='cache'?ct('settingsTitle'):category==='updates'?t('软件更新'):t('{section}设置',{section:t(groups[category])})}</h2>{category==='general'&&<LanguageSelector/>}</header>
     {category==='updates'?<>
      <p>{t('检查与升级针对当前连接的后端所在 Mac。')}</p>
-     {nativeApp()&&<GitHubAccessTokenControls preferences={localPreferences} notify={notify}/>}
      {localApp?<LocalAppUpdateControls preferences={localPreferences} notify={notify}/>:onUpdateTarget?<div ref={onUpdateTarget}/>:<BackendUpdate backend={backend} capable={status.online_update} software={status.software} authentication={settings?.security?.authentication!==false} onReady={refresh} showCurrent embedded/>}
     </>:<FormHint/>}
     <fieldset disabled={saving} style={{border:0,padding:0,margin:0,minWidth:0}}>
@@ -140,7 +139,7 @@ export function Settings({settings,refresh,notify,status={},backend=null,interce
       <section className="panel"><h3>{t('管理认证与 TLS')}</h3><div className="option-grid">{entries.filter(([k,v])=>typeof v==='boolean').map(renderField)}</div><div className="form-grid">{entries.filter(([k,v])=>typeof v!=='boolean'&&!securityNetworkFields.includes(k)).map(renderField)}</div></section>
       <section className="panel"><h3>{t('管理 IP 与反向代理')}</h3><div className="form-grid">{securityNetworkFields.map(key=>entries.find(([k])=>k===key)).filter(Boolean).map(renderField)}</div><p>{t('客户端 IP 按代理链从右向左确认。只将真实客户端加入免认证白名单，不要将代理地址用于免认证。通过本机中继连接远端时，远端看到的是本机 Controller 的出口 IP。')}</p></section>
      </>:<>
-      <div className="form-grid">{entries.filter(([,v])=>typeof v!=='boolean').map(renderField)}</div>
+      <div className="form-grid">{entries.filter(([,v])=>typeof v!=='boolean').map(entry=><React.Fragment key={entry[0]}>{renderField(entry)}{category==='updates'&&entry[0]==='update_source'&&nativeApp()&&(draft.updates.update_source||'github')==='github'&&<GitHubAccessTokenControls preferences={localPreferences} notify={notify}/>}</React.Fragment>)}</div>
       <div className="option-grid">{entries.filter(([,v])=>typeof v==='boolean').map(renderField)}{category==='updates'&&localApp&&<Field name="updatePrompts" label={t('发现新版本时提示')} value={localPreferences.updatePrompts} onChange={updatePrompts=>setLocalPreferences({...localPreferences,updatePrompts})}/>} {category==='surge'&&<Field name="conservative_direct" value={!draft.surge.trust_direct} onChange={value=>setDraft({...draft,surge:{...draft.surge,trust_direct:!value}})}/>}</div>
      </>}
      {category==='notifications'&&<><NotificationErrors settings={draft.notifications} onChange={errors=>setDraft({...draft,notifications:{...draft.notifications,errors}})}/><p>{t('通知依据健康探测的连续失败阈值触发，未启用的组件不会告警。设置作用于当前后端。')}</p><p>{t('Webhook 由后台独立发送 JSON POST，包含 title、body、state、components 和 at；页面关闭后仍可推送。地址加密保存，不包含在导出备份中。')}</p><p>{draft.notifications?.webhook_configured?t('已保存 Webhook 地址'):t('尚未配置 Webhook 地址；仍可使用本机系统通知。')}</p></>}
