@@ -610,3 +610,37 @@ Local checks passed: 30 frontend files / 147 tests, production build, full
 browser fixture excludes 1492 unrecorded-final requests from 4560, confirms
 3068 in the exact detail rows, verifies displayed shares sum to 100% within
 rounding, and repeats actual ribbon-scale / middle-node alignment checks.
+
+## v1.0.4-beta.14 capacity-grouped unrecorded kinds — 2026-10-12
+
+Missing-policy and capacity-overflow observations stay distinct types when
+flow details are grouped under pressure, so small unrecorded flows are never
+folded into the remaining policies or their percentage denominators. The
+client policy chart keeps excluding requests without a recorded final policy
+from every column, ribbon, exact detail row and denominator.
+
+Local checks passed: 30 frontend files / 147 tests, `go vet ./...` and race
+tests for `internal/dnsserver`, and `make package package-check` for
+1.0.4-beta.14 / source build 96.
+
+Beta.14 publication verified: tag points to
+`1e352790cfa1187747fe2b18155766a4a119f126`; GitHub regression (`38229480681`)
+and release (`38229480688`) passed, and Gitea run `2087` mirrored GitHub with
+the fallback build skipped. Both releases are non-draft prereleases with
+exactly three downloadable nonempty attachments; downloaded hashes match
+across providers and the actual App and bundled backend are
+`1.0.4-beta.14 / build 22`.
+
+## v1.0.4-beta.15 flow ribbon selection — 2026-10-12
+
+Ribbons in the DNS request flow and client policy flow charts accept clicks
+(Enter/Space on keyboard focus as well). Selecting one ribbon highlights it,
+dims the rest and pins the flow's exact request count and share below the
+chart; clicking again clears the selection and clicking another ribbon
+replaces it. The selected flow is tracked by its stage/source/target identity,
+so live refreshes update the pinned numbers instead of freezing stale values.
+Sensitive-display protection keeps applying to the pinned labels.
+
+Local checks passed: 30 frontend files / 149 tests including the new ribbon
+selection cases, production build, and 17-page / 14-category browser checks at
+1440/1120/390.

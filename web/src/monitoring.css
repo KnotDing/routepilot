@@ -82,6 +82,9 @@
 
 .monitor-flow-grid { display: grid; grid-template-columns: repeat(auto-fit,minmax(min(100%,780px),1fr)); gap: 22px; }
 .monitor-flow-grid .monitor-sankey { min-width: 480px; }
+.monitor-ribbon { cursor: pointer; transition: fill-opacity .15s ease; }
+.monitor-ribbon.picked, .monitor-ribbon:focus { stroke: var(--accent); stroke-width: 2; outline: none; }
+.monitor-flow-picked { margin: 10px 0 0; font-size: 13px; }
 .monitor-flow-grid svg text { font-size: 20px; }
 .monitor-flow-grid svg .monitor-svg-heading { font-size: 18px; }
 .monitor-flow-grid svg .monitor-svg-value { font-size: 17px; }

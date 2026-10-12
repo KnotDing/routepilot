@@ -136,3 +136,30 @@ it('excludes unrecorded final-policy triples from every column and its denominat
  expect(visibleClientPolicyFlows([{...rows[0],final_kind:'rest',final_policy:''},{...rows[0],final_kind:'overflow',final_policy:''},...rows])).toHaveLength(3);
  expect(visibleClientPolicyFlows([{source:'old',policy:'Proxy',kind:'named',queries:3}])).toHaveLength(1);
 });
+
+it('highlights a clicked DNS flow ribbon and pins its exact request count',()=>{
+ render(<MonitoringPanel snapshot={snapshot} onFocus={()=>{}}/>);
+ const chart=document.querySelector('.monitor-flow');
+ expect(within(chart).getByText('点击流带可高亮该流向并查看精确请求数。')).toBeInTheDocument();
+ const ribbon=within(chart).getByRole('button',{name:'直接请求 → 真实 DNS 上游: 3 · 30.0%'});
+ fireEvent.click(ribbon);
+ expect(ribbon).toHaveAttribute('aria-pressed','true');
+ expect(within(chart).getByText('已选中 直接请求 → 真实 DNS 上游：3 次请求（30.0%），再次点击可取消选中。')).toBeInTheDocument();
+ fireEvent.click(within(chart).getByRole('button',{name:'直接请求 → 响应缓存: 2 · 20.0%'}));
+ expect(within(chart).queryByText(/已选中 直接请求 → 真实 DNS 上游/)).toBeNull();
+ expect(within(chart).getByText('已选中 直接请求 → 响应缓存：2 次请求（20.0%），再次点击可取消选中。')).toBeInTheDocument();
+ fireEvent.click(within(chart).getByRole('button',{name:'直接请求 → 响应缓存: 2 · 20.0%'}));
+ expect(within(chart).queryByText(/已选中/)).toBeNull();
+ expect(within(chart).getByText('点击流带可高亮该流向并查看精确请求数。')).toBeInTheDocument();
+});
+
+it('selects client-policy ribbons per stage with their exact request counts',()=>{
+ const rows=[{source:'192.0.2.10',kind:'named',policy:'Proxy',final_kind:'named',final_policy:'Node A',queries:6},{source:'192.0.2.10',kind:'named',policy:'Proxy',final_kind:'named',final_policy:'Node B',queries:4}];
+ render(<MonitoringPanel snapshot={{...snapshot,source_policy_flows:rows}} onFocus={()=>{}}/>);
+ const chart=document.querySelector('.monitor-client-policy');
+ fireEvent.click(within(chart).getByRole('button',{name:'192.0.2.10 → Proxy: 10 · 100.0%'}));
+ expect(within(chart).getByText('已选中 192.0.2.10 → Proxy：10 次请求（100.0%），再次点击可取消选中。')).toBeInTheDocument();
+ fireEvent.click(within(chart).getByRole('button',{name:'Proxy → Node A: 6 · 60.0%'}));
+ expect(within(chart).queryByText(/已选中 192\.0\.2\.10/)).toBeNull();
+ expect(within(chart).getByText('已选中 Proxy → Node A：6 次请求（60.0%），再次点击可取消选中。')).toBeInTheDocument();
+});

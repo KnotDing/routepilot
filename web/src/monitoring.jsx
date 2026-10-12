@@ -11,18 +11,29 @@ const colors={addressed:'var(--accent)',intercepted:'#8872db',local:'var(--succe
 const number=n=>Number(n).toLocaleString(currentLocale(),{maximumFractionDigits:1});
 const percent=(n,total)=>total?`${(share(n,total)*100).toLocaleString(currentLocale(),{minimumFractionDigits:1,maximumFractionDigits:2})}%`:'—';
 
+function FlowRibbon({ribbon,total,picked,onPick}){
+ const active=picked===ribbon.id,dim=picked&&!active,info=`${ribbon.description}: ${number(ribbon.count)} · ${percent(ribbon.count,total)}`,toggle=()=>onPick(active?'':ribbon.id);
+ return <path className={'monitor-ribbon'+(active?' picked':'')} d={ribbon.path} fill={ribbon.fill} fillOpacity={active?'.6':dim?'.1':'.25'} role="button" tabIndex="0" aria-pressed={active} aria-label={info} onClick={toggle} onKeyDown={event=>{if(event.key==='Enter'||event.key===' '){event.preventDefault();toggle()}}}><title>{info}</title></path>;
+}
+
+function FlowPickedHint({picked,total}){
+ const t=useT();
+ return <p className={'monitor-flow-picked'+(picked?'':' field-hint')} aria-live="polite">{picked?t('已选中 {flow}：{count} 次请求（{percent}），再次点击可取消选中。',{flow:picked.description,count:number(picked.count),percent:percent(picked.count,total)}):t('点击流带可高亮该流向并查看精确请求数。')}</p>;
+}
+
 function FlowChart({snapshot,sources,selected,clientSettings=[]}){
  const t=useT(),labels=useSourceLabels(clientSettings),classified=sourceFlows(snapshot,sources,selected),flows=classified?.flows||snapshot.flows,total=classified?flows.reduce((sum,f)=>sum+f.queries,0):snapshot.completed,labelLines=Math.max(1,...(classified?.keys||[]).map(key=>labels.lines(key).length)),{left,right,edges,svgHeight}=flowLayout(flows,total,classified?.keys,undefined,labelLines);
- const label=key=>classified?labels.label(key):t(ingressLabels[key]);
+ const label=key=>classified?labels.label(key):t(ingressLabels[key]),[picked,setPicked]=useState(''),ribbons=edges.map(e=>({...e,id:JSON.stringify([e.source,e.target]),description:`${label(e.source)} → ${t(destinationLabels[e.target])}`,fill:colors[e.target]})),pickedInfo=ribbons.find(r=>r.id===picked);
  const hasFlows=flows.some(f=>f.queries>0);
  return <section className="panel monitor-flow"><header className="section-heading"><h2>{t('DNS 请求流向')}</h2><p>{t('流带宽度按请求数同比例绘制；每条请求只归入一个最终处理去向，占比以展示来源的已完成请求为分母。')}</p></header>
   {!hasFlows?<div className="empty">{t(snapshot.completed?'暂无可展示的来源流向':'暂无已完成请求')}</div>:<>
    <div className="monitor-chart-scroll" tabIndex="0" aria-label={t('DNS 请求流向')}><svg viewBox={`0 0 980 ${svgHeight}`} className="monitor-sankey" role="img" aria-label={t(classified?'DNS 来源到实际处理去向的流向图':'DNS 接入方式到实际处理去向的流向图')}>
     <text x="20" y="22" className="monitor-svg-heading">{t('DNS 流入')}</text><text x="750" y="22" className="monitor-svg-heading">{t('DNS 处理去向')}</text>
-    {edges.map(e=><path key={JSON.stringify([e.source,e.target])} d={e.path} fill={colors[e.target]} fillOpacity=".25"><title>{label(e.source)} → {t(destinationLabels[e.target])}: {number(e.count)} · {percent(e.count,total)}</title></path>)}
+    {ribbons.map(r=><FlowRibbon key={r.id} ribbon={r} total={total} picked={picked} onPick={setPicked}/>)}
     {left.map(n=><g key={n.key}><rect x="210" y={n.y} width="14" height={n.height} fill={classified?'var(--accent)':colors[n.key]} rx="2"/><FlowSourceLabel node={n} labels={classified?labels:{...labels,label,lines:key=>[label(key)],named:()=>false,title:label}} value={`${number(n.count)} · ${percent(n.count,total)}`}/></g>)}
     {right.map(n=><g key={n.key}><rect x="716" y={n.y} width="14" height={n.height} fill={colors[n.key]} rx="2"/><text x="750" y={n.y+n.height/2-5}>{t(destinationLabels[n.key])}</text><text x="750" y={n.y+n.height/2+16} className="monitor-svg-value">{number(n.count)} · {percent(n.count,total)}</text></g>)}
    </svg></div>
+   <FlowPickedHint picked={pickedInfo} total={total}/>
    <details className="monitor-detail"><summary>{t('查看精确流向数据')}</summary><div className="table-wrap"><table><thead><tr><th>{t(classified?'请求来源':'接入方式')}</th><th>{t('DNS 处理去向')}</th><th>{t('DNS 请求数')}</th><th>{t('占已完成请求')}</th></tr></thead><tbody>{flows.map((f,i)=><tr key={i}><td>{label(f.ingress)}</td><td>{t(destinationLabels[f.destination]||f.destination)}</td><td>{number(f.queries)}</td><td>{percent(f.queries,total)}</td></tr>)}</tbody></table></div></details>
   </>}
   {!classified&&<p className="field-hint">{t('此后端未提供来源流向明细，暂按接入方式展示。')}</p>}
@@ -44,17 +55,18 @@ function ClientPolicyChart({rows:allRows,clientSettings=[]}){
  const sourceKeys=rank(flows,'ingress'),policyKeys=rank(flows,'destination'),finalKeys=rank(finalFlows,'destination'),labelLines=Math.max(1,...sourceKeys.map(key=>labels.lines(key).length),...[...policies.values(),...finals.values()].map(label=>wrapSourceLabel(label).length)),nodeCount=Math.max(sourceKeys.length,policyKeys.length,finalKeys.length),middleX=three?600:716;
  const first=flowLayout(flows,total,sourceKeys,policyKeys,labelLines,{sourceX:210,targetX:middleX,nodeCount}),second=flowLayout(finalFlows,total,policyKeys,finalKeys,labelLines,{sourceX:600,targetX:1040,nodeCount});
  const palette=['var(--accent)','#8872db','#12a5a0','var(--success-text)','#d08b31','var(--danger-text)'],color=(key,keys)=>palette[keys.indexOf(key)%palette.length];
+ const [picked,setPicked]=useState(''),ribbonOf=(id,e,fill,description)=>({id,path:e.path,count:e.count,fill,description}),ribbons=[...first.edges.map(e=>ribbonOf(JSON.stringify(['policy',e.source,e.target]),e,color(e.target,policyKeys),`${labels.title(e.source)} → ${policies.get(e.target)}`)),...(three?second.edges.map(e=>ribbonOf(JSON.stringify(['final',e.source,e.target]),e,color(e.target,finalKeys),`${policies.get(e.source)} → ${finals.get(e.target)}`)):[])],pickedInfo=ribbons.find(r=>r.id===picked);
  return <section className="panel monitor-client-policy"><header className="section-heading"><h2>{t('客户端策略流向')}</h2><p>{t(three?'客户端、命中策略与最终策略共用同一比例尺；未记录最终策略的请求不展示，占比以展示请求为分母。':'按实际请求记录展示客户端、命中策略与最终策略，每一层的流带和节点共用请求数比例尺。')}</p></header>
   {!Array.isArray(rows)?<div className="notice">{t('此后端暂不支持客户端策略流向，请升级后端。')}</div>:!total?<div className="empty">{t(allRows.length?'暂无已记录最终策略的请求':'暂无已完成请求')}</div>:<>
    {!three&&<p className="field-hint">{t('此后端未提供最终策略流向，暂展示客户端到命中策略。')}</p>}
    <div className="monitor-chart-scroll" tabIndex="0" aria-label={t('客户端策略流向')}><svg viewBox={`0 0 ${three?1280:980} ${first.svgHeight}`} className={'monitor-sankey '+(three?'monitor-three-stage':'')} role="img" aria-label={t('客户端到策略或策略组的流向图')}>
     <text x="20" y="22" className="monitor-svg-heading">{t('客户端')}</text><text x={three?600:750} y="22" className="monitor-svg-heading">{t('策略 / 策略组')}</text>{three&&<text x="1075" y="22" className="monitor-svg-heading">{t('最终策略')}</text>}
-    {first.edges.map(e=><path key={JSON.stringify([e.source,e.target])} d={e.path} fill={color(e.target,policyKeys)} fillOpacity=".25"><title>{labels.title(e.source)} → {policies.get(e.target)}: {number(e.count)} · {percent(e.count,total)}</title></path>)}
-    {three&&second.edges.map(e=><path key={JSON.stringify([e.source,e.target])} d={e.path} fill={color(e.target,finalKeys)} fillOpacity=".25"><title>{policies.get(e.source)} → {finals.get(e.target)}: {number(e.count)} · {percent(e.count,total)}</title></path>)}
+    {ribbons.map(r=><FlowRibbon key={r.id} ribbon={r} total={total} picked={picked} onPick={setPicked}/>)}
     {first.left.map(n=><g key={n.key}><rect x="210" y={n.y} width="14" height={n.height} fill="var(--accent)" rx="2"/><FlowSourceLabel node={n} labels={labels} value={`${number(n.count)} · ${percent(n.count,total)}`}/></g>)}
     {first.right.map(n=><g key={n.key}><rect x={middleX} y={n.y} width="14" height={n.height} fill={color(n.key,policyKeys)} rx="2"/><PolicyNodeLabel node={n} x={three?635:750} label={policies.get(n.key)} total={total}/></g>)}
     {three&&second.right.map(n=><g key={n.key}><rect x="1040" y={n.y} width="14" height={n.height} fill={color(n.key,finalKeys)} rx="2"/><PolicyNodeLabel node={n} x="1075" label={finals.get(n.key)} total={total}/></g>)}
    </svg></div>
+   <FlowPickedHint picked={pickedInfo} total={total}/>
    <details className="monitor-detail"><summary>{t('查看客户端策略流向明细')}</summary><div className="table-wrap monitor-policy-table"><table><thead><tr>{['请求来源','策略 / 策略组',...(three?['最终策略']:[]),'DNS 请求数','占已完成请求'].map(label=><th key={label}>{t(label)}</th>)}</tr></thead><tbody>{rows.map(row=><tr key={JSON.stringify([row.source,row.kind,row.policy,row.final_kind,row.final_policy])}><td>{labels.label(row.source)}</td><td>{labelOf(row.kind,row.policy)}</td>{three&&<td>{labelOf(row.final_kind,row.final_policy,true)}</td>}<td>{number(row.queries)}</td><td>{percent(row.queries,total)}</td></tr>)}</tbody></table></div></details>
   </>}
  </section>;
