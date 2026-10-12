@@ -644,3 +644,12 @@ Sensitive-display protection keeps applying to the pinned labels.
 Local checks passed: 30 frontend files / 149 tests including the new ribbon
 selection cases, production build, and 17-page / 14-category browser checks at
 1440/1120/390.
+
+Beta.15 publication verified: tag points to
+`63b1487191cc4a694f601177740fd1358ed977f9`; GitHub regression (`38232084051`)
+and release (`38232084606`) passed, and Gitea run `2088` mirrored GitHub with
+the fallback build skipped. Both releases are non-draft prereleases with
+exactly three downloadable nonempty attachments; downloaded hashes match
+across providers and the actual App and bundled backend are
+`1.0.4-beta.15 / build 23`. Evidence:
+`artifacts/releases/v1.0.4-beta.15/publication-verification.json`.
