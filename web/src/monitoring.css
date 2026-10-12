@@ -80,9 +80,17 @@
  .monitor-focus > main { padding: 16px; }
 }
 
-.monitor-flow-grid { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 22px; }
+.monitor-flow-grid { display: grid; grid-template-columns: repeat(auto-fit,minmax(min(100%,780px),1fr)); gap: 22px; }
 .monitor-flow-grid .monitor-sankey { min-width: 480px; }
 .monitor-flow-grid svg text { font-size: 20px; }
 .monitor-flow-grid svg .monitor-svg-heading { font-size: 18px; }
 .monitor-flow-grid svg .monitor-svg-value { font-size: 17px; }
-@media (max-width: 1200px) { .monitor-flow-grid { grid-template-columns: minmax(0,1fr); } }
+
+
+.monitor-source-label[role="button"] { cursor: pointer; }
+.monitor-source-label[role="button"]:hover, .monitor-source-label[role="button"]:focus { fill: var(--accent); text-decoration: underline; outline: none; }
+
+.monitor-flow-grid .monitor-three-stage { min-width: 680px; }
+.monitor-node-label { paint-order: stroke; stroke: var(--panel); stroke-width: 4px; stroke-linejoin: round; }
+.monitor-source-bars { max-height: 420px; overflow-y: auto; }
+.monitor-source-bars .monitor-source-link { text-align: left; max-width: none; }

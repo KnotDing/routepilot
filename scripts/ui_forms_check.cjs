@@ -7,7 +7,8 @@ const fixture=Function(source.slice(source.indexOf('const settings='),source.ind
  const browser=await chromium.launch({headless:true});
  try{
  const page=await browser.newPage({viewport:{width:1440,height:1000},locale:'zh-CN',colorScheme:'light',reducedMotion:'reduce'});
- let crowdedPolicyFlows=false;
+ let crowdedPolicyFlows=false,sourceNames=false;
+ const sourceRemark='住院楼二层护理站工作电脑用于观察实时解析策略与最终出口名称';
  const errors=[];page.on('pageerror',e=>errors.push(e.message));
  const out='artifacts/ui-forms';fs.mkdirSync(out,{recursive:true});
  await page.route('**/*',async route=>{
@@ -20,10 +21,11 @@ const fixture=Function(source.slice(source.indexOf('const settings='),source.ind
    if(path==='updates/check')value={app_current:'0.4.16',current:'0.4.17',latest:'v0.4.18',available:true,supported:true,phase:'idle',release_notes:'## 界面优化\n\n- **Markdown** 渲染更新说明。\n- 紧凑排列开关选项。\n\n查看 [项目发布](https://gitea.knotding.com/knot/routepilot/releases)。\n\n<script>window.untrustedRelease=true</script>\n\n![image](https://example.invalid/image.png)'};
    if(path==='dns/clients')value={...value,clients:[{client_ip:'192.0.2.10',queries:12,direct:12,surge:0,reject:0,unknown:0,errors:0,last_seen:new Date().toISOString()}],stats:{...value.stats,clients:1,queries:12,direct:12}};
    if(path==='settings')value={...value,cache:{...value.cache,optimistic:false,optimistic_responses:false},notifications:{enabled:true,surge:true,bgp:true,dns:true,controller:true,recovery:true,cooldown_seconds:300,webhook_url:'',webhook_configured:false,errors:[]}};
+   if(path==='settings'&&sourceNames)value={...value,dns:{...value.dns,clients:[{id:'named',ip:'192.0.2.10',name:sourceRemark,decision:''}]}};
    if(path==='status'){value.online_update=true;value.software={...value.software,...JSON.parse(fs.readFileSync('internal/buildinfo/release.json'))};}
    if(path==='status'&&crowdedPolicyFlows){
     const pairs=[['192.168.20.131','',1492],['192.168.20.131','Hidding',1061],['192.168.20.131','REJECT',900],['192.168.20.131','US_FallBack',130],['192.168.20.131','LX_US',20],['192.168.20.131','DIRECT',6],['192.168.20.3','REJECT',143],['192.168.20.3','US_FallBack',583],['192.168.20.3','LX_US',135],['192.168.20.3','DIRECT',58],['192.168.20.3','HK_FallBack',14],['192.168.20.3','JP_FallBack',6],['192.168.20.111','JP_FallBack',4],['192.168.20.111','SG_FallBack',5],['192.168.20.246','SG_FallBack',3]];
-    value.dns_monitoring.source_policy_flows=pairs.map(([source,policy,queries])=>({source,policy,queries,kind:policy?'named':'unnamed'}));
+    value.dns_monitoring.source_policy_flows=pairs.map(([source,policy,queries])=>({source,policy,queries,kind:policy?'named':'unnamed',final_kind:policy?'named':'unnamed',final_policy:policy?policy+'_Node':''}));
    }
    if(path==='surge/status'){value.snapshot.ipv6_state='disabled';value.snapshot.always_real_ip_count=61;}
    return route.fulfill({contentType:'application/json',body:JSON.stringify(value)});
@@ -69,11 +71,11 @@ const fixture=Function(source.slice(source.indexOf('const settings='),source.ind
   await page.getByRole('dialog',{name:'客户端设置',exact:true}).waitFor();if(!(await page.getByLabel('客户端 IP',{exact:true}).getAttribute('readonly')!==null))throw Error('Client IP is not locked to selected row');await page.getByLabel('备注名称',{exact:true}).fill('Office PC');await page.getByLabel('查询策略',{exact:true}).selectOption('SURGE');await check('client settings editor '+width);await page.screenshot({path:out+'/client-settings-'+width+'.png',fullPage:true});await page.getByRole('button',{name:'取消',exact:true}).click();
   await go('大屏监控');
   if(await page.getByRole('heading',{name:'按源统计 DNS 流入',exact:true}).count())throw Error('Standalone source panel remains');
-  await page.locator('.monitor-source-shares').getByRole('heading',{name:'来源请求占比',exact:true}).waitFor();
-  if(await page.locator('.monitor-flow').getByRole('heading',{name:'来源请求占比',exact:true}).count())throw Error('Source shares remain inside the flow card');
+  await page.locator('.monitor-source-shares').getByRole('heading',{name:'请求来源占比',exact:true}).waitFor();
+  if(await page.locator('.monitor-flow').getByRole('heading',{name:'请求来源占比',exact:true}).count())throw Error('Source shares remain inside the flow card');
   await page.getByRole('img',{name:'DNS 来源到实际处理去向的流向图',exact:true}).waitFor();
   await page.getByRole('img',{name:'客户端到策略或策略组的流向图',exact:true}).waitFor();
-  if(width===1440){const a=await page.locator('.monitor-flow').boundingBox(),b=await page.locator('.monitor-client-policy').boundingBox();if(Math.abs(a.y-b.y)>1||b.x<a.x+a.width)throw Error('Flow cards are not side by side');const clipped=await page.locator('.monitor-flow-grid .monitor-chart-scroll').evaluateAll(els=>els.some(el=>el.scrollWidth>el.clientWidth));if(clipped)throw Error('Wide flow charts have clipped labels');}
+  if(width===1440){const a=await page.locator('.monitor-flow').boundingBox(),b=await page.locator('.monitor-client-policy').boundingBox();if(b.y<a.y+a.height)throw Error('Narrow flow cards did not stack');const clipped=await page.locator('.monitor-flow-grid .monitor-chart-scroll').evaluateAll(els=>els.some(el=>el.scrollWidth>el.clientWidth));if(clipped)throw Error('Wide flow charts have clipped labels');}
   await page.getByRole('button',{name:'查看 192.0.2.10 的流向',exact:true}).click();
   await page.getByText('当前统计来源：192.0.2.10',{exact:true}).waitFor();
   await page.locator('.monitor-policies .monitor-policy-name').filter({hasText:'Proxy'}).waitFor();
@@ -102,21 +104,41 @@ const fixture=Function(source.slice(source.indexOf('const settings='),source.ind
   await page.evaluate(theme=>document.documentElement.dataset.theme=theme,theme);
   await page.getByRole('button',{name:'大屏模式',exact:true}).click();
   if(await page.locator('.desktop-sidebar').isVisible())throw Error('Monitoring focus mode still shows navigation');
+  const a=await page.locator('.monitor-flow').boundingBox(),b=await page.locator('.monitor-client-policy').boundingBox();if(Math.abs(a.y-b.y)>1||b.x<a.x+a.width)throw Error('4K flow cards are not side by side');
   await check('monitoring 4K '+theme);await page.screenshot({path:out+'/monitoring-4k-'+theme+'.png',fullPage:true});
   await page.keyboard.press('Escape');
   if(!(await page.locator('.desktop-sidebar').isVisible()))throw Error('Escape did not exit monitoring focus mode');
  }
  crowdedPolicyFlows=true;await page.reload();await page.getByRole('heading',{level:1,name:'仪表盘',exact:true}).waitFor();await go('大屏监控');
  for(const width of [1440,3840]){
-  await page.setViewportSize({width,height:2160});await page.locator('.monitor-client-policy svg text').filter({hasText:'Hidding'}).waitFor();
+  await page.setViewportSize({width,height:2160});await page.locator('.monitor-client-policy svg text[x="635"]').filter({hasText:'Hidding'}).waitFor();
   const overlap=await page.locator('.monitor-client-policy svg').evaluate(svg=>{
    const sides={};for(const group of svg.querySelectorAll(':scope > g')){const rect=group.querySelector('rect'),texts=[...group.querySelectorAll(':scope > text')].map(el=>el.getBBox());if(!rect||!texts.length)continue;const key=rect.getAttribute('x');(sides[key]??=[]).push({top:Math.min(...texts.map(b=>b.y)),bottom:Math.max(...texts.map(b=>b.y+b.height))})}
    return Object.values(sides).some(side=>side.sort((a,b)=>a.top-b.top).some((box,i)=>i>0&&box.top<side[i-1].bottom));
   });if(overlap)throw Error('Crowded policy labels overlap at '+width);
   await page.locator('.monitor-client-policy').screenshot({path:out+'/monitoring-crowded-policies-'+width+'.png'});
  }
- crowdedPolicyFlows=false;
- await page.setViewportSize({width:1440,height:1000});await go('DNS 概览');
+ crowdedPolicyFlows=false;sourceNames=true;await page.reload();await page.getByRole('heading',{level:1,name:'仪表盘',exact:true}).waitFor();await go('大屏监控');
+ for(const width of [1440,3840]){
+  await page.setViewportSize({width,height:2160});
+  for(const css of ['.monitor-flow','.monitor-client-policy']){
+   const label=page.locator(css+' .monitor-source-label[role=button]');await label.waitFor();
+   const text=()=>label.evaluate(el=>[...el.querySelectorAll('tspan')].map(t=>t.textContent).join(''));
+   if(await text()!==sourceRemark)throw Error('Remark label is truncated or includes IP');
+   await label.click();if(await text()!=='192.0.2.10')throw Error('Remark did not toggle to IP');await label.press('Enter');if(await text()!==sourceRemark)throw Error('IP did not toggle back to name');
+  }
+  await page.screenshot({path:out+'/monitoring-named-'+width+'.png',fullPage:true});
+ }
+ sourceNames=false;await page.setViewportSize({width:1440,height:1000});
+ await page.getByRole('button',{name:'收起侧边栏',exact:true}).click();
+ if(!(await page.locator('.desktop-sidebar').evaluate(el=>el.classList.contains('sidebar-icons')&&el.getBoundingClientRect().width===72&&getComputedStyle(el.querySelector('.nav-label')).display==='none')))throw Error('Sidebar icon mode failed');
+ await page.reload();await page.getByRole('heading',{level:1,name:'仪表盘',exact:true}).waitFor();if(!(await page.locator('.desktop-sidebar').evaluate(el=>el.classList.contains('sidebar-icons'))))throw Error('Sidebar preference not restored');
+ await page.getByRole('button',{name:'隐藏侧边栏',exact:true}).click();if(await page.locator('.desktop-sidebar').isVisible())throw Error('Hidden sidebar remains visible');
+ if(await page.locator('main').evaluate(el=>parseFloat(getComputedStyle(el).marginLeft))!==0)throw Error('Hidden sidebar still occupies page space');
+ await page.getByRole('button',{name:'显示侧边栏',exact:true}).hover();await page.getByRole('button',{name:'固定侧边栏',exact:true}).waitFor();
+ await page.mouse.move(500,400);if(await page.locator('.desktop-sidebar').isVisible())throw Error('Floating sidebar did not hide on mouse leave');
+ await page.getByRole('button',{name:'显示侧边栏',exact:true}).hover();await page.getByRole('button',{name:'固定侧边栏',exact:true}).click();
+ await go('DNS 概览');
  await page.evaluate(()=>document.documentElement.dataset.theme='dark');await page.screenshot({path:out+'/dns-dark.png',fullPage:true});
  await page.evaluate(()=>{sessionStorage.setItem('routepilot.backend','preview');document.documentElement.dataset.theme='light'});await page.reload();
  await page.getByRole('button',{name:'升级远程应用',exact:true}).click();

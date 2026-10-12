@@ -109,3 +109,10 @@ it('keeps exit available when monitoring data is lost in large-screen mode',()=>
  fireEvent.click(screen.getByRole('button',{name:'退出大屏'}));
  expect(focus).toHaveBeenCalledWith(false);
 });
+
+it('keeps the middle column identical across both stages and preserves the common scale',()=>{
+ const first=flowLayout([{ingress:'a',destination:'Proxy',queries:7},{ingress:'b',destination:'Proxy',queries:3}],10,['a','b'],['Proxy'],3,{sourceX:210,targetX:600,nodeCount:2});
+ const second=flowLayout([{ingress:'Proxy',destination:'Node A',queries:6},{ingress:'Proxy',destination:'Node B',queries:4}],10,['Proxy'],['Node A','Node B'],3,{sourceX:600,targetX:1040,nodeCount:2});
+ expect(first.scale).toBe(second.scale);expect(first.right[0].y).toBe(second.left[0].y);expect(first.right[0].height).toBe(second.left[0].height);
+ expect(first.edges.reduce((sum,e)=>sum+e.count,0)).toBe(10);expect(second.edges.reduce((sum,e)=>sum+e.count,0)).toBe(10);
+});

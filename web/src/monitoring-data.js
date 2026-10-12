@@ -6,22 +6,23 @@ export function visibleSources(sources){return sources?.filter(s=>s.source!=='le
 
 // A common scale on both sides preserves every ingress/destination edge.
 // No minimum ribbon width: a small request share must remain a small share.
-export function flowLayout(flows,total,sourceKeys=['addressed','intercepted'],targetKeys=destinations){
+export function flowLayout(flows,total,sourceKeys=['addressed','intercepted'],targetKeys=destinations,labelLines=1,geometry={}){
  const sources=sourceKeys.map(key=>({key,count:flows.filter(f=>f.ingress===key).reduce((s,f)=>s+f.queries,0)})).filter(n=>n.count);
  const targets=targetKeys.map(key=>({key,count:flows.filter(f=>f.destination===key).reduce((s,f)=>s+f.queries,0)})).filter(n=>n.count);
  // Reserve enough space for both label lines even when a node is a tiny share.
  // Only gaps grow; node and ribbon thickness remain proportional to requests.
- const gap=52,height=Math.max(350,sources.length*70,targets.length*70),scale=total?(height-gap*Math.max(0,targets.length-1,sources.length-1))/total:0;
- function place(nodes){let y=50+(height-(total*scale+gap*Math.max(0,nodes.length-1)))/2;return nodes.map(n=>{const node={...n,y,height:n.count*scale,used:0};y+=node.height+gap;return node})}
+ const gap=Math.max(52,labelLines*22+30),top=labelLines>1?labelLines*11+50:50,height=Math.max(350,Math.max(sources.length,targets.length,geometry.nodeCount||0)*(gap+18)),scale=total?(height-gap*Math.max(0,targets.length-1,sources.length-1))/total:0;
+ function place(nodes){let y=top+(height-(total*scale+gap*Math.max(0,nodes.length-1)))/2;return nodes.map(n=>{const node={...n,y,height:n.count*scale,used:0};y+=node.height+gap;return node})}
  const left=place(sources),right=place(targets),edges=[];
  for(const source of left)for(const target of right){
   const count=flows.filter(f=>f.ingress===source.key&&f.destination===target.key).reduce((s,f)=>s+f.queries,0);
   if(!count)continue;
   const thickness=count*scale,y1=source.y+source.used,y2=target.y+target.used;
-  edges.push({source:source.key,target:target.key,count,path:`M 224 ${y1} C 440 ${y1}, 500 ${y2}, 716 ${y2} L 716 ${y2+thickness} C 500 ${y2+thickness}, 440 ${y1+thickness}, 224 ${y1+thickness} Z`});
+  const x1=(geometry.sourceX??210)+14,x2=geometry.targetX??716,c1=x1+(x2-x1)*.44,c2=x1+(x2-x1)*.56;
+  edges.push({source:source.key,target:target.key,count,path:`M ${x1} ${y1} C ${c1} ${y1}, ${c2} ${y2}, ${x2} ${y2} L ${x2} ${y2+thickness} C ${c2} ${y2+thickness}, ${c1} ${y1+thickness}, ${x1} ${y1+thickness} Z`});
   source.used+=thickness;target.used+=thickness;
  }
- return {left,right,edges,scale,height};
+ return {left,right,edges,scale,height,svgHeight:height+top+Math.max(45,labelLines*11+25)};
 }
 
 // Group small sources without inventing their destination shares. Each ribbon

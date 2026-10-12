@@ -521,3 +521,24 @@ artifacts/releases/v1.0.4-beta.9/.
 Local beta.10 gates passed: 28 frontend files / 133 tests, production frontend
 build, 17-page responsive checks including same-row check/install buttons at
 1440/1120/390, and full App/package validation for 1.0.4-beta.10 / build 92.
+
+## v1.0.4-beta.11 three-stage flows and navigation — 2026-10-12
+
+Source/policy/final-policy triples are aggregated from observed per-source policy
+records, bounded independently per node column and kept intact in live/history
+responses. Each segment uses the same request scale and middle-node geometry.
+Old policy-only backends show an explicit two-stage fallback. Names alone toggle
+to IPs without changing statistics filters, and full wrapped labels reserve
+extra vertical space. Request source shares use ranked bars, with the existing
+legacy exclusion and denominator preserved.
+
+Sidebar expanded/icon/hidden states persist in the management UI. Hidden
+navigation overlays the page on edge hover or keyboard access and can be
+pinned back. Tests retain DNS mode identity and menu accessibility; browser
+checks cover actual icon width, hidden page margin, preference reload, and
+edge-to-page mouse leave. Mobile navigation remains a separate drawer.
+
+Local beta.11 gates passed: 29 frontend files / 138 tests, related Go race
+tests and vet, bounded 1331-triple aggregation regression, production frontend
+build, 17-page responsive checks plus full name/IP toggles and sidebar hover
+state checks, and full App/package validation for 1.0.4-beta.11 / build 93.

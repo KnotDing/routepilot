@@ -120,9 +120,9 @@
 
 ## 最近已核验发布（2026-10-12）
 
-- 最新已发布正式版仍为 `v1.0.3`（`5ca0fd97496776d9949dbe3218d57f982dc0e04f`）；最新已核验测试版为 `v1.0.4-beta.9`，标签指向 `25f90652c09302cd6fd55794bdb363a67a6cf1b9`。
-- beta.9 GitHub 回归 #29（run `38216768389`）、GitHub Release #17（`38216768399`）成功；Gitea Release #111（run `2082`）成功复用 GitHub 制品，macOS 回退任务跳过。双仓库发布提交与标签已核对一致；后续仅交接文档提交不移动发布标签。
-- 两个发布页均为 `prerelease=true`、`draft=false`，只有 DMG、ZIP、SHA256SUMS 三项附件，下载非空且两边 SHA256 完全相同。实际包内 App 与后台均为 `1.0.4-beta.9 / build 17`；签名、ZIP 资源和 DMG 校验通过。证据位于 `artifacts/releases/v1.0.4-beta.9/publication-verification.json`。
+- 最新已发布正式版仍为 `v1.0.3`（`5ca0fd97496776d9949dbe3218d57f982dc0e04f`）；最新已核验测试版为 `v1.0.4-beta.10`，标签指向 `bc975665023e5b34706ff0951eba13f845845a52`。
+- beta.10 GitHub 回归 #30（run `38218034998`）、GitHub Release #18（`38218035019`）成功；Gitea Release #112（run `2083`）成功复用 GitHub 制品，macOS 回退任务跳过。双仓库发布提交与标签已核对一致；后续仅交接文档提交不移动发布标签。
+- 两个发布页均为 `prerelease=true`、`draft=false`，只有 DMG、ZIP、SHA256SUMS 三项附件，下载非空且两边 SHA256 完全相同。实际包内 App 与后台均为 `1.0.4-beta.10 / build 18`；签名、ZIP 资源和 DMG 校验通过。证据位于 `artifacts/releases/v1.0.4-beta.10/publication-verification.json`。
 - 本轮测试版新增大屏实时 / 七天历史统计、按源流向及占比、独立来源占比卡片，隐藏启用前未知来源并排除其分母；修复历史统计维度共享导致保存失败，区分普通与乐观响应缓存，检查更新不预下载并提供安装下载进度。
 - beta.6 新增持久化客户端备注与强制 DIRECT / SURGE / REJECT 策略，以及与 DNS 请求流向并列的「客户端策略流向」。图表使用实际来源与策略请求对，支持实时、历史及单源筛选；不以边际占比推算关联。
 - beta.8 包含软件更新提示简化、检查按钮移到保存旁、分割线移除，以及小流量客户端 / 策略文字重叠修复。图表只增加节点间距与画布高度，节点和流带仍使用实际请求比例。
@@ -143,13 +143,13 @@
 ## 任务交接（2026-10-12）
 
 - 目标与验收条件：完成客户端设置及并列策略流向图；调整软件更新提示、按钮与分割线；修复小流量流向节点文字重叠；发布测试版并更新交接。
-- 当前状态：进行中。beta.9 客户端列表编辑与累计统计持久化已核验发布；用户追加要求安装按钮与检查按钮并排，候选版本为 `v1.0.4-beta.10`，尚未发布。
+- 当前状态：进行中。beta.10 已核验发布。用户追加备注 / IP 切换、真实三层策略流向、窄屏上下排列、请求来源占比排行，以及侧边栏图标 / 隐藏 / 边缘悬浮状态；候选版本为 `v1.0.4-beta.11`，尚未发布。
 - 已完成与修改文件：客户端备注 / 强制策略的配置、API、运行时、远程允许列表及 UI 见 `internal/config/clients.go`、`internal/dnsserver/client_policy.go`、`web/src/client-settings.jsx`、`docs/client-settings.md`；监控逐源策略流向在 `internal/dnsserver/source_policy_flows.go`、`internal/database/monitoring.go`、`web/src/monitoring*`，说明见 `docs/monitoring.md`。更新按钮在 `web/src/main.jsx`、`app-preferences.jsx`、`backend-update.jsx` 使用现有状态与 portal；分割线样式在 `style.css`。小流量图间距与双侧节点高度在 `monitoring-data.js`，保留真实流带比例。
 - 验证：本地 beta.8 前端 28 文件 / 133 测试、生产构建、17 页响应式 UI、1440 / 3840 实际 SVG 文字边界检查、`make package package-check` 通过（源码 build 90）。客户端 / 持久化功能相关 Go race 与 vet 在 beta.6 通过。最终 GitHub 回归 #27 运行 `make verify`、`make native-test ui-test`、`make fuzz` 并成功；Release #16 与 Gitea #110 成功。下载的两个安装包版本 / build、资源、签名及 SHA256 校验通过。未安装升级现用环境，未验收真实 LAN / NAT / IPv6 流量。
-- 已发布：`v1.0.4-beta.8`，tag 指向 `f1d3eefb43b6528dcb56ed927e36addc33a5b076`，实际 App 与捆绑后台 `1.0.4-beta.9 / build 17`。GitHub: https://github.com/KnotDing/routepilot/releases/tag/v1.0.4-beta.8；Gitea: https://gitea.knotding.com/knot/routepilot/releases/tag/v1.0.4-beta.8。两边均为非草稿测试版，各有 DMG、ZIP、SHA256SUMS 三附件且哈希相同；完整核验见上节与 `artifacts/releases/v1.0.4-beta.8/`。
+- 已发布：`v1.0.4-beta.8`，tag 指向 `f1d3eefb43b6528dcb56ed927e36addc33a5b076`，实际 App 与捆绑后台 `1.0.4-beta.10 / build 18`。GitHub: https://github.com/KnotDing/routepilot/releases/tag/v1.0.4-beta.8；Gitea: https://gitea.knotding.com/knot/routepilot/releases/tag/v1.0.4-beta.8。两边均为非草稿测试版，各有 DMG、ZIP、SHA256SUMS 三附件且哈希相同；完整核验见上节与 `artifacts/releases/v1.0.4-beta.8/`。
 - 发布故障记录：beta.7 GitHub 回归 #26 / Release #15 成功，Gitea run 2080 的 Ubuntu runner 拉取 Docker 镜像时遇到 unexpected EOF，备用任务成功但总体门禁失败，因此不记为完整核验发布。beta.8 新运行的 Ubuntu 镜像拉取恢复，成功镜像 GitHub 制品；未移动标签或删除旧附件。
 - 保留的无关改动：无。
-- 下一步与依赖：完成 beta.10 本地验证、提交与双仓库发布，等待全部门禁并下载核验后更新交接。未授权安装升级现用环境。
+- 下一步与依赖：完成 beta.11 本地验证、提交与双仓库发布，等待全部门禁并下载核验后更新交接。未授权安装升级现用环境。
 
 ## 代码地图：按任务定位
 
@@ -183,7 +183,7 @@
 | BGP 邻居、详情与路由发布 | `internal/bgp/gobgp.go`（`peerConfig` / `SyncPeers` / `Peers` / `Exported`）；`manager.go`（`Reconcile` / `Refresh`） | `internal/routing/manager.go`；`web/src/bgp-peer-details.jsx`、`routing.jsx`、`main.jsx` 的 `Resource`；`docs/routing-backends.md` |
 | URL 路由导入与定时同步 | `internal/routeimport/import.go`；`internal/api/api.go` 的 `RunRouteFeedScheduler` | `web/src/route-import.jsx`；配置中的 route feeds；导入与后台任务状态 |
 | 健康检查、异常通知、Surge 重启 | `internal/app/app.go` 的 `monitor`；`surge_recovery.go`；`internal/state/machine.go` | `internal/surge/recovery.go`；`internal/notifications/notifications.go`；`native/notifications.swift`；`web/src/surge-restart.jsx`、`notification-errors.jsx` |
-| 大屏监控、策略命中与 DNS 流向 | `internal/dnsserver/monitoring.go`（`Begin` / `Finish` / `Snapshot`）；`source_policy_flows.go`（有界真实源策略对）；`dispatcher.go` 的实际解析路径标记；`internal/app/statistics.go`；`internal/database/monitoring.go`（事务检查点与分钟增量桶） | `internal/api/monitoring.go`（实时源详情 / 历史 GET）、`internal/remote/remote.go`；`app.go` 的 `status.dns_monitoring` / `Metrics`；`web/src/monitoring.jsx`、`monitoring-history.jsx`、`monitoring-data.js`、`monitoring.css`；`docs/monitoring.md` |
+| 大屏监控、策略命中与 DNS 流向 | `internal/dnsserver/monitoring.go`（`Begin` / `Finish` / `Snapshot`）；`source_policy_flows.go`（有界真实源策略对）；`dispatcher.go` 的实际解析路径标记；`internal/app/statistics.go`；`internal/database/monitoring.go`（事务检查点与分钟增量桶） | `internal/api/monitoring.go`（实时源详情 / 历史 GET）、`internal/remote/remote.go`；`app.go` 的 `status.dns_monitoring` / `Metrics`；`web/src/monitoring.jsx`、`monitoring-source-label.jsx`（完整备注换行 / 点击 IP 切换）、`monitoring-history.jsx`、`monitoring-data.js`（三层共享比例尺）、`monitoring.css`；`docs/monitoring.md` |
 | DNS 累计统计、客户端与查询历史 | `internal/dnsserver/dispatcher.go` 的 `Counters` / `ClientStatistics` / `History`；`internal/app/statistics.go`（客户端共享累计实例与五秒检查点）；`internal/dnsserver/client_statistics.go`（恢复校验） | `web/src/dns-overview.jsx`、`clients.jsx`、`client-settings.jsx`（列表编辑窗口）、`dns-result.jsx`；客户端配置校验在 `internal/config/clients.go`，分流在 `internal/dnsserver/client_policy.go`；查询历史不要误当成持久化累计统计 |
 | 登录、管理 IP 白名单、反向代理 | `internal/security/security.go`（`Wrap`）；`client_ip.go`；`internal/config/management_security.go` | `internal/controlclient/access.go`；`web/src/credentials.js`、`backends.jsx`；`native/credentials.swift`、`remote_credentials.swift`；`docs/remote-management.md` |
 | 远程连接与接口兼容 | `internal/remote/remote.go` 的接口允许列表与中继；`web/src/client.js` 的 `request` / `requestOptional` / `selectBackend` | `web/src/backends.jsx`、`version-notice.jsx`；`Workspace` 的页面请求与登录恢复 |
@@ -192,7 +192,7 @@
 | CLI / skill 开关、安装目标与冲突 | `internal/api/automation.go`；`internal/appautomation/automation.go`（目标后端的桌面用户 helper） | `native/automation.swift`；`web/src/automation-settings.jsx`；`scripts/install_cli.sh` / `install_skill.sh`；`skills/routepilot-control/` |
 | 状态栏菜单、动画与指标 | `native/main.swift` 的 `rebuildMenu` / `refreshFromBackend`；`status_icon.swift`、`status_preferences.swift` | `web/src/status-bar-settings.jsx`；`internal/app/surge_recovery.go` 的请求速率采样 |
 | 窗口尺寸、重开页面与 JS bridge | `native/main.swift` 的管理窗口与 `userContentController`；`window_frame.swift` | `web/src/credentials.js`、`app-preferences.jsx`、`window-visibility.js` |
-| 页面布局、主题与双语 | `web/src/style.css`、对应专用 JSX；导航在 `navigation.jsx` | `web/src/i18n.js`、`locale.js`；`localization/ui-en.json` / `errors-zh.json`；缓存与路由另有专用 i18n；帮助气泡的触发器和定位在 `.inline-help-control` / `.inline-help-popover` |
+| 页面布局、主题与双语 | `web/src/style.css`、对应专用 JSX；导航在 `navigation.jsx`（完整 / 图标 / 隐藏悬浮状态，当前界面 localStorage 偏好） | `web/src/i18n.js`、`locale.js`；`localization/ui-en.json` / `errors-zh.json`；缓存与路由另有专用 i18n；帮助气泡的触发器和定位在 `.inline-help-control` / `.inline-help-popover` |
 | 数据库与重启恢复 | `internal/database/store.go`（迁移 / `Save` / `Load`）；`active_configuration.go` 区分已保存与已生效配置 | `internal/app/decision_cache.go`、`response_cache.go`、`statistics.go`；不要改变现有 secret 加密边界 |
 | 版本与安装包 | `internal/buildinfo/release.json` / `info.go`；`scripts/build_app.sh` / `check_package.py`；DMG 矢量 PDF 背景图 `native/dmg_background.swift`、Finder 布局 `scripts/dmg_layout.sh` / `scripts/dmg/DS_Store` | `Makefile`；`.gitea/workflows/release.yaml`；`.github/workflows/test.yaml` / `release.yaml`；`.gitea/release-notes/`；`native/Info.plist` |
 

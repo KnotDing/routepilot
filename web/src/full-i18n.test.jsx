@@ -10,8 +10,7 @@ const monitoring={started_at:'2026-10-12T00:00:00Z',session_started_at:'2026-10-
 const monitorSourceA={...monitoring,received:400,completed:400,in_flight:0,latency_ms_sum:4000,decisions:{SURGE:400},response_codes:{NOERROR:400},flows:monitoring.flows.filter(f=>f.destination==='surge'),policies:monitoring.policies.filter(p=>p.policy==='Proxy')};
 const monitorSourceB={...monitoring,received:602,completed:600,in_flight:2,latency_ms_sum:8000,decisions:{DIRECT:500,REJECT:80,UNKNOWN:20},response_codes:{NOERROR:450,NXDOMAIN:70,REFUSED:60,SERVFAIL:20},flows:monitoring.flows.filter(f=>f.destination!=='surge'),policies:monitoring.policies.filter(p=>p.policy!=='Proxy')};
 monitoring.sources=[{source:'192.0.2.10',counts:monitorSourceA},{source:'192.0.2.20',counts:monitorSourceB}];
-monitorSourceA.source_policy_flows=[{source:'192.0.2.10',policy:'Proxy',kind:'named',queries:400}];
-monitorSourceB.source_policy_flows=[{source:'192.0.2.20',policy:'DIRECT',kind:'named',queries:300},{source:'192.0.2.20',policy:'',kind:'unnamed',queries:220},{source:'192.0.2.20',policy:'REJECT',kind:'named',queries:80}];
+for(const [source,counts] of [['192.0.2.10',monitorSourceA],['192.0.2.20',monitorSourceB]])counts.source_policy_flows=counts.policies.map(p=>({source,policy:p.policy,kind:p.other?'overflow':p.policy?'named':'unnamed',final_policy:p.final_policy,final_kind:p.other?'overflow':p.final_policy?'named':'unnamed',queries:p.queries}));
 monitoring.source_policy_flows=[...monitorSourceA.source_policy_flows,...monitorSourceB.source_policy_flows];
 
 const peer={id:'p',address:'192.0.2.1',asn:65001,local_asn:0,router_id:'',hold_seconds:30,keepalive_seconds:10,port:179,enabled:true,description:''};

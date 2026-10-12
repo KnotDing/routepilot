@@ -3,43 +3,28 @@ package dnsserver
 import "sort"
 
 type DNSSourcePolicyFlow struct {
-	Source  string `json:"source"`
-	Policy  string `json:"policy"`
-	Kind    string `json:"kind"`
-	Queries uint64 `json:"queries"`
+	Source      string `json:"source"`
+	Policy      string `json:"policy"`
+	Kind        string `json:"kind"`
+	FinalPolicy string `json:"final_policy"`
+	FinalKind   string `json:"final_kind"`
+	Queries     uint64 `json:"queries"`
 }
 
-// Display at most 11 sources x 11 policies. Group observed pairs after choosing
-// the top nodes; multiplying marginal shares would invent flow relationships.
-func SourcePolicyFlows(sources []DNSSourceCount) []DNSSourcePolicyFlow {
-	type policyID struct{ name, kind string }
-	counts := map[policyID]uint64{}
-	visible := make([]DNSSourceCount, 0, len(sources))
-	idOf := func(p DNSPolicyCount) policyID {
-		kind := "named"
-		if p.Other {
-			kind = "overflow"
-		} else if p.Policy == "" {
-			kind = "unnamed"
-		}
-		return policyID{p.Policy, kind}
+type monitoringPolicyID struct{ name, kind string }
+
+func monitoringPolicyKey(name string, other bool) monitoringPolicyID {
+	kind := "named"
+	if other {
+		kind = "overflow"
+	} else if name == "" {
+		kind = "unnamed"
 	}
-	for _, src := range sources {
-		if src.Source == "legacy" || src.Counts.Completed == 0 {
-			continue
-		}
-		visible = append(visible, src)
-		for _, p := range src.Counts.Policies {
-			counts[idOf(p)] += p.Queries
-		}
-	}
-	sort.Slice(visible, func(i, j int) bool {
-		if visible[i].Counts.Completed != visible[j].Counts.Completed {
-			return visible[i].Counts.Completed > visible[j].Counts.Completed
-		}
-		return visible[i].Source < visible[j].Source
-	})
-	keys := make([]policyID, 0, len(counts))
+	return monitoringPolicyID{name, kind}
+}
+
+func topMonitoringPolicies(counts map[monitoringPolicyID]uint64) map[monitoringPolicyID]bool {
+	keys := make([]monitoringPolicyID, 0, len(counts))
 	for key := range counts {
 		keys = append(keys, key)
 	}
@@ -53,35 +38,63 @@ func SourcePolicyFlows(sources []DNSSourceCount) []DNSSourcePolicyFlow {
 		}
 		return a.name < b.name
 	})
-	top := map[policyID]bool{}
+	top := map[monitoringPolicyID]bool{}
 	for i, key := range keys {
 		if i >= 10 {
 			break
 		}
 		top[key] = true
 	}
-	type pair struct {
-		source string
-		policy policyID
+	return top
+}
+
+// Bound each of three columns to ten main nodes plus a remainder. Group only
+// observed source/policy/final-policy triples; never multiply marginal shares.
+func SourcePolicyFlows(sources []DNSSourceCount) []DNSSourcePolicyFlow {
+	policies, finals := map[monitoringPolicyID]uint64{}, map[monitoringPolicyID]uint64{}
+	visible := make([]DNSSourceCount, 0, len(sources))
+	for _, src := range sources {
+		if src.Source == "legacy" || src.Counts.Completed == 0 {
+			continue
+		}
+		visible = append(visible, src)
+		for _, p := range src.Counts.Policies {
+			policies[monitoringPolicyKey(p.Policy, p.Other)] += p.Queries
+			finals[monitoringPolicyKey(p.FinalPolicy, p.Other)] += p.Queries
+		}
 	}
-	pairs := map[pair]uint64{}
+	sort.Slice(visible, func(i, j int) bool {
+		if visible[i].Counts.Completed != visible[j].Counts.Completed {
+			return visible[i].Counts.Completed > visible[j].Counts.Completed
+		}
+		return visible[i].Source < visible[j].Source
+	})
+	topPolicies, topFinals := topMonitoringPolicies(policies), topMonitoringPolicies(finals)
+	type triple struct {
+		source        string
+		policy, final monitoringPolicyID
+	}
+	counts := map[triple]uint64{}
 	for i, src := range visible {
 		source := src.Source
 		if i >= 10 {
 			source = "remaining-sources"
 		}
 		for _, p := range src.Counts.Policies {
-			key := idOf(p)
-			if !top[key] {
-				key = policyID{"", "rest"}
+			policy, final := monitoringPolicyKey(p.Policy, p.Other), monitoringPolicyKey(p.FinalPolicy, p.Other)
+			if !topPolicies[policy] {
+				policy = monitoringPolicyID{"", "rest"}
 			}
-			pairs[pair{source, key}] += p.Queries
+			if !topFinals[final] {
+				final = monitoringPolicyID{"", "rest"}
+			}
+			counts[triple{source, policy, final}] += p.Queries
 		}
 	}
-	rows := make([]DNSSourcePolicyFlow, 0, len(pairs))
-	for key, n := range pairs {
+	rows := make([]DNSSourcePolicyFlow, 0, len(counts))
+	for key, n := range counts {
 		if n > 0 {
-			rows = append(rows, DNSSourcePolicyFlow{key.source, key.policy.name, key.policy.kind, n})
+			rows = append(rows, DNSSourcePolicyFlow{key.source, key.policy.name, key.policy.kind, key.final.name, key.final.kind, n})
 		}
 	}
 	sort.Slice(rows, func(i, j int) bool {
@@ -92,7 +105,13 @@ func SourcePolicyFlows(sources []DNSSourceCount) []DNSSourcePolicyFlow {
 		if a.Kind != b.Kind {
 			return a.Kind < b.Kind
 		}
-		return a.Policy < b.Policy
+		if a.Policy != b.Policy {
+			return a.Policy < b.Policy
+		}
+		if a.FinalKind != b.FinalKind {
+			return a.FinalKind < b.FinalKind
+		}
+		return a.FinalPolicy < b.FinalPolicy
 	})
 	return rows
 }
