@@ -51,7 +51,7 @@ jobs:
           }
 
           # The GitHub release workflow starts at the same tag push and needs time to build.
-          sleep 300
+          sleep 120
           available=false
           for attempt in $(seq 1 15); do
             if fetch_assets; then

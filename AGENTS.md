@@ -15,7 +15,7 @@
 - 每次提交后的分支和标签推送都必须同时到达两个仓库。配置 `origin` 的多个 `pushurl`（保留 Gitea 为 fetch URL），这样 `git push origin <分支>` 会推送到两个地址；推送后核对两个远端的提交或标签一致。不要只推其中一个。
 - 新克隆或远端配置未完成时，先检查并配置两个推送地址，再继续推送。任一仓库推送失败时明确报告部分成功，并在恢复后补齐；不要强推或改写远端历史。
 - 对外 README 链接优先使用 GitHub（Release 与 `raw.githubusercontent.com/KnotDing/routepilot/main`）；Gitea 链接作为清楚标注的备用入口。
-- `.github/workflows/test.yaml` 是唯一回归测试门禁；Gitea 不运行本地测试。`.gitea/workflows/release.yaml` 的 Ubuntu runner 先等待 5 分钟，再每分钟轮询 GitHub Release，最多 15 次；可从 Gitea Actions Secret `RELEASE_SOURCE_TOKEN` 读取 GitHub 只读 token，以认证 GitHub API 与附件下载。下载 DMG、ZIP 与 SHA256SUMS 并校验成功后发布到 Gitea。获取任务失败或制品不可用时，再由 macOS runner 本地打包回退，不在 Gitea 执行测试。GitHub Release 仍由 `.github/workflows/release.yaml` 构建并发布。
+- `.github/workflows/test.yaml` 是唯一回归测试门禁；Gitea 不运行本地测试。`.gitea/workflows/release.yaml` 的 Ubuntu runner 先等待 2 分钟，再每分钟轮询 GitHub Release，最多 15 次；可从 Gitea Actions Secret `RELEASE_SOURCE_TOKEN` 读取 GitHub 只读 token，以认证 GitHub API 与附件下载。下载 DMG、ZIP 与 SHA256SUMS 并校验成功后发布到 Gitea。获取任务失败或制品不可用时，再由 macOS runner 本地打包回退，不在 Gitea 执行测试。GitHub Release 仍由 `.github/workflows/release.yaml` 构建并发布。
 
 ## 修改与验证
 
