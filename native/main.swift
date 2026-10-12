@@ -75,6 +75,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
     var bgp: [String: Any] = [:]
     var availableRelease: GiteaRelease?
     var releaseDownloadInProgress = false
+    var releaseDownloadBytes: Int64?
+    var releaseDownloadTotal: Int64?
+    var releaseInstallPhase = ""
     var releaseDownloadError = ""
     var releaseAutomationError = ""
     var checkingRelease = false
@@ -560,6 +563,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
             "updateAvailable": availableRelease != nil,
             "updateVersion": availableRelease?.tagName ?? "",
             "updateDownloading": releaseDownloadInProgress,
+            "updateChecking": checkingRelease,
+            "updatePhase": releaseInstallPhase,
+            "updateDownloadBytes": releaseDownloadBytes.map { $0 as Any } ?? NSNull(),
+            "updateDownloadTotal": releaseDownloadTotal.map { $0 as Any } ?? NSNull(),
             "updateDownloadError": releaseDownloadError,
             "updateAutomationError": releaseAutomationError
         ]
@@ -582,6 +589,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
         preferences["updateAvailable"] = availableRelease != nil
         preferences["updateVersion"] = availableRelease?.tagName ?? ""
         preferences["updateDownloading"] = releaseDownloadInProgress
+        preferences["updateChecking"] = checkingRelease
+        preferences["updatePhase"] = releaseInstallPhase
+        preferences["updateDownloadBytes"] = releaseDownloadBytes.map { $0 as Any } ?? NSNull()
+        preferences["updateDownloadTotal"] = releaseDownloadTotal.map { $0 as Any } ?? NSNull()
         preferences["updateDownloadError"] = releaseDownloadError
         preferences["updateAutomationError"] = releaseAutomationError
         preferences["remoteCredentialsSupported"] = true
@@ -783,8 +794,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
     func checkReleaseUpdate(beta: Bool = false) async {
         guard !stopping, !checkingRelease else { return }
         checkingRelease = true
+        publishReleaseUpdateStatus()
         rebuildMenu()
-        defer { checkingRelease = false; rebuildMenu() }
+        defer { checkingRelease = false; publishReleaseUpdateStatus(); rebuildMenu() }
         do {
             let latest: GiteaRelease
             let source = updateSource
@@ -805,14 +817,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
                       "当前版本：\(Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "未知")")
                 return
             }
-            releaseDownloadInProgress = true
-            publishReleaseUpdateStatus()
-            do { _ = try await ReleaseUpdater.downloadPackage(from: release) }
-            catch {
-                releaseDownloadError = error.localizedDescription
-            }
-            releaseDownloadInProgress = false
-            publishReleaseUpdateStatus()
+            // Checking reads release metadata only. The installation assistant
+            // owns the single package download, cache validation and progress.
             await presentRelease(release)
         } catch {
             alert(beta ? "检查 Beta 更新失败" : "检查更新失败", error.localizedDescription)
@@ -873,14 +879,24 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
     func installRelease(_ release: GiteaRelease) async {
         guard !stopping else { return }
         stopping = true
+        releaseInstallPhase = "preparing"
+        releaseDownloadBytes = nil
+        releaseDownloadTotal = nil
+        publishReleaseUpdateStatus()
         rebuildMenu()
-        let progress = NSPanel(contentRect: NSRect(x: 0, y: 0, width: 430, height: 100), styleMask: [.titled], backing: .buffered, defer: false)
+        let progress = NSPanel(contentRect: NSRect(x: 0, y: 0, width: 430, height: 145), styleMask: [.titled], backing: .buffered, defer: false)
         progress.title = L("正在升级 RoutePilot")
         let label = NSTextField(wrappingLabelWithString: L("正在准备更新…"))
-        label.frame = NSRect(x: 24, y: 40, width: 382, height: 40)
+        label.frame = NSRect(x: 24, y: 85, width: 382, height: 40)
         progress.contentView?.addSubview(label)
+        let bar = NSProgressIndicator(frame: NSRect(x: 24, y: 58, width: 382, height: 16))
+        bar.style = .bar; bar.isIndeterminate = true; bar.minValue = 0; bar.maxValue = 100; bar.startAnimation(nil)
+        let detail = NSTextField(labelWithString: "")
+        detail.font = .systemFont(ofSize: 12); detail.textColor = .secondaryLabelColor
+        detail.frame = NSRect(x: 24, y: 25, width: 382, height: 24)
+        progress.contentView?.addSubview(bar); progress.contentView?.addSubview(detail)
         progress.center(); progress.makeKeyAndOrderFront(nil)
-        defer { progress.close() }
+        defer { progress.close(); releaseDownloadInProgress = false; releaseInstallPhase = ""; publishReleaseUpdateStatus() }
         do {
             if !UpdateAssistant.configured { try await UpdateAssistant.enable() }
             if let controller = webView?.configuration.userContentController { configurePreferenceSeed(controller) }
@@ -900,8 +916,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
             var failures = 0
             while status.phase != "succeeded" && status.phase != "failed" {
                 guard Date() < deadline else { throw AppFailure(message: "等待更新超时，请重新打开 App 查看安装状态") }
-                let phases = ["downloading": "正在下载并校验安装包…", "validating": "正在验证更新…", "restarting": "正在重启本机网络服务…"]
+                releaseInstallPhase = status.phase ?? "preparing"
+                releaseDownloadInProgress = status.phase == "downloading"
+                releaseDownloadBytes = status.downloadBytes
+                releaseDownloadTotal = status.downloadTotal
+                publishReleaseUpdateStatus()
+                let phases = ["downloading": "正在下载完整应用更新", "validating": "正在验证更新…", "restarting": "正在重启本机网络服务…"]
                 label.stringValue = L(phases[status.phase ?? ""] ?? "正在替换 App…")
+                if status.phase == "downloading", let percent = status.downloadPercent {
+                    bar.stopAnimation(nil); bar.isIndeterminate = false; bar.doubleValue = percent
+                } else {
+                    bar.isIndeterminate = true; bar.startAnimation(nil)
+                }
+                detail.stringValue = status.phase == "downloading" ? status.downloadDescription : ""
                 try await Task.sleep(nanoseconds: 1_000_000_000)
                 do { status = try await UpdateAssistant.request("status"); failures = 0 }
                 catch { failures += 1; if failures >= 3 { throw error } }
@@ -921,6 +948,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
             NSApp.terminate(nil)
         } catch {
             stopping = false
+            if releaseDownloadInProgress { releaseDownloadError = error.localizedDescription }
             alert("RoutePilot 未升级", error.localizedDescription)
             reconnect()
             rebuildMenu()

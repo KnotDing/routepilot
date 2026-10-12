@@ -163,6 +163,7 @@ func (r *Real) Resolve(ctx context.Context, req model.ResolveRequest) (*dns.Msg,
 			if req.Trace != nil {
 				req.Trace.Endpoint = v.Endpoint
 				req.Trace.CacheHit = true
+				req.Trace.OptimisticCacheHit = stale
 			}
 			m := v.Msg.Copy()
 			m.Id = q.Id

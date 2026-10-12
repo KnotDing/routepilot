@@ -83,12 +83,16 @@ func newMonitoring(saved DNSMonitoringSnapshot, trackSources bool, policyCapacit
 		saved.Unconfirmed = saved.Received - saved.Completed
 	}
 	saved.InFlight = 0
-	if saved.ResponseCodes == nil {
-		saved.ResponseCodes = make(map[string]uint64)
+	// Restored global totals and the legacy source must never share mutable
+	// maps. A new global request must not change a source that completed none.
+	codes, decisions := make(map[string]uint64), make(map[string]uint64)
+	for k, v := range saved.ResponseCodes {
+		codes[k] = v
 	}
-	if saved.Decisions == nil {
-		saved.Decisions = make(map[string]uint64)
+	for k, v := range saved.Decisions {
+		decisions[k] = v
 	}
+	saved.ResponseCodes, saved.Decisions = codes, decisions
 	m := &Monitoring{state: saved, flows: make(map[flowKey]uint64), policies: make(map[policyKey]uint64), policyCapacity: policyCapacity}
 	if trackSources {
 		m.sources = map[string]*Monitoring{}

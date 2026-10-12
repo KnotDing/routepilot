@@ -1,5 +1,5 @@
-export const destinations=['local','cache','real','surge','blocked','unavailable'];
-export const destinationLabels={local:'本地记录',cache:'响应缓存',real:'真实 DNS 上游',surge:'Surge DNS',blocked:'本机拒绝 / 空响应',unavailable:'未发往解析器'};
+export const destinations=['local','cache','optimistic_cache','real','surge','blocked','unavailable'];
+export const destinationLabels={local:'本地记录',cache:'响应缓存',optimistic_cache:'乐观响应缓存',real:'真实 DNS 上游',surge:'Surge DNS',blocked:'本机拒绝 / 空响应',unavailable:'未发往解析器'};
 export const ingressLabels={addressed:'直接请求',intercepted:'透明拦截'};
 export function share(count,total){return total>0?count/total:0}
 export function visibleSources(sources){return sources?.filter(s=>s.source!=='legacy')}

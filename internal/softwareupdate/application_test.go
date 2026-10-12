@@ -115,7 +115,7 @@ func TestManagerOffersCompleteAppRepairAtCurrentBackendVersion(t *testing.T) {
 	if s := m.Status(); !s.Available || s.AppCurrent != "0.0.1" {
 		t.Fatal(s)
 	}
-	m.ops.prepare = func(context.Context, release, func() error) error { return nil }
+	m.ops.prepare = func(context.Context, release, func() error, func(DownloadProgress) error) error { return nil }
 	if _, err := m.Start(m.latest.Tag); err != nil {
 		t.Fatal("App-only repair rejected", err)
 	}

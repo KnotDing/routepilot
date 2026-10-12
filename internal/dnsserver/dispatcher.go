@@ -326,6 +326,9 @@ func (d *Dispatcher) Dispatch(ctx context.Context, q model.DNSQueryContext, m *d
 			}
 			if trace.CacheHit {
 				destination = "cache"
+				if trace.OptimisticCacheHit {
+					destination = "optimistic_cache"
+				}
 			}
 			rcode := dns.RcodeToString[reply.Rcode]
 			if rcode == "" {

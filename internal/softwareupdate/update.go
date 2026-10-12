@@ -56,6 +56,8 @@ type Status struct {
 	CheckError      string    `json:"check_error,omitempty"`
 	AutomationError string    `json:"automation_error,omitempty"`
 	NextRetryAt     time.Time `json:"next_retry_at,omitempty"`
+	DownloadBytes   int64     `json:"download_bytes,omitempty"`
+	DownloadTotal   int64     `json:"download_total,omitempty"`
 }
 type release struct {
 	Tag        string `json:"tag_name"`
@@ -95,7 +97,7 @@ type updateOperations struct {
 	read       func() Status
 	write      func(Status) error
 	pid        func() int
-	prepare    func(context.Context, release, func() error) error
+	prepare    func(context.Context, release, func() error, func(DownloadProgress) error) error
 }
 
 func New(ctx context.Context, database string, beforeRestart func() error) *Manager {
@@ -411,7 +413,13 @@ func (m *Manager) startForSource(version string, includeBeta *bool, source strin
 	go func() {
 		ctx, cancel := context.WithTimeout(m.ctx, 5*time.Minute)
 		defer cancel()
-		err := m.ops.prepare(ctx, r, m.beforeRestart)
+		err := m.ops.prepare(ctx, r, m.beforeRestart, func(p DownloadProgress) error {
+			m.mu.Lock()
+			defer m.mu.Unlock()
+			status := m.ops.read()
+			status.DownloadBytes, status.DownloadTotal, status.UpdatedAt = p.Bytes, p.Total, time.Now().UTC()
+			return m.ops.write(status)
+		})
 		m.mu.Lock()
 		defer m.mu.Unlock()
 		m.running = false
@@ -431,6 +439,10 @@ func download(ctx context.Context, address string, limit int64) ([]byte, error) 
 // A supplied transport lets offline checks exercise HTTP behavior without
 // relaxing the fixed release origin or changing process-wide HTTP defaults.
 func downloadWithTransport(ctx context.Context, address string, limit int64, transport http.RoundTripper) ([]byte, error) {
+	return downloadWithTransportProgress(ctx, address, limit, transport, nil)
+}
+
+func downloadWithTransportProgress(ctx context.Context, address string, limit int64, transport http.RoundTripper, progress func(DownloadProgress) error) ([]byte, error) {
 	u, err := url.Parse(address)
 	if err != nil || u.Scheme != "https" || u.Port() != "" || !trustedUpdateURL(u) || u.User != nil || u.Fragment != "" || u.Opaque != "" {
 		return nil, errors.New("Release download origin is not trusted")
@@ -456,12 +468,25 @@ func downloadWithTransport(ctx context.Context, address string, limit int64, tra
 	if response.StatusCode != 200 {
 		return nil, fmt.Errorf("Release request failed (HTTP %d)", response.StatusCode)
 	}
-	b, err := io.ReadAll(io.LimitReader(response.Body, limit+1))
+	if response.ContentLength > limit {
+		return nil, errors.New("Release asset exceeds the size limit")
+	}
+	reader := &downloadProgressReader{reader: response.Body, total: max(0, response.ContentLength), report: progress}
+	if err := reader.publish(); err != nil {
+		return nil, err
+	}
+	b, err := io.ReadAll(io.LimitReader(reader, limit+1))
 	if err != nil {
 		return nil, errors.New("Release download failed")
 	}
 	if int64(len(b)) > limit {
 		return nil, errors.New("Release asset exceeds the size limit")
+	}
+	if response.ContentLength > 0 && int64(len(b)) != response.ContentLength {
+		return nil, errors.New("Release download failed")
+	}
+	if err := reader.publish(); err != nil {
+		return nil, err
 	}
 	return b, nil
 }
@@ -480,7 +505,7 @@ func trustedUpdateURL(u *url.URL) bool {
 		return false
 	}
 }
-func prepare(ctx context.Context, r release, beforeRestart func() error) error {
+func prepare(ctx context.Context, r release, beforeRestart func() error, progress func(DownloadProgress) error) error {
 	name := "RoutePilot-macos-arm64.zip"
 	urls, err := releaseAssets(r, name)
 	if err != nil {
@@ -494,7 +519,7 @@ func prepare(ctx context.Context, r release, beforeRestart func() error) error {
 	if err != nil {
 		return err
 	}
-	archive, err := download(ctx, urls[name], 256<<20)
+	archive, err := downloadWithTransportProgress(ctx, urls[name], 256<<20, nil, progress)
 	if err != nil {
 		return err
 	}

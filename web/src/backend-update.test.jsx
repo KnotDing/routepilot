@@ -85,3 +85,10 @@ it('continues checking failed App restart state until a manual relaunch clears i
  await act(async()=>vi.advanceTimersByTimeAsync(2000));expect(onReady).toHaveBeenCalledTimes(1);expect(screen.queryByLabelText('远程软件更新')).not.toBeInTheDocument();
  const count=request.mock.calls.length;await act(async()=>vi.advanceTimersByTimeAsync(6000));expect(request.mock.calls.length).toBe(count);
 });
+
+it('shows download bytes from the selected backend without a second install request',async()=>{
+ request.mockResolvedValue({...available,phase:'downloading',download_bytes:1048576,download_total:2097152});
+ mount();await waitFor(()=>expect(screen.getByRole('progressbar')).toHaveAttribute('value','50'));
+ expect(screen.getByRole('button',{name:'升级远程应用'})).toBeDisabled();
+ expect(request).toHaveBeenCalledTimes(1);
+});

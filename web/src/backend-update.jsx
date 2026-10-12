@@ -3,6 +3,7 @@ const ReleaseNotes=lazy(()=>import('./release-notes').then(module=>({default:mod
 import {request} from './client';
 import {createPortal} from 'react-dom';
 import {useT,message} from './i18n';
+import {DownloadProgress} from './download-progress';
 
 const active=phase=>['downloading','validating','restarting'].includes(phase);
 const appPending=phase=>['checking','awaiting_confirmation','restarting'].includes(phase);
@@ -73,6 +74,7 @@ export function BackendUpdate({backend=null,capable,software,onReady,target=null
  const content=<><section className={(embedded||target?'update-status':'notice')+' backend-update '+(update?.phase==='failed'?'error':'')} aria-label={t(title)}>
   {!embedded&&!target&&<strong>{t(title)}</strong>}<p>{t('当前后台：{version}',{version:software?.version||update?.current||'—'})}{update&&' · '+t(remote?'远端 App：{version}':'App：{version}',{version:update.app_current||t('未安装')})}{update?.latest&&' · '+t('最新发布：{version}',{version:update.latest})}</p>
   {update&&<p role="status">{offline?t('后台暂时离线，正在等待升级完成并重连…'):active(update.phase)||['succeeded','failed'].includes(update.phase)?t(!remote&&update.phase==='succeeded'?'软件升级已完成':!remote&&update.phase==='failed'?'软件升级失败':phases[update.phase]):update.available?t('有可用的软件新版本'):t('软件已是最新版本')}</p>}
+  {update?.phase==='downloading'&&!offline&&<DownloadProgress bytes={update.download_bytes} total={update.download_total}/>}
   {appNotice(update?.app_restart)&&<p role="status">{t(restartPhases[update.app_restart])}</p>}
   {update?.app_restart_error&&<p role="alert">{message(update.app_restart_error)}</p>}
   {update?.check_error&&<p role="alert">{t('检查更新失败')}：{message(update.check_error)}</p>}{update?.automation_error&&<p role="alert">{t('自动更新失败')}：{message(update.automation_error)}</p>}{update?.next_retry_at&&!String(update.next_retry_at).startsWith('0001-')&&<p>{t('将在 {time} 后重试',{time:new Date(update.next_retry_at).toLocaleString()})}</p>}{update?.skipped_version&&expanded&&<p>{t('已跳过版本 {version}，不会自动安装',{version:update.skipped_version})}<button type="button" disabled={busy} onClick={async()=>{setBusy(true);try{setUpdate(await request('updates/skip','POST',{version:''}));setError('')}catch(e){setError(message(e.message))}finally{setBusy(false)}}}>{t('取消跳过')}</button></p>}{update?.reason&&<p>{message(update.reason)}</p>}{update?.error&&<p role="alert">{message(update.error)}</p>}{error&&<p role="alert">{error}</p>}

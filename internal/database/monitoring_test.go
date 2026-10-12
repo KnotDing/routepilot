@@ -134,3 +134,42 @@ func TestMonitoringHistoryRetentionGapsAndMinuteRangeValidation(t *testing.T) {
 		}
 	}
 }
+
+func TestMonitoringHistoryContinuesAfterUpgradeFromSourceLessTotals(t *testing.T) {
+	s, err := Open(filepath.Join(t.TempDir(), "private", "c.sqlite"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	ctx := context.Background()
+	old := dnsserver.NewMonitoring(dnsserver.DNSMonitoringSnapshot{})
+	old.Begin()
+	old.Finish(false, model.DecisionResult{Decision: model.Direct}, "real", "NOERROR", time.Millisecond)
+	saved := old.Snapshot()
+	saved.Sources = nil // v1.0.4-beta.1 persisted totals without source details.
+	m := dnsserver.NewMonitoring(saved)
+	at := time.Now().UTC().Truncate(time.Minute)
+	baseline := m.Snapshot()
+	baseline.ObservedAt = at
+	if err := s.SaveDNSMonitoring(ctx, baseline); err != nil {
+		t.Fatal(err)
+	}
+	for i := 1; i <= 3; i++ {
+		ip := netip.MustParseAddr("192.0.2.10")
+		m.BeginSource(ip)
+		m.FinishSource(ip, false, model.DecisionResult{Decision: model.Surge, Policy: "Proxy"}, "surge", "NOERROR", time.Millisecond)
+		sample := m.Snapshot()
+		sample.ObservedAt = at.Add(time.Duration(i) * 5 * time.Second)
+		if err := s.SaveDNSMonitoring(ctx, sample); err != nil {
+			t.Fatalf("save after legacy upgrade: %v", err)
+		}
+	}
+	h, err := s.DNSMonitoringHistory(ctx, at, at.Add(time.Minute), "192.0.2.10")
+	if err != nil || h.Summary.Completed != 3 {
+		t.Fatalf("source history: %+v, %v", h, err)
+	}
+	legacy, _ := m.SourceSnapshot("legacy")
+	if legacy.Completed != 1 || legacy.Decisions["SURGE"] != 0 || legacy.ResponseCodes["NOERROR"] != 1 || saved.Decisions["SURGE"] != 0 {
+		t.Fatalf("restored maps alias live counters: %+v", legacy)
+	}
+}

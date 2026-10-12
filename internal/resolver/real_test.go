@@ -155,6 +155,10 @@ func TestOptimisticResponseReturnsCacheBeforeRefresh(t *testing.T) {
 	if _, err := r.Resolve(context.Background(), model.ResolveRequest{Message: q}); err != nil {
 		t.Fatal(err)
 	}
+	freshTrace := &model.ResolutionTrace{}
+	if _, err := r.Resolve(context.Background(), model.ResolveRequest{Message: q, Trace: freshTrace}); err != nil || !freshTrace.CacheHit || freshTrace.OptimisticCacheHit {
+		t.Fatal("fresh cache hit was mislabeled optimistic", freshTrace, err)
+	}
 	r.ConfigurationChanged("resource updated", true)
 	q.Id = 200
 	trace := &model.ResolutionTrace{}
@@ -165,7 +169,7 @@ func TestOptimisticResponseReturnsCacheBeforeRefresh(t *testing.T) {
 	}()
 	select {
 	case reply := <-done:
-		if reply == nil || reply.Id != 200 || reply.Answer[0].(*dns.A).A.String() != "203.0.113.1" || !trace.CacheHit {
+		if reply == nil || reply.Id != 200 || reply.Answer[0].(*dns.A).A.String() != "203.0.113.1" || !trace.CacheHit || !trace.OptimisticCacheHit {
 			t.Fatal("cached response not returned immediately")
 		}
 	case <-time.After(time.Second):

@@ -146,6 +146,12 @@ func TestMonitoringCountsActualPathsWithoutQueryHistory(t *testing.T) {
 				return mocks.AddressReply(r.Message, "203.0.113.1"), nil
 			}}
 		}},
+		{name: "optimistic response cache", kind: dns.TypeA, decision: model.Direct, path: "optimistic_cache", setup: func(d *dnsserver.Dispatcher) {
+			d.Real = &mocks.Resolver{Func: func(_ context.Context, r model.ResolveRequest) (*dns.Msg, error) {
+				r.Trace.CacheHit, r.Trace.OptimisticCacheHit = true, true
+				return mocks.AddressReply(r.Message, "203.0.113.1"), nil
+			}}
+		}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			gate := &mocks.Gate{State: dnsserver.SafetySnapshot{AllowFakeIP: true, Generation: 1}}

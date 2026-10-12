@@ -255,7 +255,9 @@ func isolatedManager(t *testing.T) *managerFixture {
 	m.ops.write = func(s Status) error { f.mu.Lock(); defer f.mu.Unlock(); f.state = s; return nil }
 	m.ops.pid = func() int { return 0 }
 	m.ops.appVersion = func() string { return buildinfo.Current().Version }
-	m.ops.prepare = func(context.Context, release, func() error) error { return errors.New("fixture preparation failed") }
+	m.ops.prepare = func(context.Context, release, func() error, func(DownloadProgress) error) error {
+		return errors.New("fixture preparation failed")
+	}
 	f.manager = m
 	return f
 }
@@ -438,7 +440,7 @@ func TestManagerStartReturnsBeforePreparationAndRecordsFailure(t *testing.T) {
 	var once sync.Once
 	releaseWorker := func() { once.Do(func() { close(finish) }) }
 	defer releaseWorker()
-	m.ops.prepare = func(ctx context.Context, r release, before func() error) error {
+	m.ops.prepare = func(ctx context.Context, r release, before func() error, progress func(DownloadProgress) error) error {
 		close(entered)
 		<-finish
 		return errors.New("download verification failed")
@@ -476,7 +478,10 @@ func TestManagerRejectsUnsupportedStaleOrBusyUpdates(t *testing.T) {
 			f := isolatedManager(t)
 			m := f.manager
 			called := false
-			m.ops.prepare = func(context.Context, release, func() error) error { called = true; return nil }
+			m.ops.prepare = func(context.Context, release, func() error, func(DownloadProgress) error) error {
+				called = true
+				return nil
+			}
 			version := managerTarget()
 			switch tc {
 			case "unsupported":

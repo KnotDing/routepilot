@@ -145,8 +145,9 @@ type ResolveRequest struct {
 	RetryDNSFailures       bool
 }
 type ResolutionTrace struct {
-	Endpoint string
-	CacheHit bool
+	Endpoint           string
+	CacheHit           bool
+	OptimisticCacheHit bool
 }
 type Resolver interface {
 	Resolve(context.Context, ResolveRequest) (*dns.Msg, error)

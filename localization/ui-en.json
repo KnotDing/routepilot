@@ -1174,5 +1174,12 @@
   "来源请求占比": "Source request shares",
   "按各源流入请求数计算占比，点击来源查看该源的流向和策略命中。": "Shares use each source's incoming requests. Click a source to view its flows and policy hits.",
   "暂无可展示的来源流向": "No source flows to display",
-  "来源视图仅展示已采集来源的请求，占比仍以全部请求为分母。": "Source views show only requests with recorded sources. Shares still use all requests as the denominator."
+  "来源视图仅展示已采集来源的请求，占比仍以全部请求为分母。": "Source views show only requests with recorded sources. Shares still use all requests as the denominator.",
+  "安装包下载进度": "Package download progress",
+  "已下载 {bytes} / {total}（{percent}%）": "Downloaded {bytes} / {total} ({percent}%)",
+  "已下载 {bytes}，总大小未知": "Downloaded {bytes}; total size unknown",
+  "正在下载，等待进度信息…": "Downloading; waiting for progress information…",
+  "流带宽度按请求数同比例绘制；每条请求只归入一个最终处理去向，占比以展示来源的已完成请求为分母。": "Ribbon widths use a common request-count scale. Each request has one final handling destination; shares use completed requests from the displayed sources.",
+  "来源视图和占比分母均不包含未采集来源的旧请求。": "Source views and their denominators exclude old requests whose sources were not recorded.",
+  "乐观响应缓存": "Optimistic response cache"
 }

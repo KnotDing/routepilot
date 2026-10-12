@@ -61,17 +61,17 @@ it('ignores an old source response after selection changes',async()=>{
  expect(screen.getByText('当前统计来源：192.0.2.20')).toBeInTheDocument();
 });
 
-it('hides legacy source entries in live and history without changing totals or denominators',async()=>{
+it('excludes legacy from source denominators in live and history while retaining stored totals',async()=>{
  const recorded={...snapshot,received:16,completed:16,flows:[...snapshot.flows,...b.flows],sources:[...snapshot.sources,{source:'legacy',counts:b}]};
  vi.stubGlobal('fetch',vi.fn(async()=>({ok:true,status:200,json:async()=>({...history(recorded),sources:recorded.sources,total_received:16})})));
  render(<MonitoringPanel {...props} snapshot={recorded}/>);
  const check=()=>{
   expect(screen.queryByText('启用前未采集来源')).not.toBeInTheDocument();
   expect(screen.queryByRole('option',{name:'启用前未采集来源'})).not.toBeInTheDocument();
-  expect(document.querySelector('.monitor-source-table')).toHaveTextContent('25.00%');
-  expect(document.querySelector('.monitor-source-table')).toHaveTextContent('37.50%');
+  expect(document.querySelector('.monitor-source-table')).toHaveTextContent('40.00%');
+  expect(document.querySelector('.monitor-source-table')).toHaveTextContent('60.00%');
   expect(document.querySelector('.monitor-metrics')).toHaveTextContent('16');
-  expect(screen.getByRole('img',{name:'DNS 来源到实际处理去向的流向图'})).toHaveTextContent('192.0.2.10 → Surge DNS: 4 · 25.0%');
+  expect(screen.getByRole('img',{name:'DNS 来源到实际处理去向的流向图'})).toHaveTextContent('192.0.2.10 → Surge DNS: 4 · 40.0%');
  };
  check();
  fireEvent.click(screen.getByRole('button',{name:'历史数据',exact:true}));

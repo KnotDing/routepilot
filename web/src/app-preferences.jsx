@@ -2,6 +2,7 @@ import {FieldLabel,FormHint} from './form-fields';
 import React,{useEffect,useRef,useState} from 'react';
 import {useT,translate,valueLabel,message} from './i18n';
 import {notificationSelected} from './notification-errors';
+import {DownloadProgress} from './download-progress';
 
 const defaults={assistantReady:false,updatePrompts:true,updateAvailable:false,updateVersion:'',updateDownloading:false,updateDownloadError:'',updateAutomationError:'',githubAccessTokenConfigured:false,desktopNotifications:false,notificationSound:true};
 export function nativeApp(){return Boolean(window.webkit?.messageHandlers?.routepilotPreferences)}
@@ -76,13 +77,17 @@ export function GitHubAccessTokenControls({preferences,notify}){
 // Remote connections use BackendUpdate and never send native update actions.
 export function LocalAppUpdateControls({preferences}){
  const t=useT();
+ const installing=Boolean(preferences.updatePhase),busy=preferences.updateChecking||preferences.updateDownloading||installing;
+ const phaseLabels={preparing:'正在准备更新…',downloading:'正在下载完整应用更新',validating:'正在校验完整应用更新',restarting:'正在重启后台，请稍候'};
  return <div className="update-status">
   {preferences.updateAvailable&&<p>{t('已发现可用更新')}：{preferences.updateVersion}</p>}
   {preferences.updateDownloadError&&<p role="alert">{t('更新包下载失败')}：{preferences.updateDownloadError}</p>}
   {preferences.updateAutomationError&&<p role="alert">{t('自动更新失败')}：{message(preferences.updateAutomationError)}</p>}
+  {installing&&<p role="status">{t(phaseLabels[preferences.updatePhase]||'正在准备更新…')}</p>}
+  {preferences.updateDownloading&&<DownloadProgress bytes={preferences.updateDownloadBytes} total={preferences.updateDownloadTotal}/>}
   <div className="toolbar">
-   <button type="button" onClick={()=>window.webkit.messageHandlers.routepilotUpdateAction.postMessage('check')}>{t('立即检查更新')}</button>
-   {preferences.updateAvailable&&<button type="button" disabled={preferences.updateDownloading} onClick={()=>window.webkit.messageHandlers.routepilotUpdateAction.postMessage('installAvailable')}>{t(preferences.updateDownloading?'正在下载更新…':'立即安装')}</button>}
+   <button type="button" disabled={busy} onClick={()=>window.webkit.messageHandlers.routepilotUpdateAction.postMessage('check')}>{t(preferences.updateChecking?'正在检查更新…':'立即检查更新')}</button>
+   {preferences.updateAvailable&&<button type="button" disabled={busy} onClick={()=>window.webkit.messageHandlers.routepilotUpdateAction.postMessage('installAvailable')}>{t(preferences.updateDownloading?'正在下载更新…':'立即安装')}</button>}
   </div>
  </div>;
 }

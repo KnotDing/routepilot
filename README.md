@@ -15,7 +15,7 @@ RoutePilot 是一款 macOS 状态栏应用：向 Surge 查询分流策略，为 
 - **缩短直连路径：** DIRECT 查询返回真实地址，客户端后续流量由网关直接送往 WAN，不必绕经 Surge；Fake-IP 和下一跳配置为 Surge 的受管理前缀仍按路由经过 Surge。
 - **Surge 故障时保留新连接的直连路径：** RoutePilot 停止发放新的 Fake-IP，后续查询改用独立真实 DNS 解析，让网关可将新连接直连出网（真实 DNS 与 WAN 可用时）。已发放 Fake-IP 在 TTL / 宽限期内仍可能依赖 Surge。
 
-[📦 下载最新版本](https://github.com/KnotDing/routepilot/releases) · [🧪 大屏监控测试版 v1.0.4-beta.4](https://github.com/KnotDing/routepilot/releases/tag/v1.0.4-beta.4) · [Gitea 备用下载](https://gitea.knotding.com/knot/routepilot/releases) · [🚀 快速开始](#quick-start) · [🤖 安装 skill](#agent-skill) · [📚 文档导航](#documentation)
+[📦 下载最新版本](https://github.com/KnotDing/routepilot/releases) · [🧪 大屏监控测试版 v1.0.4-beta.5](https://github.com/KnotDing/routepilot/releases/tag/v1.0.4-beta.5) · [Gitea 备用下载](https://gitea.knotding.com/knot/routepilot/releases) · [🚀 快速开始](#quick-start) · [🤖 安装 skill](#agent-skill) · [📚 文档导航](#documentation)
 
 <p align="center">
   <img src="docs/images/management-4k.png" width="100%" alt="RoutePilot App 管理界面 4K 截图">
@@ -187,7 +187,7 @@ App 菜单的 **应用偏好 → 登录凭证保存方式** 可选 macOS 钥匙�
 
 ### 更新完整应用，不再分开升级
 
-**设置 → 软件更新** 的**自动更新**设置（更新源、自动检查、自动检查 Beta 版本、自动安装、检查间隔与自动更新时间）保存在当前连接的后端，控制该后端所在 Mac 的完整应用（App、管理页面与网络服务）自动检查与自动安装。默认从 GitHub 检查并下载更新，也可切换到 Gitea。本机 App 可选设置 GitHub Access token 以提高 GitHub API 请求额度；token 保存在 macOS 钥匙串，只用于本机 App 的 GitHub Releases API 请求，不发送到 Gitea 或远端后台。自动安装每天最多启动一次安装任务，调度记录在重启和升级后保留；未在计划时间运行的服务会在启动后补装。检查或启动任务失败时会显示原因，并在 5 分钟后重试。跳过版本保存在对应后端，App 和浏览器共同遵守，自动安装也会跳过它；手动选择立即升级或取消跳过可恢复该版本的安装。软件更新页面将手动检查和自动更新选项放在一起：**立即检查更新**始终针对当前连接的后端所在 Mac；App 连接本机后端时显示**发现新版本时提示**，连接远程后端时隐藏。升级窗口提供**跳过该版本 / 稍后升级 / 立即升级**，可展开 Markdown 更新说明；自动检查和自动安装由后端设置控制。
+**设置 → 软件更新** 的**自动更新**设置（更新源、自动检查、自动检查 Beta 版本、自动安装、检查间隔与自动更新时间）保存在当前连接的后端，控制该后端所在 Mac 的完整应用（App、管理页面与网络服务）自动检查与自动安装。默认从 GitHub 检查并下载更新，也可切换到 Gitea。本机 App 可选设置 GitHub Access token 以提高 GitHub API 请求额度；token 保存在 macOS 钥匙串，只用于本机 App 的 GitHub Releases API 请求，不发送到 Gitea 或远端后台。自动安装每天最多启动一次安装任务，调度记录在重启和升级后保留；未在计划时间运行的服务会在启动后补装。检查或启动任务失败时会显示原因，并在 5 分钟后重试。检查更新只读取版本和更新说明，确认安装后由目标 Mac 下载一次完整安装包；管理页面与原生安装窗口显示实际下载量和百分比，总大小未知时显示不确定进度。跳过版本保存在对应后端，App 和浏览器共同遵守，自动安装也会跳过它；手动选择立即升级或取消跳过可恢复该版本的安装。软件更新页面将手动检查和自动更新选项放在一起：**立即检查更新**始终针对当前连接的后端所在 Mac；App 连接本机后端时显示**发现新版本时提示**，连接远程后端时隐藏。升级窗口提供**跳过该版本 / 稍后升级 / 立即升级**，可展开 Markdown 更新说明；自动检查和自动安装由后端设置控制。
 
 - **自动检查 Beta 版本**（后端的自动更新设置）默认关闭。启用后，检查会同时比较最新正式版和编号 Beta，版本号相同时优先正式版。测试版可能包含未完成的功能；首次从旧版更新助手安装 Beta 时，可能需要再次管理员授权来刷新更新助手。发布正式版后，可随正式版升级回稳定版。
 - **本机升级**：同步更新 App、管理页面与已安装的网络服务。App 放在 `/Applications` 后可从**状态栏菜单 → 启用更新助手**启用助手，首次管理员授权后避免每次升级重复输入密码。

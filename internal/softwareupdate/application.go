@@ -74,12 +74,13 @@ func activateApplication(a applicationActivation) (result error) {
 }
 
 type applicationInstaller struct {
-	uid          int
-	remoteWorker bool
-	expectedPID  int
-	stageParent  string
-	archive      []byte
-	phaseChanged func(string)
+	uid             int
+	remoteWorker    bool
+	expectedPID     int
+	stageParent     string
+	archive         []byte
+	phaseChanged    func(string)
+	progressChanged func(DownloadProgress) error
 }
 
 func (a *applicationInstaller) phase(value string) { a.phaseChanged(value) }
@@ -109,7 +110,7 @@ func (a *applicationInstaller) install(ctx context.Context, r release) (result e
 		b = cachedAppArchive(a.uid, expected)
 	}
 	if b == nil {
-		b, err = download(ctx, urls[name], 256<<20)
+		b, err = downloadWithTransportProgress(ctx, urls[name], 256<<20, nil, a.progressChanged)
 		if err != nil {
 			return err
 		}

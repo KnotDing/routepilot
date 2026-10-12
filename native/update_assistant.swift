@@ -8,9 +8,25 @@ struct UpdateAssistantStatus: Decodable {
     let target: String?
     let error: String?
     let protocolVersion: Int?
+    let downloadBytes: Int64?
+    let downloadTotal: Int64?
     enum CodingKeys: String, CodingKey {
         case ready, phase, target, error
         case protocolVersion = "protocol_version"
+        case downloadBytes = "download_bytes"
+        case downloadTotal = "download_total"
+    }
+    var downloadPercent: Double? {
+        let bytes = downloadBytes ?? 0
+        guard let total = downloadTotal, total > 0, bytes >= 0, bytes <= total else { return nil }
+        return Double(bytes) / Double(total) * 100
+    }
+    var downloadDescription: String {
+        let bytes = ByteCountFormatter.string(fromByteCount: max(0, downloadBytes ?? 0), countStyle: .file)
+        if let percent = downloadPercent, let total = downloadTotal {
+            return L("已下载 {bytes} / {total}（{percent}%）", ["bytes": bytes, "total": ByteCountFormatter.string(fromByteCount: total, countStyle: .file), "percent": String(format: "%.1f", percent)])
+        }
+        return downloadBytes == nil ? L("正在下载，等待进度信息…") : L("已下载 {bytes}，总大小未知", ["bytes": bytes])
     }
 }
 

@@ -5,23 +5,23 @@ import {MonitoringControls,SourceStatistics,useMonitoringData,historicalSamples,
 import {currentLocale} from './locale';
 import {appendSample,destinationLabels,ingressLabels,flowLayout,sourceFlows,policyDistribution,share} from './monitoring-data';
 
-const colors={addressed:'var(--accent)',intercepted:'#8872db',local:'var(--success-text)',cache:'#12a5a0',real:'var(--accent)',surge:'#8872db',blocked:'var(--warning-text)',unavailable:'var(--danger-text)'};
+const colors={addressed:'var(--accent)',intercepted:'#8872db',local:'var(--success-text)',cache:'#12a5a0',optimistic_cache:'#d08b31',real:'var(--accent)',surge:'#8872db',blocked:'var(--warning-text)',unavailable:'var(--danger-text)'};
 const number=n=>Number(n).toLocaleString(currentLocale(),{maximumFractionDigits:1});
 const percent=(n,total)=>total?`${(share(n,total)*100).toLocaleString(currentLocale(),{minimumFractionDigits:1,maximumFractionDigits:2})}%`:'—';
 
 function FlowChart({snapshot,sources,selected}){
- const t=useT(),classified=sourceFlows(snapshot,sources,selected),flows=classified?.flows||snapshot.flows,{left,right,edges,height}=flowLayout(flows,snapshot.completed,classified?.keys);
+ const t=useT(),classified=sourceFlows(snapshot,sources,selected),flows=classified?.flows||snapshot.flows,total=classified?flows.reduce((sum,f)=>sum+f.queries,0):snapshot.completed,{left,right,edges,height}=flowLayout(flows,total,classified?.keys);
  const label=key=>classified?(key==='remaining-sources'?t('其余来源'):sourceName(key,t)):t(ingressLabels[key]);
  const hasFlows=flows.some(f=>f.queries>0);
- return <section className="panel monitor-flow"><header className="section-heading"><h2>{t('DNS 请求流向')}</h2><p>{t('流带宽度按请求数同比例绘制；每条请求只归入一个最终处理去向，占比以已完成请求为分母。')}</p></header>
+ return <section className="panel monitor-flow"><header className="section-heading"><h2>{t('DNS 请求流向')}</h2><p>{t('流带宽度按请求数同比例绘制；每条请求只归入一个最终处理去向，占比以展示来源的已完成请求为分母。')}</p></header>
   {!hasFlows?<div className="empty">{t(snapshot.completed?'暂无可展示的来源流向':'暂无已完成请求')}</div>:<>
    <div className="monitor-chart-scroll" tabIndex="0" aria-label={t('DNS 请求流向')}><svg viewBox={`0 0 980 ${height+95}`} className="monitor-sankey" role="img" aria-label={t(classified?'DNS 来源到实际处理去向的流向图':'DNS 接入方式到实际处理去向的流向图')}>
     <text x="20" y="22" className="monitor-svg-heading">{t('DNS 流入')}</text><text x="750" y="22" className="monitor-svg-heading">{t('DNS 处理去向')}</text>
-    {edges.map(e=><path key={JSON.stringify([e.source,e.target])} d={e.path} fill={colors[e.target]} fillOpacity=".25"><title>{label(e.source)} → {t(destinationLabels[e.target])}: {number(e.count)} · {percent(e.count,snapshot.completed)}</title></path>)}
-    {left.map(n=><g key={n.key}><rect x="210" y={n.y} width="14" height={n.height} fill={classified?'var(--accent)':colors[n.key]} rx="2"/><text x="190" y={n.y+n.height/2-5} textAnchor="end">{label(n.key).length>23?label(n.key).slice(0,20)+'…':label(n.key)}<title>{label(n.key)}</title></text><text x="190" y={n.y+n.height/2+16} textAnchor="end" className="monitor-svg-value">{number(n.count)} · {percent(n.count,snapshot.completed)}</text></g>)}
-    {right.map(n=><g key={n.key}><rect x="716" y={n.y} width="14" height={n.height} fill={colors[n.key]} rx="2"/><text x="750" y={n.y+n.height/2-5}>{t(destinationLabels[n.key])}</text><text x="750" y={n.y+n.height/2+16} className="monitor-svg-value">{number(n.count)} · {percent(n.count,snapshot.completed)}</text></g>)}
+    {edges.map(e=><path key={JSON.stringify([e.source,e.target])} d={e.path} fill={colors[e.target]} fillOpacity=".25"><title>{label(e.source)} → {t(destinationLabels[e.target])}: {number(e.count)} · {percent(e.count,total)}</title></path>)}
+    {left.map(n=><g key={n.key}><rect x="210" y={n.y} width="14" height={n.height} fill={classified?'var(--accent)':colors[n.key]} rx="2"/><text x="190" y={n.y+n.height/2-5} textAnchor="end">{label(n.key).length>23?label(n.key).slice(0,20)+'…':label(n.key)}<title>{label(n.key)}</title></text><text x="190" y={n.y+n.height/2+16} textAnchor="end" className="monitor-svg-value">{number(n.count)} · {percent(n.count,total)}</text></g>)}
+    {right.map(n=><g key={n.key}><rect x="716" y={n.y} width="14" height={n.height} fill={colors[n.key]} rx="2"/><text x="750" y={n.y+n.height/2-5}>{t(destinationLabels[n.key])}</text><text x="750" y={n.y+n.height/2+16} className="monitor-svg-value">{number(n.count)} · {percent(n.count,total)}</text></g>)}
    </svg></div>
-   <details className="monitor-detail"><summary>{t('查看精确流向数据')}</summary><div className="table-wrap"><table><thead><tr><th>{t(classified?'请求来源':'接入方式')}</th><th>{t('DNS 处理去向')}</th><th>{t('DNS 请求数')}</th><th>{t('占已完成请求')}</th></tr></thead><tbody>{flows.map((f,i)=><tr key={i}><td>{label(f.ingress)}</td><td>{t(destinationLabels[f.destination]||f.destination)}</td><td>{number(f.queries)}</td><td>{percent(f.queries,snapshot.completed)}</td></tr>)}</tbody></table></div></details>
+   <details className="monitor-detail"><summary>{t('查看精确流向数据')}</summary><div className="table-wrap"><table><thead><tr><th>{t(classified?'请求来源':'接入方式')}</th><th>{t('DNS 处理去向')}</th><th>{t('DNS 请求数')}</th><th>{t('占已完成请求')}</th></tr></thead><tbody>{flows.map((f,i)=><tr key={i}><td>{label(f.ingress)}</td><td>{t(destinationLabels[f.destination]||f.destination)}</td><td>{number(f.queries)}</td><td>{percent(f.queries,total)}</td></tr>)}</tbody></table></div></details>
   </>}
   {!classified&&<p className="field-hint">{t('此后端未提供来源流向明细，暂按接入方式展示。')}</p>}
  </section>;

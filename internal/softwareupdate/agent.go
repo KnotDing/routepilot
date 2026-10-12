@@ -344,6 +344,7 @@ func (a *agent) serve(ctx context.Context, c *net.UnixConn) {
 		} else {
 			a.busy = true
 			a.state.Phase = "downloading"
+			a.state.DownloadBytes, a.state.DownloadTotal = 0, 0
 			a.state.Target = req.Version
 			a.state.Error = ""
 			a.persist()
@@ -476,7 +477,12 @@ func (a *agent) phase(value string) {
 	a.persist()
 }
 func (a *agent) install(ctx context.Context, r release) error {
-	installer := applicationInstaller{uid: a.uid, stageParent: agentDir, phaseChanged: a.phase}
+	installer := applicationInstaller{uid: a.uid, stageParent: agentDir, phaseChanged: a.phase, progressChanged: func(p DownloadProgress) error {
+		a.mu.Lock()
+		defer a.mu.Unlock()
+		a.state.DownloadBytes, a.state.DownloadTotal, a.state.UpdatedAt = p.Bytes, p.Total, time.Now().UTC()
+		return writeJSON(agentDir+"/status.json", a.state)
+	}}
 	return installer.install(ctx, r)
 }
 func waitReady(ctx context.Context, tag string, after time.Time) error {

@@ -385,3 +385,31 @@ checks hidden entries, retained totals and correct source shares in both modes;
 browser checks assert the share card is outside the flow card. Backend
 statistics and persistence behavior were not changed. No installed service was
 upgraded or restarted.
+
+## v1.0.4-beta.5 update and monitoring fixes — 2026-10-12
+
+- Reproduced the reported history-save failure with a source-less persisted
+  snapshot upgraded into a legacy source. New requests mutated shared decision
+  and response-code maps without changing that source's completed count. The
+  restore path now owns independent maps; the same test passes with three
+  subsequent saves and a source-filtered history query.
+- Source-flow and source-share denominators exclude hidden pre-collection
+  requests. The live/history regression verifies 40% + 60% visible source
+  shares while stored cumulative totals remain intact.
+- Resolver traces distinguish ordinary cache hits from actual optimistic stale
+  hits. Dispatcher tests cover both destinations and resolver tests verify a
+  valid cache hit remains ordinary even when optimistic responses are enabled.
+- Native checks read metadata without pre-downloading the package. Installation
+  remains owned by the helper. Go download tests cover known/unknown sizes,
+  status-write failures, transferred bytes and duplicate-install rejection;
+  frontend tests cover native and remote progress and disabled duplicate actions.
+  Native status decoding checks both progress percentages and old-helper fallback.
+
+Local gates passed: 27 frontend files / 127 tests; race tests and vet for
+softwareupdate, database, dnsserver, resolver, app and api; production frontend
+build; isolated native core/UI checks; 17-page browser checks at 1440/1120/390
+and 4K light/dark; full App packaging and package validation for source version
+1.0.4-beta.5 / build 87. These checks did not start a privileged update helper,
+replace an installed App, restart production services or measure download
+progress against a live installed environment. Old history does not contain
+enough information to retrospectively split optimistic cache hits.
