@@ -2,7 +2,7 @@ import React from 'react';
 import {it,expect,afterEach,vi} from 'vitest';
 import {render,screen,fireEvent,cleanup,act} from '@testing-library/react';
 import {MonitoringPanel} from './monitoring';
-import {appendSample,flowLayout,policyDistribution} from './monitoring-data';
+import {appendSample,flowLayout,sourceFlows,policyDistribution} from './monitoring-data';
 
 const snapshot={started_at:'2026-10-12T00:00:00Z',session_started_at:'session-a',observed_at:'2026-10-12T00:00:03Z',received:12,completed:10,in_flight:2,unconfirmed:0,latency_ms_sum:20,
  flows:[{ingress:'addressed',destination:'real',queries:3},{ingress:'addressed',destination:'cache',queries:2},{ingress:'intercepted',destination:'real',queries:1},{ingress:'intercepted',destination:'surge',queries:4}],
@@ -25,6 +25,20 @@ it('counts each policy dimension once and keeps unknown and capacity overflow se
  expect(policies.find(r=>r.kind==='overflow').count).toBe(1);
  expect(final.find(r=>r.name==='Node A').count).toBe(4);
  for(const list of [policies,final])expect(list.reduce((s,r)=>s+r.count,0)).toBe(10);
+});
+
+it('uses observed source destinations and preserves shares when grouping small sources',()=>{
+ const sources=Array.from({length:12},(_,i)=>({source:`192.0.2.${i+1}`,counts:{completed:i+1,flows:[{ingress:'addressed',destination:i%2?'real':'surge',queries:i+1}]}}));
+ const total=78,result=sourceFlows({completed:total},sources),layout=flowLayout(result.flows,total,result.keys);
+ expect(result.keys).toHaveLength(11);
+ expect(result.flows.reduce((sum,f)=>sum+f.queries,0)).toBe(total);
+ expect(result.flows.filter(f=>f.ingress==='remaining-sources')).toEqual(expect.arrayContaining([{ingress:'remaining-sources',destination:'surge',queries:1},{ingress:'remaining-sources',destination:'real',queries:2}]));
+ expect(layout.edges.reduce((sum,e)=>sum+e.count,0)).toBe(total);
+ expect(layout.scale).toBeGreaterThan(0);
+ expect(sourceFlows({completed:total},sources.slice(1))).toBeNull();
+ expect(sourceFlows(snapshot,[{source:'old',counts:{completed:10,flows:[]}}])).toBeNull();
+ const selected=sourceFlows(snapshot,[],'192.0.2.10');
+ expect(selected.flows.find(f=>f.destination==='real').queries).toBe(4);
 });
 
 it('calculates rates from actual elapsed time and breaks gaps, resets and duplicate samples',()=>{

@@ -245,6 +245,9 @@ func (m *Monitoring) snapshot(details bool) DNSMonitoringSnapshot {
 			counts.InFlight = child.state.InFlight
 			counts.Unconfirmed = child.state.Unconfirmed
 			counts.LatencyMS = child.state.LatencyMS
+			for k, v := range child.flows {
+				counts.Flows = append(counts.Flows, DNSFlow{k.ingress, k.destination, v})
+			}
 			child.mu.Unlock()
 		}
 		counts.StartedAt, counts.ObservedAt, counts.SessionStartedAt = s.StartedAt, s.ObservedAt, s.SessionStartedAt

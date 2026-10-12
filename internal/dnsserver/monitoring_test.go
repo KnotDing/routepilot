@@ -63,6 +63,9 @@ func TestMonitoringSourceNormalizationIsolationAndLegacyAttribution(t *testing.T
 		m.FinishSource(ip, true, model.DecisionResult{Decision: model.Surge, Policy: src}, "surge", "NOERROR", time.Millisecond)
 	}
 	s := m.View()
+	if len(s.Sources[0].Counts.Flows) != 1 || s.Sources[0].Counts.Flows[0].Queries != 2 {
+		t.Fatalf("source flow detail missing: %+v", s.Sources)
+	}
 	if len(s.Sources) != 2 || s.Sources[0].Counts.Received != 2 || len(s.Sources[0].Counts.Policies) != 0 {
 		t.Fatal("source normalization or lightweight view failed", s)
 	}

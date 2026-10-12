@@ -25,6 +25,11 @@ it('uses server time for whole-minute windows and rejects invalid custom ranges'
 it('filters live and historical policy paths by source and uses that source denominator',async()=>{
  vi.stubGlobal('fetch',vi.fn(async url=>({ok:true,status:200,json:async()=>valueFor(url)})));
  render(<MonitoringPanel {...props}/>);
+ expect(screen.queryByText('按源统计 DNS 流入')).not.toBeInTheDocument();
+ expect(screen.getByRole('heading',{name:'来源请求占比'}).closest('.monitor-flow')).toBeInTheDocument();
+ expect(screen.getByRole('img',{name:'DNS 来源到实际处理去向的流向图'})).toHaveTextContent('192.0.2.10 → Surge DNS: 4');
+ expect(screen.getByRole('img',{name:'DNS 来源到实际处理去向的流向图'})).not.toHaveTextContent('直接请求');
+ expect(document.querySelector('.monitor-source-table')).toHaveTextContent('40.00%');
  fireEvent.click(screen.getByRole('button',{name:'查看 192.0.2.10 的流向'}));
  await waitFor(()=>expect(document.querySelector('.monitor-policy-name')).toHaveTextContent('Proxy'));
  expect(document.querySelector('.monitor-bars small')).toHaveTextContent('100.0%');

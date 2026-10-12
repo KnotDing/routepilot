@@ -1167,5 +1167,10 @@
   "此后端暂不支持历史监控，请升级后端。": "This backend does not support monitoring history. Upgrade the backend.",
   "历史保留七天，时间按分钟聚合。": "History is retained for seven days, aggregated by minute.",
   "当前统计来源：{source}": "Current source: {source}",
-  "所选时间范围暂无历史采样": "No history samples for this time range"
+  "所选时间范围暂无历史采样": "No history samples for this time range",
+  "其余来源": "Other sources",
+  "DNS 来源到实际处理去向的流向图": "DNS sources to actual handling destinations",
+  "此后端未提供来源流向明细，暂按接入方式展示。": "This backend does not provide source flow details. Showing ingress types for now.",
+  "来源请求占比": "Source request shares",
+  "按各源流入请求数计算占比，点击来源查看该源的流向和策略命中。": "Shares use each source's incoming requests. Click a source to view its flows and policy hits."
 }

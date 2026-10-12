@@ -5,10 +5,10 @@ export function share(count,total){return total>0?count/total:0}
 
 // A common scale on both sides preserves every ingress/destination edge.
 // No minimum ribbon width: a small request share must remain a small share.
-export function flowLayout(flows,total){
- const sources=['addressed','intercepted'].map(key=>({key,count:flows.filter(f=>f.ingress===key).reduce((s,f)=>s+f.queries,0)})).filter(n=>n.count);
+export function flowLayout(flows,total,sourceKeys=['addressed','intercepted']){
+ const sources=sourceKeys.map(key=>({key,count:flows.filter(f=>f.ingress===key).reduce((s,f)=>s+f.queries,0)})).filter(n=>n.count);
  const targets=destinations.map(key=>({key,count:flows.filter(f=>f.destination===key).reduce((s,f)=>s+f.queries,0)})).filter(n=>n.count);
- const gap=32,height=300,scale=total?(height-gap*Math.max(0,targets.length-1,sources.length-1))/total:0;
+ const gap=32,height=Math.max(300,sources.length*50),scale=total?(height-gap*Math.max(0,targets.length-1,sources.length-1))/total:0;
  function place(nodes){let y=50+(height-(total*scale+gap*Math.max(0,nodes.length-1)))/2;return nodes.map(n=>{const node={...n,y,height:n.count*scale,used:0};y+=node.height+gap;return node})}
  const left=place(sources),right=place(targets),edges=[];
  for(const source of left)for(const target of right){
@@ -18,7 +18,25 @@ export function flowLayout(flows,total){
   edges.push({source:source.key,target:target.key,count,path:`M 224 ${y1} C 440 ${y1}, 500 ${y2}, 716 ${y2} L 716 ${y2+thickness} C 500 ${y2+thickness}, 440 ${y1+thickness}, 224 ${y1+thickness} Z`});
   source.used+=thickness;target.used+=thickness;
  }
- return {left,right,edges,scale};
+ return {left,right,edges,scale,height};
+}
+
+// Group small sources without inventing their destination shares. Each ribbon
+// comes from observed source/destination counts, never multiplied marginals.
+export function sourceFlows(snapshot,sources,selected=''){
+ if(selected)return {flows:mergeSourceFlows(snapshot.flows.map(f=>({...f,ingress:selected}))),keys:[selected]};
+ if(!Array.isArray(sources)||sources.some(s=>s.counts.completed>0&&(!s.counts.flows?.length)))return null;
+ const ranked=[...sources].filter(s=>s.counts.completed>0).sort((a,b)=>b.counts.completed-a.counts.completed||a.source.localeCompare(b.source));
+ const top=ranked.slice(0,10),rest=ranked.slice(10),flows=[];
+ for(const s of ranked)for(const f of s.counts.flows||[])flows.push({...f,ingress:top.includes(s)?s.source:'remaining-sources'});
+ if(flows.reduce((n,f)=>n+f.queries,0)!==snapshot.completed)return null;
+ return {flows:mergeSourceFlows(flows),keys:[...top.map(s=>s.source),...(rest.length?['remaining-sources']:[])]};
+}
+
+function mergeSourceFlows(flows){
+ const groups=new Map();
+ for(const f of flows){const key=JSON.stringify([f.ingress,f.destination]),row=groups.get(key)||{ingress:f.ingress,destination:f.destination,queries:0};row.queries+=f.queries;groups.set(key,row)}
+ return [...groups.values()];
 }
 
 export function policyDistribution(policies,field){

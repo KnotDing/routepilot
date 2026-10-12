@@ -186,6 +186,7 @@ func (s *Store) DNSMonitoringHistory(ctx context.Context, from, to time.Time, so
 		light.InFlight = src.Counts.InFlight
 		light.Unconfirmed = src.Counts.Unconfirmed
 		light.LatencyMS = src.Counts.LatencyMS
+		light.Flows = src.Counts.Flows
 		result.Sources = append(result.Sources, dnsserver.DNSSourceCount{Source: src.Source, Counts: light})
 	}
 	if result.Sources == nil {

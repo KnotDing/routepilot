@@ -44,6 +44,12 @@
 .monitor-view-controls label { display: grid; gap: 6px; color: var(--muted); font-size: 12px; min-width: 160px; }
 .monitor-view-controls input { min-width: 190px; }
 .monitor-source-table { max-height: 320px; }
+.monitor-source-shares { border-top: 1px solid var(--border); margin-top: 22px; padding-top: 18px; }
+.monitor-source-shares h3 { margin: 0 0 8px; font-size: 15px; }
+.monitor-source-share { display: flex; align-items: center; gap: 12px; }
+.monitor-source-share .monitor-bar-track { flex: 1; min-width: 50px; }
+.monitor-source-share small { min-width: 64px; text-align: right; color: var(--muted); font-variant-numeric: tabular-nums; }
+.monitor-source-link { background: transparent; border: 0; color: var(--accent); padding: 0; max-width: 220px; overflow: hidden; text-overflow: ellipsis; }
 .monitor-source-selected { background: var(--accent-soft); }
 .monitor-source-table button { height: 32px; }
 .monitor-screen .notice button { margin-left: 12px; }

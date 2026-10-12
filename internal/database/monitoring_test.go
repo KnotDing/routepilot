@@ -60,6 +60,15 @@ func TestMonitoringHistoryPersistsFiltersSourcesAndAvoidsDuplicateIntervals(t *t
 	if all.Summary.Received != 3 || all.Summary.Completed != 3 || len(all.Points) != 1 || all.Points[0].Seconds != 15 || !all.Points[0].RateValid || len(all.Sources) != 2 {
 		t.Fatalf("lost or duplicated history: %+v", all)
 	}
+	for _, src := range all.Sources {
+		var total uint64
+		for _, flow := range src.Counts.Flows {
+			total += flow.Queries
+		}
+		if total != src.Counts.Completed || len(src.Counts.Policies) != 0 {
+			t.Fatalf("invalid lightweight source flow detail: %+v", src)
+		}
+	}
 	for source, want := range map[string]uint64{"192.0.2.10": 2, "192.0.2.20": 1} {
 		h, err := s.DNSMonitoringHistory(ctx, at, at.Add(time.Minute), source)
 		if err != nil {

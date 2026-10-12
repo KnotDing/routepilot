@@ -351,3 +351,21 @@ Restart boundaries and sampling gaps do not claim continuous request rates.
 These fixture and isolated-runtime checks do not establish production
 installation, live LAN traffic correctness or capacity at the source limit.
 GitHub regression and both publication workflows are separate release gates.
+
+## v1.0.4-beta.3 source flow layout — 2026-10-12
+
+Source IPs now form the ingress nodes of the DNS flow diagram. The source
+share table sits inside the flow card below the diagram; the standalone
+source statistics card was removed. Both live and historical lightweight
+source lists include actual flow counts without per-source policy details.
+Smaller diagram nodes are grouped using observed destinations, never inferred
+by multiplying source and destination shares. The share table uses received
+requests, while ribbons use completed requests in the selected scope.
+
+Local verification passed: 26 frontend files / 123 tests; race tests and vet
+for database, dnsserver, app and api; frontend build; 17-page browser checks
+at 1440/1120/390 and 4K light/dark; complete App packaging and package checks
+for source version 1.0.4-beta.3 / build 85. Added checks cover source-flow
+conservation, small-source aggregation, missing-detail fallback, embedded
+table placement and persisted history flow counts. No production service was
+installed or restarted during these checks.
