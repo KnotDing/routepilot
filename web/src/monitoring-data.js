@@ -3,6 +3,9 @@ export const destinationLabels={local:'本地记录',cache:'响应缓存',optimi
 export const ingressLabels={addressed:'直接请求',intercepted:'透明拦截'};
 export function share(count,total){return total>0?count/total:0}
 export function visibleSources(sources){return sources?.filter(s=>s.source!=='legacy')}
+// Keep the original monitoring totals, and filter complete triples only for
+// the client-policy chart. Older two-stage rows have no final-policy kind.
+export function visibleClientPolicyFlows(rows){return Array.isArray(rows)?rows.filter(row=>row.final_kind!=='unnamed'):rows}
 
 // A common scale on both sides preserves every ingress/destination edge.
 // No minimum ribbon width: a small request share must remain a small share.

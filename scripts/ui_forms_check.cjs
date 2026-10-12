@@ -121,6 +121,10 @@ const fixture=Function(source.slice(source.indexOf('const settings='),source.ind
    if(bands.some(b=>Math.abs(b.scale-bands[0].scale)>1e-8))throw Error('Three-stage ribbons do not use the same scale');
    for(const rect of svg.querySelectorAll('g > rect[x="600"]')){const y=Number(rect.getAttribute('y')),end=y+Number(rect.getAttribute('height')),incoming=bands.filter(b=>b.n[6]===600&&b.n[7]>=y-1e-8&&b.n[9]<=end+1e-8),outgoing=bands.filter(b=>b.n[0]===614&&b.n[1]>=y-1e-8&&b.n[15]<=end+1e-8);for(const [rows,top,bottom] of [[incoming,7,9],[outgoing,1,15]])if(!rows.length||Math.abs(Math.min(...rows.map(b=>b.n[top]))-y)>1e-8||Math.abs(Math.max(...rows.map(b=>b.n[bottom]))-end)>1e-8)throw Error('Ribbons do not align with the middle node');}
   });
+  const exact=await page.locator('.monitor-client-policy').evaluate(card=>{
+   const table=card.querySelector('tbody'),rows=[...table.rows],count=rows.reduce((sum,row)=>sum+Number(row.cells[3].textContent.replaceAll(',','')),0),percent=rows.reduce((sum,row)=>sum+Number(row.cells[4].textContent.replace('%','')),0);
+   return {count,percent,unknown:[...card.querySelectorAll('text,td,title')].some(el=>el.textContent.trim()==='未记录最终策略')};
+  });if(exact.count!==3068||Math.abs(exact.percent-100)>.1||exact.unknown)throw Error('Unrecorded final-policy requests remain in client flow totals: '+JSON.stringify(exact));
   await page.locator('.monitor-client-policy').screenshot({path:out+'/monitoring-crowded-policies-'+width+'.png'});
  }
  crowdedPolicyFlows=false;sourceNames=true;await page.reload();await page.getByRole('heading',{level:1,name:'仪表盘',exact:true}).waitFor();await go('大屏监控');

@@ -1,8 +1,8 @@
 import React from 'react';
 import {it,expect,afterEach,vi} from 'vitest';
-import {render,screen,fireEvent,cleanup,act} from '@testing-library/react';
+import {render,screen,fireEvent,cleanup,act,within} from '@testing-library/react';
 import {MonitoringPanel} from './monitoring';
-import {appendSample,flowLayout,sourceFlows,policyDistribution} from './monitoring-data';
+import {appendSample,flowLayout,sourceFlows,policyDistribution,visibleClientPolicyFlows} from './monitoring-data';
 
 const snapshot={started_at:'2026-10-12T00:00:00Z',session_started_at:'session-a',observed_at:'2026-10-12T00:00:03Z',received:12,completed:10,in_flight:2,unconfirmed:0,latency_ms_sum:20,
  flows:[{ingress:'addressed',destination:'real',queries:3},{ingress:'addressed',destination:'cache',queries:2},{ingress:'intercepted',destination:'real',queries:1},{ingress:'intercepted',destination:'surge',queries:4}],
@@ -124,4 +124,15 @@ it('uses the same scale and middle coordinates when the final column has more no
  const second=flowLayout(triples.map(r=>({ingress:r.policy,destination:r.final,queries:r.count})),total,policies,finals,2,{sourceX:600,targetX:1040,nodeCount:11});
  expect(first.scale).toBe(second.scale);expect(first.svgHeight).toBe(second.svgHeight);
  for(const middle of first.right){const next=second.left.find(n=>n.key===middle.key);expect(next.y).toBe(middle.y);expect(next.height).toBe(middle.height);expect(second.edges.filter(e=>e.source===middle.key).reduce((sum,e)=>sum+e.count,0)).toBe(middle.count)}
+});
+
+it('excludes unrecorded final-policy triples from every column and its denominator only',()=>{
+ const rows=[{source:'192.0.2.10',kind:'named',policy:'Proxy',final_kind:'named',final_policy:'Node A',queries:6},{source:'192.0.2.20',kind:'named',policy:'Unknown final path',final_kind:'unnamed',final_policy:'',queries:4}];
+ const {rerender}=render(<MonitoringPanel snapshot={{...snapshot,source_policy_flows:rows}} onFocus={()=>{}}/>);
+ const chart=document.querySelector('.monitor-client-policy');expect(chart).not.toHaveTextContent('Unknown final path');expect(chart).not.toHaveTextContent('192.0.2.20');expect(within(chart).queryByText('未记录最终策略',{exact:true})).toBeNull();
+ expect(within(chart).getAllByText('6 · 100.0%')).toHaveLength(3);expect(within(chart).getByRole('cell',{name:'6',hidden:true})).toBeInTheDocument();
+ expect(document.querySelector('.monitor-metrics')).toHaveTextContent('已生成响应10');
+ rerender(<MonitoringPanel snapshot={{...snapshot,source_policy_flows:[rows[1]]}} onFocus={()=>{}}/>);expect(chart).toHaveTextContent('暂无已记录最终策略的请求');expect(chart.querySelector('svg')).toBeNull();
+ expect(visibleClientPolicyFlows([{...rows[0],final_kind:'rest',final_policy:''},{...rows[0],final_kind:'overflow',final_policy:''},...rows])).toHaveLength(3);
+ expect(visibleClientPolicyFlows([{source:'old',policy:'Proxy',kind:'named',queries:3}])).toHaveLength(1);
 });

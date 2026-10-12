@@ -4,7 +4,7 @@ import React,{useEffect,useMemo,useRef,useState} from 'react';
 import {useT,message} from './i18n';
 import {MonitoringControls,SourceStatistics,useMonitoringData,historicalSamples,sourceName} from './monitoring-history';
 import {currentLocale} from './locale';
-import {appendSample,destinationLabels,ingressLabels,flowLayout,sourceFlows,policyDistribution,share} from './monitoring-data';
+import {appendSample,destinationLabels,ingressLabels,flowLayout,sourceFlows,policyDistribution,share,visibleClientPolicyFlows} from './monitoring-data';
 import {MonitoringDisplayContext,createMonitoringDisplay,useMonitoringDisplay,useMonitoringPreferences} from './monitoring-preferences';
 
 const colors={addressed:'var(--accent)',intercepted:'#8872db',local:'var(--success-text)',cache:'#12a5a0',optimistic_cache:'#d08b31',real:'var(--accent)',surge:'#8872db',blocked:'var(--warning-text)',unavailable:'var(--danger-text)'};
@@ -34,8 +34,8 @@ function PolicyNodeLabel({node,x,label,total}){
  return <><text x={x} y={center-(lines.length-1)*11-5} className="monitor-node-label">{lines.map((line,i)=><tspan key={i} x={x} dy={i?22:0}>{line}</tspan>)}<title>{label}</title></text><text x={x} y={center+(lines.length-1)*11+16} className="monitor-svg-value monitor-node-label">{number(node.count)} · {percent(node.count,total)}</text></>;
 }
 
-function ClientPolicyChart({rows,clientSettings=[]}){
- const t=useT(),display=useMonitoringDisplay(),labels=useSourceLabels(clientSettings),three=Array.isArray(rows)&&rows.every(row=>Boolean(row.final_kind));
+function ClientPolicyChart({rows:allRows,clientSettings=[]}){
+ const t=useT(),display=useMonitoringDisplay(),labels=useSourceLabels(clientSettings),three=Array.isArray(allRows)&&allRows.every(row=>Boolean(row.final_kind)),rows=visibleClientPolicyFlows(allRows);
  const labelOf=(kind,name,final=false)=>kind==='unnamed'?t(final?'未记录最终策略':'未记录策略'):kind==='overflow'?t('超出明细容量'):kind==='rest'?t(final?'其余最终策略':'其余策略'):display.policy(name,final);
  const policyKey=row=>JSON.stringify([row.kind,row.policy]),finalKey=row=>JSON.stringify([row.final_kind,row.final_policy]),policies=new Map(),finals=new Map();
  for(const row of rows||[]){policies.set(policyKey(row),labelOf(row.kind,row.policy));if(three)finals.set(finalKey(row),labelOf(row.final_kind,row.final_policy,true))}
@@ -44,8 +44,8 @@ function ClientPolicyChart({rows,clientSettings=[]}){
  const sourceKeys=rank(flows,'ingress'),policyKeys=rank(flows,'destination'),finalKeys=rank(finalFlows,'destination'),labelLines=Math.max(1,...sourceKeys.map(key=>labels.lines(key).length),...[...policies.values(),...finals.values()].map(label=>wrapSourceLabel(label).length)),nodeCount=Math.max(sourceKeys.length,policyKeys.length,finalKeys.length),middleX=three?600:716;
  const first=flowLayout(flows,total,sourceKeys,policyKeys,labelLines,{sourceX:210,targetX:middleX,nodeCount}),second=flowLayout(finalFlows,total,policyKeys,finalKeys,labelLines,{sourceX:600,targetX:1040,nodeCount});
  const palette=['var(--accent)','#8872db','#12a5a0','var(--success-text)','#d08b31','var(--danger-text)'],color=(key,keys)=>palette[keys.indexOf(key)%palette.length];
- return <section className="panel monitor-client-policy"><header className="section-heading"><h2>{t('客户端策略流向')}</h2><p>{t('按实际请求记录展示客户端、命中策略与最终策略，每一层的流带和节点共用请求数比例尺。')}</p></header>
-  {!Array.isArray(rows)?<div className="notice">{t('此后端暂不支持客户端策略流向，请升级后端。')}</div>:!total?<div className="empty">{t('暂无已完成请求')}</div>:<>
+ return <section className="panel monitor-client-policy"><header className="section-heading"><h2>{t('客户端策略流向')}</h2><p>{t(three?'仅展示已记录最终策略的请求；客户端、命中策略与最终策略共用同一比例尺，占比以这些请求为分母。':'按实际请求记录展示客户端、命中策略与最终策略，每一层的流带和节点共用请求数比例尺。')}</p></header>
+  {!Array.isArray(rows)?<div className="notice">{t('此后端暂不支持客户端策略流向，请升级后端。')}</div>:!total?<div className="empty">{t(allRows.length?'暂无已记录最终策略的请求':'暂无已完成请求')}</div>:<>
    {!three&&<p className="field-hint">{t('此后端未提供最终策略流向，暂展示客户端到命中策略。')}</p>}
    <div className="monitor-chart-scroll" tabIndex="0" aria-label={t('客户端策略流向')}><svg viewBox={`0 0 ${three?1280:980} ${first.svgHeight}`} className={'monitor-sankey '+(three?'monitor-three-stage':'')} role="img" aria-label={t('客户端到策略或策略组的流向图')}>
     <text x="20" y="22" className="monitor-svg-heading">{t('客户端')}</text><text x={three?600:750} y="22" className="monitor-svg-heading">{t('策略 / 策略组')}</text>{three&&<text x="1075" y="22" className="monitor-svg-heading">{t('最终策略')}</text>}

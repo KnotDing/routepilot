@@ -584,3 +584,29 @@ real WKWebView checks; `node scripts/ui_forms_check.cjs` with 17 pages and
 checks reopen the page, retain hidden cards, select an anonymous source, and
 inspect the rendered markup for raw identifiers. No actual environment was
 installed or restarted.
+
+Beta.12 publication verified: tag points to
+`6c6724b6e0f111f21c48a915163ba63e9af1c6a8`; GitHub regression #33
+(`38225857313`) and release #20 (`38225857525`) passed, and Gitea #114
+(`2085`) mirrored GitHub successfully with fallback skipped. Both releases are
+non-draft prereleases with exactly three downloadable nonempty attachments.
+Downloaded hashes match across providers; actual App and backend are
+`1.0.4-beta.12 / build 20`, with signatures, ZIP resources and DMG integrity
+verified. Evidence: `artifacts/releases/v1.0.4-beta.12/publication-verification.json`.
+
+## v1.0.4-beta.13 final-policy chart scope — 2026-10-12
+
+Client policy flows filter complete triples whose final kind is `unnamed`
+before building any column, ribbon, total or detail row. All percentages use
+the remaining completed requests; cumulative metrics, DNS flows and standalone
+policy rankings are unchanged. Recorded `rest` / capacity aggregates remain,
+and old two-stage rows keep their explicit compatibility fallback. If every
+request lacks a final policy, the card states that no recorded final-policy
+requests are available.
+
+Local checks passed: 30 frontend files / 147 tests, production build, full
+17-page / 14-category browser checks at 1440/1120/390 and 4K, and
+`make package package-check` for 1.0.4-beta.13 / source build 95. The crowded
+browser fixture excludes 1492 unrecorded-final requests from 4560, confirms
+3068 in the exact detail rows, verifies displayed shares sum to 100% within
+rounding, and repeats actual ribbon-scale / middle-node alignment checks.
