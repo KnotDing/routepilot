@@ -427,6 +427,12 @@ func (a *App) build(d config.Document, saved *decisionCacheSnapshot, responses *
 	rt.dispatcher = &dnsserver.Dispatcher{AAAAFallback: s.DNS.AAAAFallback, IPv6Status: rt.adapter, SharedCounters: &a.dnsCounters, Local: rt.hosts, RealIPDomains: rt.adapter, FakeTTLMax: &maxFakeTTL, Classifier: rt.policy, Surge: &observedSurge{SurgeAdapter: rt.adapter, rt: rt}, Gate: rt.machine, FakeIssuer: rt.machine, History: dnsserver.NewHistory(s.Logging.HistoryCapacity, s.Logging.QueryHistory && s.Logging.LogDomains), ClientStatistics: dnsserver.NewClientStatistics(4096)}
 	rt.previousQueries.Store(a.dnsCounters.Queries.Load())
 	rt.dispatcher.Monitoring = a.dnsMonitoring
+	rt.dispatcher.ClientPolicies = make(map[netip.Addr]model.Decision)
+	for _, client := range s.DNS.Clients {
+		if client.Decision != "" {
+			rt.dispatcher.ClientPolicies[netip.MustParseAddr(client.IP).Unmap()] = client.Decision
+		}
+	}
 	for _, p := range s.Surge.FakePrefixes {
 		rt.dispatcher.FakePrefixes = append(rt.dispatcher.FakePrefixes, netip.MustParsePrefix(p))
 	}

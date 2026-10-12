@@ -227,3 +227,24 @@ func TestMonitoringRelayIsReadOnly(t *testing.T) {
 		t.Fatal("unexpected monitoring subresource allowed")
 	}
 }
+
+func TestClientSettingsRelayOnlyAllowsResourceOperations(t *testing.T) {
+	for _, method := range []string{"GET", "POST"} {
+		if !allowed("dns/client-settings", method) {
+			t.Fatal(method)
+		}
+	}
+	for _, method := range []string{"PUT", "DELETE"} {
+		if !allowed("dns/client-settings/client-id", method) {
+			t.Fatal(method)
+		}
+	}
+	for _, path := range []string{"dns/client-settings/", "dns/client-settings/client/nested", "dns/client-settings/../settings"} {
+		if allowed(path, "PUT") {
+			t.Fatal("unsafe client endpoint allowed", path)
+		}
+	}
+	if allowed("dns/client-settings/client-id", "POST") || allowed("dns/client-settings/client-id", "GET") {
+		t.Fatal("unsupported client operation allowed")
+	}
+}

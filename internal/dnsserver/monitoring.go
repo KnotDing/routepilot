@@ -35,19 +35,20 @@ type DNSSourceCount struct {
 }
 
 type DNSMonitoringSnapshot struct {
-	StartedAt        time.Time         `json:"started_at"`
-	SessionStartedAt time.Time         `json:"session_started_at"`
-	ObservedAt       time.Time         `json:"observed_at"`
-	Received         uint64            `json:"received"`
-	Completed        uint64            `json:"completed"`
-	Unconfirmed      uint64            `json:"unconfirmed"`
-	InFlight         uint64            `json:"in_flight"`
-	ResponseCodes    map[string]uint64 `json:"response_codes"`
-	Decisions        map[string]uint64 `json:"decisions"`
-	LatencyMS        float64           `json:"latency_ms_sum"`
-	Flows            []DNSFlow         `json:"flows"`
-	Policies         []DNSPolicyCount  `json:"policies"`
-	Sources          []DNSSourceCount  `json:"sources,omitempty"`
+	StartedAt         time.Time             `json:"started_at"`
+	SessionStartedAt  time.Time             `json:"session_started_at"`
+	ObservedAt        time.Time             `json:"observed_at"`
+	Received          uint64                `json:"received"`
+	Completed         uint64                `json:"completed"`
+	Unconfirmed       uint64                `json:"unconfirmed"`
+	InFlight          uint64                `json:"in_flight"`
+	ResponseCodes     map[string]uint64     `json:"response_codes"`
+	Decisions         map[string]uint64     `json:"decisions"`
+	LatencyMS         float64               `json:"latency_ms_sum"`
+	Flows             []DNSFlow             `json:"flows"`
+	Policies          []DNSPolicyCount      `json:"policies"`
+	Sources           []DNSSourceCount      `json:"sources,omitempty"`
+	SourcePolicyFlows []DNSSourcePolicyFlow `json:"source_policy_flows"`
 }
 
 type policyKey struct {
@@ -237,6 +238,7 @@ func (m *Monitoring) snapshot(details bool) DNSMonitoringSnapshot {
 		return a.Destination < b.Destination
 	})
 
+	var policySources []DNSSourceCount
 	for source, child := range m.sources {
 		var counts DNSMonitoringSnapshot
 		if details {
@@ -252,7 +254,14 @@ func (m *Monitoring) snapshot(details bool) DNSMonitoringSnapshot {
 			for k, v := range child.flows {
 				counts.Flows = append(counts.Flows, DNSFlow{k.ingress, k.destination, v})
 			}
+			for k, v := range child.policies {
+				counts.Policies = append(counts.Policies, DNSPolicyCount{k.policy, k.final, k.destination, k.other, v})
+			}
 			child.mu.Unlock()
+		}
+		policySources = append(policySources, DNSSourceCount{source, counts})
+		if !details {
+			counts.Policies = nil
 		}
 		counts.StartedAt, counts.ObservedAt, counts.SessionStartedAt = s.StartedAt, s.ObservedAt, s.SessionStartedAt
 		s.Sources = append(s.Sources, DNSSourceCount{source, counts})
@@ -264,6 +273,7 @@ func (m *Monitoring) snapshot(details bool) DNSMonitoringSnapshot {
 		}
 		return a.Source < b.Source
 	})
+	s.SourcePolicyFlows = SourcePolicyFlows(policySources)
 	return s
 }
 
@@ -275,6 +285,7 @@ func (m *Monitoring) SourceSnapshot(source string) (DNSMonitoringSnapshot, bool)
 		return EmptyMonitoringCounts(), false
 	}
 	s := child.Snapshot()
+	s.SourcePolicyFlows = SourcePolicyFlows([]DNSSourceCount{{Source: source, Counts: s}})
 	s.StartedAt, s.ObservedAt, s.SessionStartedAt = m.state.StartedAt, time.Now().UTC(), m.state.SessionStartedAt
 	return s, true
 }

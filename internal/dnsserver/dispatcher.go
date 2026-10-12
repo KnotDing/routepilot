@@ -266,6 +266,7 @@ type Dispatcher struct {
 	FakeIssuer       FakeIssuer
 	FakePrefixes     []netip.Prefix
 	ForbiddenClients []netip.Addr
+	ClientPolicies   map[netip.Addr]model.Decision
 	Counters         Counters
 	SharedCounters   *Counters
 	History          *History
@@ -377,6 +378,9 @@ func (d *Dispatcher) Dispatch(ctx context.Context, q model.DNSQueryContext, m *d
 		result.Reason = "ANY is refused to avoid address-policy bypass"
 		counters.Reject.Add(1)
 		return failure(m, dns.RcodeRefused)
+	}
+	if decision, ok := d.ClientPolicies[q.ClientIP.Unmap()]; ok {
+		return d.resolveClientPolicy(ctx, q, m, &result, decision, gate)
 	}
 	aaaaFallback := d.AAAAFallback
 	if mode := d.aaaaOverride.Load(); mode != nil {

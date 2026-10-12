@@ -176,6 +176,16 @@ func (s *Store) DNSMonitoringHistory(ctx context.Context, from, to time.Time, so
 	}
 
 	result.TotalReceived = result.Summary.Received
+	policySources := result.Summary.Sources
+	if source != "" {
+		policySources = nil
+		for _, src := range result.Summary.Sources {
+			if src.Source == source {
+				policySources = append(policySources, src)
+			}
+		}
+	}
+	result.SourcePolicyFlows = dnsserver.SourcePolicyFlows(policySources)
 	for _, src := range result.Summary.Sources {
 		if src.Counts.Received == 0 && src.Counts.Completed == 0 && src.Counts.InFlight == 0 && src.Counts.Unconfirmed == 0 {
 			continue

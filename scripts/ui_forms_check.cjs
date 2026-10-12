@@ -58,11 +58,15 @@ const fixture=Function(source.slice(source.indexOf('const settings='),source.ind
    }
    await check(width+' '+label);
   }
+  await go('客户端');await page.getByRole('heading',{name:'客户端设置',exact:true}).waitFor();await page.getByRole('button',{name:'添加客户端',exact:true}).click();
+  await page.getByRole('dialog',{name:'客户端设置',exact:true}).waitFor();await page.getByLabel('客户端 IP',{exact:true}).fill('192.0.2.10');await page.getByLabel('备注名称',{exact:true}).fill('Office PC');await page.getByLabel('查询策略',{exact:true}).selectOption('SURGE');await check('client settings editor '+width);await page.screenshot({path:out+'/client-settings-'+width+'.png',fullPage:true});await page.getByRole('button',{name:'取消',exact:true}).click();
   await go('大屏监控');
   if(await page.getByRole('heading',{name:'按源统计 DNS 流入',exact:true}).count())throw Error('Standalone source panel remains');
   await page.locator('.monitor-source-shares').getByRole('heading',{name:'来源请求占比',exact:true}).waitFor();
   if(await page.locator('.monitor-flow').getByRole('heading',{name:'来源请求占比',exact:true}).count())throw Error('Source shares remain inside the flow card');
   await page.getByRole('img',{name:'DNS 来源到实际处理去向的流向图',exact:true}).waitFor();
+  await page.getByRole('img',{name:'客户端到策略或策略组的流向图',exact:true}).waitFor();
+  if(width===1440){const a=await page.locator('.monitor-flow').boundingBox(),b=await page.locator('.monitor-client-policy').boundingBox();if(Math.abs(a.y-b.y)>1||b.x<a.x+a.width)throw Error('Flow cards are not side by side');const clipped=await page.locator('.monitor-flow-grid .monitor-chart-scroll').evaluateAll(els=>els.some(el=>el.scrollWidth>el.clientWidth));if(clipped)throw Error('Wide flow charts have clipped labels');}
   await page.getByRole('button',{name:'查看 192.0.2.10 的流向',exact:true}).click();
   await page.getByText('当前统计来源：192.0.2.10',{exact:true}).waitFor();
   await page.locator('.monitor-policies .monitor-policy-name').filter({hasText:'Proxy'}).waitFor();

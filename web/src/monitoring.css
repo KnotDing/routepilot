@@ -79,3 +79,10 @@
  .monitor-bar-row { grid-template-columns: 12px minmax(40px,1fr) minmax(30px,.7fr) auto 54px; gap: 6px; }
  .monitor-focus > main { padding: 16px; }
 }
+
+.monitor-flow-grid { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 22px; }
+.monitor-flow-grid .monitor-sankey { min-width: 480px; }
+.monitor-flow-grid svg text { font-size: 20px; }
+.monitor-flow-grid svg .monitor-svg-heading { font-size: 18px; }
+.monitor-flow-grid svg .monitor-svg-value { font-size: 17px; }
+@media (max-width: 1200px) { .monitor-flow-grid { grid-template-columns: minmax(0,1fr); } }

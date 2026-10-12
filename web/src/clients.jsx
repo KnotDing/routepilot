@@ -12,12 +12,12 @@ const summaryMetrics=[
  ['DNS 错误数','errors']
 ];
 const clientColumns=[
- ['client_ip','客户端 IP'],['queries','DNS 请求数'],['direct','DIRECT'],
+ ['client_ip','客户端 IP'],['name','备注名称'],['decision','查询策略'],['queries','DNS 请求数'],['direct','DIRECT'],
  ['surge','SURGE'],['reject','REJECT'],['unknown','UNKNOWN'],
  ['errors','DNS 错误'],['last_seen','最后活动']
 ];
 
-export function ClientsPanel({snapshot={}}){
+export function ClientsPanel({snapshot={},configs=[]}){
  const t=useT();
  if(snapshot===null)return <div className="notice">{t('此远程后端版本暂不支持客户端统计。更新远程后端后即可查看。')}</div>;
  const stats=snapshot.stats||{},clients=Array.isArray(snapshot.clients)?snapshot.clients:[];
@@ -28,7 +28,7 @@ export function ClientsPanel({snapshot={}}){
    <h2>{t('客户端列表')}</h2>
    <div className="table-wrap"><table className="responsive-table" role="table">
     <thead role="rowgroup"><tr role="row">{clientColumns.map(([key,label])=><th key={key} role="columnheader">{t(label)}</th>)}</tr></thead>
-    <tbody role="rowgroup">{clients.map(client=><tr role="row" key={client.client_ip}>{clientColumns.map(([key,label])=><td key={key} role="cell" data-label={t(label)}><span className="cell-value">{key==='last_seen'?(client[key]?new Date(client[key]).toLocaleString(currentLocale()):'—'):client[key]??0}</span></td>)}</tr>)}</tbody>
+    <tbody role="rowgroup">{clients.map(raw=>{const setting=configs?.find(row=>row.ip===raw.client_ip);const client={...raw,name:setting?.name||'—',decision:setting?.decision||t('自动')};return <tr role="row" key={client.client_ip}>{clientColumns.map(([key,label])=><td key={key} role="cell" data-label={t(label)}><span className="cell-value">{key==='last_seen'?(client[key]?new Date(client[key]).toLocaleString(currentLocale()):'—'):client[key]??0}</span></td>)}</tr>})}</tbody>
    </table>{!clients.length&&<div className="empty">{t('暂无客户端 DNS 请求')}</div>}</div>
   </section>
  </>;

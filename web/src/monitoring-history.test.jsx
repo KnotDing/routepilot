@@ -8,9 +8,11 @@ import {selectBackend} from './client';
 const base={started_at:'2026-10-12T00:00:00Z',session_started_at:'a',observed_at:'2026-10-12T00:03:15Z',unconfirmed:0,in_flight:0,latency_ms_sum:10};
 const a={...base,received:4,completed:4,decisions:{SURGE:4},response_codes:{NOERROR:4},flows:[{ingress:'addressed',destination:'surge',queries:4}],policies:[{policy:'Proxy',final_policy:'Node A',destination:'surge',queries:4}]};
 const b={...base,received:6,completed:6,decisions:{DIRECT:6},response_codes:{NOERROR:6},flows:[{ingress:'intercepted',destination:'real',queries:6}],policies:[{policy:'DIRECT',final_policy:'DIRECT',destination:'real',queries:6}]};
-const snapshot={...base,received:10,completed:10,decisions:{SURGE:4,DIRECT:6},response_codes:{NOERROR:10},flows:[...a.flows,...b.flows],policies:[...a.policies,...b.policies],sources:[{source:'192.0.2.10',counts:a},{source:'192.0.2.20',counts:b}]};
+a.source_policy_flows=[{source:'192.0.2.10',kind:'named',policy:'Proxy',queries:4}];
+b.source_policy_flows=[{source:'192.0.2.20',kind:'named',policy:'DIRECT',queries:6}];
+const snapshot={source_policy_flows:[...a.source_policy_flows,...b.source_policy_flows],...base,received:10,completed:10,decisions:{SURGE:4,DIRECT:6},response_codes:{NOERROR:10},flows:[...a.flows,...b.flows],policies:[...a.policies,...b.policies],sources:[{source:'192.0.2.10',counts:a},{source:'192.0.2.20',counts:b}]};
 const props={snapshot,historyStatus:{supported:true},onFocus:()=>{}};
-const history=counts=>({from:'2026-10-12T00:00:00Z',to:'2026-10-12T00:04:00Z',summary:counts,sources:snapshot.sources,total_received:10,points:[{from:'2026-10-12T00:03:10Z',to:'2026-10-12T00:03:15Z',seconds:5,rate_valid:true,counts}]});
+const history=counts=>({from:'2026-10-12T00:00:00Z',to:'2026-10-12T00:04:00Z',summary:counts,source_policy_flows:counts.source_policy_flows,sources:snapshot.sources,total_received:10,points:[{from:'2026-10-12T00:03:10Z',to:'2026-10-12T00:03:15Z',seconds:5,rate_valid:true,counts}]});
 function valueFor(url){const q=new URL(url,'http://localhost'),source=q.searchParams.get('source'),counts=source==='192.0.2.10'?a:source==='192.0.2.20'?b:snapshot;return q.pathname.endsWith('/history')?history(counts):counts}
 afterEach(()=>{cleanup();localStorage.clear();selectBackend('');vi.unstubAllGlobals()});
 
@@ -25,6 +27,8 @@ it('uses server time for whole-minute windows and rejects invalid custom ranges'
 it('filters live and historical policy paths by source and uses that source denominator',async()=>{
  vi.stubGlobal('fetch',vi.fn(async url=>({ok:true,status:200,json:async()=>valueFor(url)})));
  render(<MonitoringPanel {...props}/>);
+ expect(screen.getByRole('img',{name:'客户端到策略或策略组的流向图'})).toHaveTextContent('192.0.2.10 → Proxy: 4');
+ expect(screen.getByRole('img',{name:'客户端到策略或策略组的流向图'})).not.toHaveTextContent('192.0.2.20 → Proxy');
  expect(screen.queryByText('按源统计 DNS 流入')).not.toBeInTheDocument();
  expect(screen.getByRole('heading',{name:'来源请求占比'}).closest('.monitor-flow')).toBeNull();
  expect(screen.getByRole('heading',{name:'来源请求占比'}).closest('.panel')).toHaveClass('monitor-source-shares');
@@ -83,4 +87,12 @@ it('shows a localized historical-query failure without fabricated statistics',as
  render(<MonitoringPanel {...props}/>);fireEvent.click(screen.getByRole('button',{name:'历史数据',exact:true}));
  expect(await screen.findByRole('alert')).toHaveTextContent('历史监控存储暂不可用');expect(document.querySelector('.monitor-metrics')).toBeNull();
  expect(screen.getByRole('button',{name:'重试'})).toBeInTheDocument();
+});
+
+it('shows configured client names while keeping source requests keyed by IP',async()=>{
+ vi.stubGlobal('fetch',vi.fn(async url=>({ok:true,status:200,json:async()=>valueFor(url)})));
+ render(<MonitoringPanel {...props} clientSettings={[{ip:'192.0.2.10',name:'工作电脑'}]}/>);
+ fireEvent.click(screen.getByRole('button',{name:'查看 工作电脑 (192.0.2.10) 的流向'}));
+ await screen.findByText('当前统计来源：工作电脑 (192.0.2.10)');
+ expect(fetch.mock.calls.some(([url])=>new URL(url,'http://localhost').searchParams.get('source')==='192.0.2.10')).toBe(true);
 });

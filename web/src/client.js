@@ -45,7 +45,7 @@ export async function request(path,method='GET',body,headers){
  }finally{if(deferred)update('finished')}
 }
 export async function requestOptional(path,fallback){
- try{return await request(path)}catch(e){if(backend&&e.status===404)return fallback;throw e}
+ try{return await request(path)}catch(e){if((backend&&e.status===404)||(path==='dns/client-settings'&&[404,501].includes(e.status)))return fallback;throw e}
 }
 export function pretty(v){return v==null?'—':typeof v==='object'?JSON.stringify(v):String(v)}
 

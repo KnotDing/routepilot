@@ -20,6 +20,7 @@ type General struct {
 	Theme     string `json:"theme"`
 }
 type DNS struct {
+	Clients             []Client                    `json:"clients"`
 	AAAAFallback        string                      `json:"aaaa_fallback"`
 	Listeners           []string                    `json:"listeners"`
 	Transparent         []string                    `json:"transparent_listeners"`
@@ -37,6 +38,12 @@ type DNS struct {
 	TimeoutMS           int                         `json:"timeout_ms"`
 	SourcePortFirst     uint16                      `json:"source_port_first"`
 	SourcePortLast      uint16                      `json:"source_port_last"`
+}
+type Client struct {
+	ID       string         `json:"id"`
+	IP       string         `json:"ip"`
+	Name     string         `json:"name"`
+	Decision model.Decision `json:"decision"`
 }
 type PolicyUpstream struct {
 	Field             string                      `json:"field"`
@@ -284,6 +291,7 @@ func (d Document) Clone() Document {
 	}
 	c.Settings.RemoteBackends = append([]Backend{}, d.Settings.RemoteBackends...)
 	c.Settings.DNS.Listeners = append([]string{}, d.Settings.DNS.Listeners...)
+	c.Settings.DNS.Clients = append([]Client{}, d.Settings.DNS.Clients...)
 	c.Settings.DNS.Transparent = append([]string{}, d.Settings.DNS.Transparent...)
 	c.Settings.DNS.IngressInterfaces = append([]string{}, d.Settings.DNS.IngressInterfaces...)
 	c.Settings.DNS.Upstreams = append([]resolver.ResolverEndpoint{}, d.Settings.DNS.Upstreams...)
@@ -382,6 +390,9 @@ func ParseUpdateTime(value string) (int, int, bool) {
 }
 
 func (d Document) Validate() error {
+	if err := validateClients(d.Settings.DNS.Clients); err != nil {
+		return err
+	}
 	s := d.Settings
 	if s.DNS.AAAAFallback != "" && s.DNS.AAAAFallback != "surge" && s.DNS.AAAAFallback != "block" && s.DNS.AAAAFallback != "upstream" {
 		return errors.New("AAAA fallback must be surge, block or upstream")

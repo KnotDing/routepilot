@@ -60,6 +60,13 @@ func TestMonitoringHistoryPersistsFiltersSourcesAndAvoidsDuplicateIntervals(t *t
 	if all.Summary.Received != 3 || all.Summary.Completed != 3 || len(all.Points) != 1 || all.Points[0].Seconds != 15 || !all.Points[0].RateValid || len(all.Sources) != 2 {
 		t.Fatalf("lost or duplicated history: %+v", all)
 	}
+	var policyTotal uint64
+	for _, flow := range all.SourcePolicyFlows {
+		policyTotal += flow.Queries
+	}
+	if policyTotal != 3 {
+		t.Fatal("historical source-policy counts lost", all.SourcePolicyFlows)
+	}
 	for _, src := range all.Sources {
 		var total uint64
 		for _, flow := range src.Counts.Flows {
@@ -73,6 +80,16 @@ func TestMonitoringHistoryPersistsFiltersSourcesAndAvoidsDuplicateIntervals(t *t
 		h, err := s.DNSMonitoringHistory(ctx, at, at.Add(time.Minute), source)
 		if err != nil {
 			t.Fatal(err)
+		}
+		var total uint64
+		for _, flow := range h.SourcePolicyFlows {
+			if flow.Source != source {
+				t.Fatal("historical source-policy scope leaked", flow)
+			}
+			total += flow.Queries
+		}
+		if total != want {
+			t.Fatal("historical policy flows lost", h.SourcePolicyFlows)
 		}
 		if h.Summary.Completed != want || h.Points[0].Counts.Completed != want || len(h.Summary.Policies) != 1 || len(h.Summary.Flows) != 1 || h.TotalReceived != 3 {
 			t.Fatalf("source data leaked: %+v", h)

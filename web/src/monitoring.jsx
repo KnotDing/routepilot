@@ -9,9 +9,9 @@ const colors={addressed:'var(--accent)',intercepted:'#8872db',local:'var(--succe
 const number=n=>Number(n).toLocaleString(currentLocale(),{maximumFractionDigits:1});
 const percent=(n,total)=>total?`${(share(n,total)*100).toLocaleString(currentLocale(),{minimumFractionDigits:1,maximumFractionDigits:2})}%`:'—';
 
-function FlowChart({snapshot,sources,selected}){
+function FlowChart({snapshot,sources,selected,clientSettings=[]}){
  const t=useT(),classified=sourceFlows(snapshot,sources,selected),flows=classified?.flows||snapshot.flows,total=classified?flows.reduce((sum,f)=>sum+f.queries,0):snapshot.completed,{left,right,edges,height}=flowLayout(flows,total,classified?.keys);
- const label=key=>classified?(key==='remaining-sources'?t('其余来源'):sourceName(key,t)):t(ingressLabels[key]);
+ const label=key=>classified?(key==='remaining-sources'?t('其余来源'):sourceName(key,t,clientSettings)):t(ingressLabels[key]);
  const hasFlows=flows.some(f=>f.queries>0);
  return <section className="panel monitor-flow"><header className="section-heading"><h2>{t('DNS 请求流向')}</h2><p>{t('流带宽度按请求数同比例绘制；每条请求只归入一个最终处理去向，占比以展示来源的已完成请求为分母。')}</p></header>
   {!hasFlows?<div className="empty">{t(snapshot.completed?'暂无可展示的来源流向':'暂无已完成请求')}</div>:<>
@@ -24,6 +24,29 @@ function FlowChart({snapshot,sources,selected}){
    <details className="monitor-detail"><summary>{t('查看精确流向数据')}</summary><div className="table-wrap"><table><thead><tr><th>{t(classified?'请求来源':'接入方式')}</th><th>{t('DNS 处理去向')}</th><th>{t('DNS 请求数')}</th><th>{t('占已完成请求')}</th></tr></thead><tbody>{flows.map((f,i)=><tr key={i}><td>{label(f.ingress)}</td><td>{t(destinationLabels[f.destination]||f.destination)}</td><td>{number(f.queries)}</td><td>{percent(f.queries,total)}</td></tr>)}</tbody></table></div></details>
   </>}
   {!classified&&<p className="field-hint">{t('此后端未提供来源流向明细，暂按接入方式展示。')}</p>}
+ </section>;
+}
+
+function ClientPolicyChart({rows,clientSettings=[]}){
+ const t=useT();
+ const policyLabel=row=>row.kind==='unnamed'?t('未记录策略'):row.kind==='overflow'?t('超出明细容量'):row.kind==='rest'?t('其余策略'):row.policy;
+ const keyOf=row=>JSON.stringify([row.kind,row.policy]),policies=new Map();
+ for(const row of rows||[])policies.set(keyOf(row),policyLabel(row));
+ const flows=(rows||[]).map(row=>({ingress:row.source,destination:keyOf(row),queries:row.queries})),total=flows.reduce((sum,f)=>sum+f.queries,0);
+ const rank=field=>[...new Set(flows.map(f=>f[field]))].sort((a,b)=>flows.filter(f=>f[field]===b).reduce((sum,f)=>sum+f.queries,0)-flows.filter(f=>f[field]===a).reduce((sum,f)=>sum+f.queries,0)||a.localeCompare(b));
+ const {left,right,edges,height}=flowLayout(flows,total,rank('ingress'),rank('destination'));
+ const sourceLabel=key=>key==='remaining-sources'?t('其余来源'):sourceName(key,t,clientSettings),palette=['var(--accent)','#8872db','#12a5a0','var(--success-text)','#d08b31','var(--danger-text)'];
+ const color=key=>palette[right.findIndex(n=>n.key===key)%palette.length],short=label=>label.length>23?label.slice(0,20)+'…':label;
+ return <section className="panel monitor-client-policy"><header className="section-heading"><h2>{t('客户端策略流向')}</h2><p>{t('流带按该客户端实际命中的策略请求数绘制，占比以展示来源的已完成请求为分母。')}</p></header>
+  {!Array.isArray(rows)?<div className="notice">{t('此后端暂不支持客户端策略流向，请升级后端。')}</div>:!total?<div className="empty">{t('暂无已完成请求')}</div>:<>
+   <div className="monitor-chart-scroll" tabIndex="0" aria-label={t('客户端策略流向')}><svg viewBox={`0 0 980 ${height+95}`} className="monitor-sankey" role="img" aria-label={t('客户端到策略或策略组的流向图')}>
+    <text x="20" y="22" className="monitor-svg-heading">{t('客户端')}</text><text x="750" y="22" className="monitor-svg-heading">{t('策略 / 策略组')}</text>
+    {edges.map(e=><path key={JSON.stringify([e.source,e.target])} d={e.path} fill={color(e.target)} fillOpacity=".25"><title>{sourceLabel(e.source)} → {policies.get(e.target)}: {number(e.count)} · {percent(e.count,total)}</title></path>)}
+    {left.map(n=><g key={n.key}><rect x="210" y={n.y} width="14" height={n.height} fill="var(--accent)" rx="2"/><text x="190" y={n.y+n.height/2-5} textAnchor="end">{short(sourceLabel(n.key))}<title>{sourceLabel(n.key)}</title></text><text x="190" y={n.y+n.height/2+16} textAnchor="end" className="monitor-svg-value">{number(n.count)} · {percent(n.count,total)}</text></g>)}
+    {right.map(n=><g key={n.key}><rect x="716" y={n.y} width="14" height={n.height} fill={color(n.key)} rx="2"/><text x="750" y={n.y+n.height/2-5}>{short(policies.get(n.key))}<title>{policies.get(n.key)}</title></text><text x="750" y={n.y+n.height/2+16} className="monitor-svg-value">{number(n.count)} · {percent(n.count,total)}</text></g>)}
+   </svg></div>
+   <details className="monitor-detail"><summary>{t('查看客户端策略流向明细')}</summary><div className="table-wrap monitor-policy-table"><table><thead><tr>{['请求来源','策略 / 策略组','DNS 请求数','占已完成请求'].map(label=><th key={label}>{t(label)}</th>)}</tr></thead><tbody>{rows.map(row=><tr key={JSON.stringify([row.source,row.kind,row.policy])}><td>{sourceLabel(row.source)}</td><td>{policyLabel(row)}</td><td>{number(row.queries)}</td><td>{percent(row.queries,total)}</td></tr>)}</tbody></table></div></details>
+  </>}
  </section>;
 }
 
@@ -56,7 +79,7 @@ function Policies({snapshot,limit=512}){
  </section>;
 }
 
-export function MonitoringPanel({snapshot,backendName,focus,onFocus,backendURL,historyStatus,loading=false,unavailable=false}){
+export function MonitoringPanel({snapshot,backendName,focus,onFocus,backendURL,historyStatus,clientSettings=[],loading=false,unavailable=false}){
  const [mode,setMode]=useState('live'),[range,setRange]=useState('3600'),[from,setFrom]=useState(''),[to,setTo]=useState(''),[source,setSource]=useState('');
  const historical=useMonitoringData({snapshot,historyStatus,mode,range,from,to,source});
  const t=useT(),[samples,setSamples]=useState([]),[now,setNow]=useState(Date.now()),receivedAt=useRef(Date.now());
@@ -69,16 +92,17 @@ export function MonitoringPanel({snapshot,backendName,focus,onFocus,backendURL,h
  const decisions=['DIRECT','SURGE','REJECT','UNKNOWN'].map((key,i)=>({key,label:key,count:view?.decisions[key]||0,color:['var(--success-text)','#8872db','var(--warning-text)','var(--muted)'][i]}));
  const rcodes=Object.entries(view?.response_codes||{}).sort((a,b)=>b[1]-a[1]).map(([key,count],i)=>({key,label:key,count,color:key==='NOERROR'?'var(--success-text)':key==='NXDOMAIN'?'var(--warning-text)':['var(--danger-text)','#8872db','var(--muted)'][i%3]}));
  return <div className="monitor-screen"><div className="monitor-toolbar"><div><strong>{backendName||t('本地服务')}</strong><span className={'badge '+(stale?'bad':'good')}>{t(mode==='history'?'历史数据':stale?'数据已过期':'每 3 秒刷新')}</span><small>{backendURL&&<>{backendURL} · </>}{t('统计起点')}: {new Date(snapshot.started_at).toLocaleString(currentLocale())} · {t('最近采样')}: {new Date(snapshot.observed_at).toLocaleTimeString(currentLocale())}</small></div><button onClick={()=>onFocus(!focus)}>{t(focus?'退出大屏':'大屏模式')}</button></div>
-  <MonitoringControls mode={mode} onMode={setMode} range={range} onRange={setRange} from={from} onFrom={setFrom} to={to} onTo={setTo} source={source} onSource={setSource} sources={snapshot.sources||[]} snapshot={snapshot} reload={historical.reload}/>
+  <MonitoringControls mode={mode} onMode={setMode} range={range} onRange={setRange} from={from} onFrom={setFrom} to={to} onTo={setTo} source={source} onSource={setSource} sources={snapshot.sources||[]} snapshot={snapshot} reload={historical.reload} clientSettings={clientSettings}/>
   {historyStatus?.storage_error&&<div role="alert" className="notice error">{t('历史统计保存失败')}: {message(historyStatus.storage_error)}</div>}
   {historical.error&&<div role="alert" className="notice error">{message(historical.error)}<button onClick={historical.reload}>{t('重试')}</button></div>}
   {mode==='history'&&historical.loading&&<div className="notice">{t('正在读取历史数据…')}</div>}
   {mode==='history'&&!historical.loading&&!historical.error&&!historical.history&&<div className="notice">{t('此后端暂不支持历史监控，请升级后端。')}</div>}
   {mode==='history'&&historical.history&&<p className="field-hint">{new Date(historical.history.from).toLocaleString(currentLocale())} → {new Date(historical.history.to).toLocaleString(currentLocale())} · {t('历史保留七天，时间按分钟聚合。')}</p>}
-  {source&&<p className="notice">{t('当前统计来源：{source}',{source:sourceName(source,t)})}</p>}
+  {source&&<p className="notice">{t('当前统计来源：{source}',{source:sourceName(source,t,clientSettings)})}</p>}
   {mode==='history'&&historical.history?.points.length===0?<div className="notice">{t('所选时间范围暂无历史采样')}</div>:view&&<><div className="metrics monitor-metrics">{metrics.map(([label,value])=><div className="metric" key={label}><span>{t(label)}</span><strong>{value}</strong></div>)}</div>
-  <div className="monitor-primary-grid"><FlowChart snapshot={view} sources={mode==='history'?historical.history?.sources:snapshot.sources} selected={source}/><Policies snapshot={view} limit={source&&source!=='legacy'?64:512}/></div>
-  <SourceStatistics sources={mode==='history'?historical.history?.sources:snapshot.sources} total={mode==='history'?historical.history?.total_received:snapshot.received} selected={source} onSelect={setSource}/>
+  <div className="monitor-flow-grid"><FlowChart snapshot={view} sources={mode==='history'?historical.history?.sources:snapshot.sources} selected={source} clientSettings={clientSettings}/><ClientPolicyChart rows={mode==='history'?historical.history?.source_policy_flows:view.source_policy_flows} clientSettings={clientSettings}/></div>
+  <div className="monitor-primary-grid"><Policies snapshot={view} limit={source&&source!=='legacy'?64:512}/>
+  <SourceStatistics sources={mode==='history'?historical.history?.sources:snapshot.sources} total={mode==='history'?historical.history?.total_received:snapshot.received} selected={source} onSelect={setSource} clientSettings={clientSettings}/></div>
   <div className="monitor-secondary-grid"><Trend samples={historical.history?historicalSamples(historical.history):mode==='history'||source?[]:samples} historical={mode==='history'} persisted={Boolean(historical.history)}/><Distribution title="分流决策占比" rows={decisions} total={total}/><Distribution title="DNS 响应码占比" rows={rcodes} total={total}/></div></>}
   <p className="monitor-footnote">{t('统计自监控功能启用起累计并跨重启保存，不依赖查询记录开关。流向表示 DNS 请求的最终处理路径；上游重试、后台刷新、网络字节和后续上网流量不在此统计范围。')}</p>
  </div>;

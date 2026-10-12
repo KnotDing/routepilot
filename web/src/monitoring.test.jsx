@@ -27,6 +27,14 @@ it('counts each policy dimension once and keeps unknown and capacity overflow se
  for(const list of [policies,final])expect(list.reduce((s,r)=>s+r.count,0)).toBe(10);
 });
 
+it('keeps proportional bands positive when one client hits eleven policy nodes',()=>{
+ const targets=Array.from({length:11},(_,i)=>`Policy ${i}`),flows=targets.map((destination,i)=>({ingress:'192.0.2.10',destination,queries:i+1}));
+ const {left,right,edges,scale,height}=flowLayout(flows,66,['192.0.2.10'],targets);
+ expect(scale).toBeGreaterThan(0);expect(edges.reduce((sum,e)=>sum+e.count,0)).toBe(66);
+ expect(left[0].height).toBe(66*scale);
+ for(const n of right){expect(n.height).toBe(n.count*scale);expect(n.y+n.height).toBeLessThanOrEqual(height+50)}
+});
+
 it('uses observed source destinations and preserves shares when grouping small sources',()=>{
  const sources=Array.from({length:12},(_,i)=>({source:`192.0.2.${i+1}`,counts:{completed:i+1,flows:[{ingress:'addressed',destination:i%2?'real':'surge',queries:i+1}]}}));
  const total=78,result=sourceFlows({completed:total},sources),layout=flowLayout(result.flows,total,result.keys);

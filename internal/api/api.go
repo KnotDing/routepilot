@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/netip"
 	"reflect"
 	"strconv"
 	"strings"
@@ -542,6 +543,8 @@ func (a *API) serve(w http.ResponseWriter, r *http.Request) {
 			write(w, 200, d.Routes)
 		case "bgp/routes/feeds":
 			write(w, 200, d.RouteFeeds)
+		case "dns/client-settings":
+			write(w, 200, d.Settings.DNS.Clients)
 		case "overrides":
 			write(w, 200, d.Overrides)
 		case "dns/hosts":
@@ -612,6 +615,9 @@ func (a *API) serve(w http.ResponseWriter, r *http.Request) {
 			fail(w, 400, e)
 			return
 		}
+		// Client settings have a dedicated resource. Older settings forms must
+		// not erase or overwrite that independently edited configuration.
+		settings.DNS.Clients = d.Settings.DNS.Clients
 		d.Settings = settings
 		if e := mergeSecrets(&d, &old); e != nil {
 			fail(w, 400, e)
@@ -693,7 +699,7 @@ func (a *API) serve(w http.ResponseWriter, r *http.Request) {
 		key, id := path, ""
 		if len(parts) > 1 && path != "bgp/routes/feeds" {
 			candidate := strings.Join(parts[:len(parts)-1], "/")
-			if candidate == "dns/interception" || candidate == "bgp/peers" || candidate == "bgp/routes" || candidate == "bgp/routes/feeds" || candidate == "overrides" || candidate == "dns/hosts" || candidate == "management/backends" {
+			if candidate == "dns/client-settings" || candidate == "dns/interception" || candidate == "bgp/peers" || candidate == "bgp/routes" || candidate == "bgp/routes/feeds" || candidate == "overrides" || candidate == "dns/hosts" || candidate == "management/backends" {
 				key, id = candidate, parts[len(parts)-1]
 			}
 		}
@@ -707,6 +713,14 @@ func (a *API) serve(w http.ResponseWriter, r *http.Request) {
 		}
 		var e error
 		switch key {
+		case "dns/client-settings":
+			d.Settings.DNS.Clients, e = mutate(w, r, d.Settings.DNS.Clients, id, func(v *config.Client) {
+				v.ID = id
+				if ip, err := netip.ParseAddr(v.IP); err == nil {
+					v.IP = ip.Unmap().String()
+				}
+				v.Name = strings.TrimSpace(v.Name)
+			})
 		case "management/backends":
 			d.Settings.RemoteBackends, e = mutate(w, r, d.Settings.RemoteBackends, id, func(v *config.Backend) { v.ID = id })
 		case "dns/interception":

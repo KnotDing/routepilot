@@ -56,7 +56,7 @@ func allowed(path, method string) bool {
 	if method == "GET" && read[path] || method == "POST" && post[path] || method == "PUT" && (path == "settings" || path == "mode") {
 		return true
 	}
-	for _, resource := range []string{"bgp/routes/feeds", "bgp/peers", "bgp/routes", "dns/interception", "dns/hosts", "overrides"} {
+	for _, resource := range []string{"dns/client-settings", "bgp/routes/feeds", "bgp/peers", "bgp/routes", "dns/interception", "dns/hosts", "overrides"} {
 		if path == resource {
 			return method == "GET" || method == "POST"
 		}

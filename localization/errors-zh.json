@@ -434,5 +434,11 @@
   "monitoring bucket exceeds size limit": "历史监控数据超过大小限制",
   "decode monitoring checkpoint: {reason}": "历史监控检查点无法读取：{reason}",
   "decode monitoring history: {reason}": "历史监控数据无法读取：{reason}",
-  "persist DNS monitoring: {reason}": "监控统计保存失败：{reason}"
+  "persist DNS monitoring: {reason}": "监控统计保存失败：{reason}",
+  "forced policy for configured client": "强制采用该客户端指定的查询策略",
+  "client IP must be a concrete IPv4 or IPv6 address": "客户端 IP 必须为具体的 IPv4 或 IPv6 地址",
+  "duplicate or invalid client setting": "客户端 IP 或设置 ID 重复或无效",
+  "client name must contain at most 80 characters without control characters": "客户端备注名称最多 80 个字符，不能含控制字符",
+  "client policy must be automatic, DIRECT, SURGE or REJECT": "客户端策略必须为自动、DIRECT、SURGE 或 REJECT",
+  "too many client settings": "客户端设置最多 4096 项"
 }

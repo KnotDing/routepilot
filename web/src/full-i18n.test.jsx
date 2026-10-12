@@ -10,6 +10,10 @@ const monitoring={started_at:'2026-10-12T00:00:00Z',session_started_at:'2026-10-
 const monitorSourceA={...monitoring,received:400,completed:400,in_flight:0,latency_ms_sum:4000,decisions:{SURGE:400},response_codes:{NOERROR:400},flows:monitoring.flows.filter(f=>f.destination==='surge'),policies:monitoring.policies.filter(p=>p.policy==='Proxy')};
 const monitorSourceB={...monitoring,received:602,completed:600,in_flight:2,latency_ms_sum:8000,decisions:{DIRECT:500,REJECT:80,UNKNOWN:20},response_codes:{NOERROR:450,NXDOMAIN:70,REFUSED:60,SERVFAIL:20},flows:monitoring.flows.filter(f=>f.destination!=='surge'),policies:monitoring.policies.filter(p=>p.policy!=='Proxy')};
 monitoring.sources=[{source:'192.0.2.10',counts:monitorSourceA},{source:'192.0.2.20',counts:monitorSourceB}];
+monitorSourceA.source_policy_flows=[{source:'192.0.2.10',policy:'Proxy',kind:'named',queries:400}];
+monitorSourceB.source_policy_flows=[{source:'192.0.2.20',policy:'DIRECT',kind:'named',queries:300},{source:'192.0.2.20',policy:'',kind:'unnamed',queries:220},{source:'192.0.2.20',policy:'REJECT',kind:'named',queries:80}];
+monitoring.source_policy_flows=[...monitorSourceA.source_policy_flows,...monitorSourceB.source_policy_flows];
+
 const peer={id:'p',address:'192.0.2.1',asn:65001,local_asn:0,router_id:'',hold_seconds:30,keepalive_seconds:10,port:179,enabled:true,description:''};
 function fixture(path){
  if(path==='session')return {authenticated:true,csrf:'test'};
@@ -19,7 +23,7 @@ function fixture(path){
   const q=new URLSearchParams(path.split('?')[1]),selected=q.get('source'),summary=selected==='192.0.2.10'?monitorSourceA:selected==='192.0.2.20'?monitorSourceB:monitoring;
   const half={...summary,received:summary.received/2,completed:summary.completed/2,latency_ms_sum:summary.latency_ms_sum/2};
   const end=Date.parse(q.get('to'))-5000;
-  return {from:q.get('from'),to:q.get('to'),retention_days:7,resolution_seconds:60,summary,sources:monitoring.sources,total_received:1002,points:[{from:new Date(end-120000).toISOString(),to:new Date(end-60000).toISOString(),seconds:60,rate_valid:true,counts:half},{from:new Date(end-60000).toISOString(),to:new Date(end).toISOString(),seconds:60,rate_valid:true,counts:half}]};
+  return {from:q.get('from'),to:q.get('to'),retention_days:7,resolution_seconds:60,summary,source_policy_flows:summary.source_policy_flows,sources:monitoring.sources,total_received:1002,points:[{from:new Date(end-120000).toISOString(),to:new Date(end-60000).toISOString(),seconds:60,rate_valid:true,counts:half},{from:new Date(end-60000).toISOString(),to:new Date(end).toISOString(),seconds:60,rate_valid:true,counts:half}]};
  }
  if(path==='settings')return settings;
  if(path==='health')return [{name:'Controller',state:'UP',latency_ms:1.49,last_failure:'0001-01-01T00:00:00Z',last_error:''},{name:'Transparent DNS',state:'UP',latency_ms:1.5,last_failure:'2026-10-08T00:00:00Z',last_error:''}];
@@ -27,6 +31,7 @@ function fixture(path){
  if(path==='routing/status')return {mode:'hybrid',routes:[{prefix:'198.18.0.0/16',kind:'fake-ip',backend:'static',next_hop:'192.0.2.2',route_state:'external-unconfirmed',installed:null,verified:false}]};
  if(path==='bgp/peers')return [peer];
  if(path==='dns/queries')return [record];
+ if(path==='dns/client-settings')return [];
  if(path==='dns/clients')return {clients:[],stats:{clients:0,queries:0,direct:0,surge:0,reject:0,unknown:0,errors:0},capacity:4096,evicted_clients:0};
  if(path.startsWith('dns/cache'))return {entries:[],response_stats:{entries:2,stale_entries:1,hits:7,misses:3,evictions:1,capacity:10000},stats:{entries:1,hits:1,misses:0},total:0};
  if(path==='surge/status')return {snapshot:{profile:'Default',mode:'rule',always_real_ip:['*.example.net'],always_real_ip_count:1,always_real_ip_observed_at:'2026-10-08T00:00:00Z'}};

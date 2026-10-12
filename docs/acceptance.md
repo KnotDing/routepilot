@@ -413,3 +413,31 @@ and 4K light/dark; full App packaging and package validation for source version
 replace an installed App, restart production services or measure download
 progress against a live installed environment. Old history does not contain
 enough information to retrospectively split optimistic cache hits.
+
+## v1.0.4-beta.6 client configuration — 2026-10-12
+
+Client settings support concrete IPv4/IPv6 addresses, remark names and
+Automatic/DIRECT/SURGE/REJECT policies on the connected backend. Matching
+normalizes IPv4-mapped addresses and runs before ordinary DNS policy branches,
+while retaining query validation, ANY refusal, loop prevention and Fake-IP
+health/issuance gates. Names affect display only; monitoring still queries IPs.
+
+Local gates passed: 28 frontend files / 132 tests; race tests and vet for config,
+api, app, dnsserver, database and remote; frontend build; 17-page responsive
+browser checks plus client editor checks at 1440/1120/390 and 4K monitoring;
+full App/package verification for source version 1.0.4-beta.6 / build 88.
+Regressions cover configuration cloning and invalid/duplicate addresses,
+dedicated CRUD and durable acknowledgement, old-settings-form preservation,
+IPv4-mapped/IPv6 matches, A/TXT policies, non-target-client isolation, ANY and
+unready-Surge refusal, runtime activation and actual disk reopen. UI tests cover
+remarks, Automatic restoration, failed saves, unsupported backends and names
+with unchanged source-IP request identities. These checks do not install the
+release or commission actual LAN/NAT/IPv6 client traffic.
+
+The client-to-policy chart shares the DNS flow chart layout and is displayed
+beside it on wide screens. Bounded backend aggregation uses observed source and
+policy pairs, excludes pre-collection legacy sources, preserves every count
+when grouping smaller nodes, and never multiplies marginal percentages.
+Additional race tests cover pair grouping and global/source-filtered persisted
+history. Frontend regressions assert real pair identities and shared history
+scope; browser checks include both charts in light/dark 4K and responsive views.

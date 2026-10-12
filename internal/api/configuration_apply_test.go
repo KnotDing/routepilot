@@ -33,6 +33,7 @@ func TestEveryConfigurationSubmissionUsesDurableSave(t *testing.T) {
 	d.Interception = []config.Interception{{ID: "intercept", Prefix: "192.0.2.53/32"}}
 	d.Overrides = []config.Override{{ID: "override", Domain: "example.test", Match: "exact", Decision: model.Direct}}
 	d.RouteFeeds = []config.RouteFeed{{ID: "feed", URL: "https://example.com/routes.txt", IntervalMinutes: 60, SyncIPv4: true, NextHop4: "192.0.2.1", Binding: "none"}}
+	d.Settings.DNS.Clients = []config.Client{{ID: "client", IP: "192.0.2.10", Name: "Desktop", Decision: model.Surge}}
 	d.Settings.RemoteBackends = []config.Backend{{ID: "backend", Name: "Remote", URL: "http://192.0.2.5:1055"}}
 	if err := d.Validate(); err != nil {
 		t.Fatal(err)
@@ -53,6 +54,7 @@ func TestEveryConfigurationSubmissionUsesDurableSave(t *testing.T) {
 		path, id string
 		body     any
 	}{
+		{"dns/client-settings", "client", d.Settings.DNS.Clients[0]},
 		{"bgp/peers", "peer", d.Peers[0]},
 		{"bgp/routes", "route", d.Routes[0]},
 		{"dns/hosts", "host", d.Hosts[0]},
@@ -71,6 +73,7 @@ func TestEveryConfigurationSubmissionUsesDurableSave(t *testing.T) {
 		fresh.Overrides = nil
 		fresh.RouteFeeds = nil
 		fresh.Settings.RemoteBackends = nil
+		fresh.Settings.DNS.Clients = nil
 		t.Run("POST "+resource.path, func(t *testing.T) {
 			assertDurableSubmission(t, fresh, submission{"POST", resource.path, resource.body})
 		})

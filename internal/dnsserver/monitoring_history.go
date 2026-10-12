@@ -24,6 +24,7 @@ type MonitoringHistory struct {
 	Points            []MonitoringBucket    `json:"points"`
 	Summary           DNSMonitoringSnapshot `json:"summary"`
 	Sources           []DNSSourceCount      `json:"sources"`
+	SourcePolicyFlows []DNSSourcePolicyFlow `json:"source_policy_flows"`
 	TotalReceived     uint64                `json:"total_received"`
 }
 
