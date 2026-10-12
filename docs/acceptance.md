@@ -320,3 +320,34 @@ Final local release gates passed after these changes:
   `-race -count=1`, `go vet ./...`, native core/UI, 16-page responsive UI,
   and DMG/ZIP version, resource, signature, checksum, and layout validation.
 - `make fuzz`: 230,438 version-parser executions over five seconds, passed.
+
+## v1.0.4-beta.2 monitoring verification — 2026-10-12
+
+The monitoring dashboard now persists five-second observations as minute
+history retained for seven days, and filters live and historical DNS flows,
+policy hits and response codes by client source IP. Source shares use the
+selected scope's request counts. Legacy totals without source information,
+unidentified clients and detail-capacity overflow remain explicitly separate.
+
+Local checks passed for this candidate:
+
+- `npm --prefix web test`: 26 files / 122 tests, including source switching,
+  late-response isolation, invalid history ranges and visible query failures.
+- `go test -race ./internal/database ./internal/dnsserver ./internal/api
+  ./internal/app ./internal/remote`: persistence transactions and checkpoints,
+  disk reopen, retention, sampling gaps, source normalization and caps,
+  runtime rebuild/restart, history API validation and remote GET allowlisting.
+- `go vet` for the same five packages, and `npm --prefix web run build`.
+- `node scripts/ui_forms_check.cjs`: 17 pages / 13 settings categories at
+  1440, 1120 and 390 pixels; source-specific history, 4K light/dark monitoring,
+  fullscreen focus and Escape checks passed.
+- `make package package-check`: complete App, embedded frontend and backend,
+  source version 1.0.4-beta.2 / build 84, DMG/ZIP resources, signatures,
+  layout, integrity and SHA256 manifest checks passed.
+
+History starts with observations collected by the new backend; earlier
+versions' missing samples and source attribution are not reconstructed.
+Restart boundaries and sampling gaps do not claim continuous request rates.
+These fixture and isolated-runtime checks do not establish production
+installation, live LAN traffic correctness or capacity at the source limit.
+GitHub regression and both publication workflows are separate release gates.

@@ -55,6 +55,63 @@ func TestMonitoringConservesRequestsBoundsPoliciesAndRestores(t *testing.T) {
 	}
 }
 
+func TestMonitoringSourceNormalizationIsolationAndLegacyAttribution(t *testing.T) {
+	m := dnsserver.NewMonitoring(dnsserver.DNSMonitoringSnapshot{})
+	for _, src := range []string{"192.0.2.10", "::ffff:192.0.2.10", "192.0.2.20"} {
+		ip := netip.MustParseAddr(src)
+		m.BeginSource(ip)
+		m.FinishSource(ip, true, model.DecisionResult{Decision: model.Surge, Policy: src}, "surge", "NOERROR", time.Millisecond)
+	}
+	s := m.View()
+	if len(s.Sources) != 2 || s.Sources[0].Counts.Received != 2 || len(s.Sources[0].Counts.Policies) != 0 {
+		t.Fatal("source normalization or lightweight view failed", s)
+	}
+	one, ok := m.SourceSnapshot("192.0.2.20")
+	if !ok || one.Completed != 1 || len(one.Policies) != 1 || one.Policies[0].Policy != "192.0.2.20" {
+		t.Fatal("source policies leaked", one)
+	}
+	saved := m.Snapshot()
+	saved.Sources = nil
+	legacy := dnsserver.NewMonitoring(saved).View()
+	if len(legacy.Sources) != 1 || legacy.Sources[0].Source != "legacy" || legacy.Sources[0].Counts.Completed != 3 {
+		t.Fatal("old counts were attributed to a fabricated source", legacy)
+	}
+}
+
+func TestMonitoringSourceAndPerSourcePolicyBoundsConserveTotals(t *testing.T) {
+	m := dnsserver.NewMonitoring(dnsserver.DNSMonitoringSnapshot{})
+	for i := 0; i < 520; i++ {
+		ip := netip.AddrFrom4([4]byte{10, 0, byte(i / 256), byte(i % 256)})
+		m.BeginSource(ip)
+		m.FinishSource(ip, false, model.DecisionResult{Decision: model.Direct}, "real", "NOERROR", time.Millisecond)
+	}
+	view := m.View()
+	var total uint64
+	found := false
+	for _, src := range view.Sources {
+		total += src.Counts.Received
+		if src.Source == "other" {
+			found = src.Counts.Received == 8
+		}
+	}
+	if total != 520 || len(view.Sources) != 513 || !found {
+		t.Fatal("source overflow lost requests")
+	}
+	ip := netip.MustParseAddr("10.0.0.0")
+	for i := 0; i < 70; i++ {
+		m.BeginSource(ip)
+		m.FinishSource(ip, false, model.DecisionResult{Decision: model.Direct, Policy: fmt.Sprint(i)}, "real", "NOERROR", time.Millisecond)
+	}
+	counts, _ := m.SourceSnapshot(ip.String())
+	var policies uint64
+	for _, p := range counts.Policies {
+		policies += p.Queries
+	}
+	if counts.Completed != 71 || policies != 71 || len(counts.Policies) != 65 {
+		t.Fatal("per-source overflow lost requests", counts)
+	}
+}
+
 type monitorLocal struct{}
 
 func (monitorLocal) ResolveLocal(_ context.Context, _ model.DNSQueryContext, q *dns.Msg) (*dns.Msg, bool) {

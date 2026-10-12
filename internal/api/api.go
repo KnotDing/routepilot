@@ -546,6 +546,8 @@ func (a *API) serve(w http.ResponseWriter, r *http.Request) {
 			write(w, 200, d.Overrides)
 		case "dns/hosts":
 			write(w, 200, d.Hosts)
+		case "dns/monitoring", "dns/monitoring/history":
+			a.serveDNSMonitoring(w, r, path)
 		case "dns/cache":
 			offset, limit := 0, 100
 			query := r.URL.Query()

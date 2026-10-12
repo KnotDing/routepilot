@@ -72,6 +72,14 @@ func TestDNSMonitoringSurvivesRuntimeRebuildRestartAndExposesStatusAndMetrics(t 
 	if s.Received != 1 || s.Completed != 1 || s.Decisions["SURGE"] != 1 || s.Policies[0].Policy != "Proxy" {
 		t.Fatalf("monitoring was not restored: %+v", s)
 	}
+	from := s.ObservedAt.Truncate(time.Minute).Add(-time.Minute)
+	history, err := restarted.store.DNSMonitoringHistory(context.Background(), from, from.Add(2*time.Minute), "unknown")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if history.Summary.Completed != 1 || len(history.Summary.Policies) != 1 || history.Summary.Policies[0].Policy != "Proxy" || history.Summary.Flows[0].Destination != "real" {
+		t.Fatalf("source history lost across restart: %+v", history)
+	}
 	metrics := restarted.Metrics()
 	for _, line := range []string{"dns_monitor_completed_total 1", `dns_monitor_flow_total{ingress="intercepted",destination="real"} 1`, `dns_monitor_policy_total{policy="Proxy",final_policy="Node A",destination="real",other="false"} 1`} {
 		if !strings.Contains(metrics, line) {

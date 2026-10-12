@@ -2,9 +2,11 @@ package app
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"sort"
+	"surge-controller/internal/database"
 	"surge-controller/internal/dnsserver"
 	"time"
 )
@@ -23,9 +25,12 @@ func (a *App) saveDNSStatistics(snapshot dnsserver.CounterSnapshot) error {
 func (a *App) saveDNSMonitoring(snapshot dnsserver.DNSMonitoringSnapshot) error {
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()
-	if err := a.store.SaveStatistics(ctx, "dns_monitoring", snapshot); err != nil {
+	if err := a.store.SaveDNSMonitoring(ctx, snapshot); err != nil {
+		message := err.Error()
+		a.monitorPersistError.Store(&message)
 		return fmt.Errorf("persist DNS monitoring: %w", err)
 	}
+	a.monitorPersistError.Store(nil)
 	return nil
 }
 
@@ -42,7 +47,6 @@ func (a *App) persistStatistics(ctx context.Context, last dnsserver.CounterSnaps
 	defer close(a.statsDone)
 	ticker := time.NewTicker(statisticsInterval)
 	defer ticker.Stop()
-	var lastMonitoring dnsserver.DNSMonitoringSnapshot
 	for {
 		select {
 		case <-ctx.Done():
@@ -57,12 +61,8 @@ func (a *App) persistStatistics(ctx context.Context, last dnsserver.CounterSnaps
 				}
 			}
 			monitoring := a.dnsMonitoring.Snapshot()
-			if monitoring.Received != lastMonitoring.Received || monitoring.Completed != lastMonitoring.Completed || monitoring.StartedAt != lastMonitoring.StartedAt {
-				if err := a.saveDNSMonitoring(monitoring); err != nil {
-					slog.Error("DNS monitoring persistence failed", "error", err)
-				} else {
-					lastMonitoring = monitoring
-				}
+			if err := a.saveDNSMonitoring(monitoring); err != nil {
+				slog.Error("DNS monitoring persistence failed", "error", err)
 			}
 			if err := a.saveDecisionCache(); err != nil {
 				slog.Error("Decision cache persistence failed", "error", err)
@@ -72,4 +72,23 @@ func (a *App) persistStatistics(ctx context.Context, last dnsserver.CounterSnaps
 			}
 		}
 	}
+}
+
+func (a *App) monitoringHistoryStatus() map[string]any {
+	message := ""
+	if e := a.monitorPersistError.Load(); e != nil {
+		message = *e
+	}
+	return map[string]any{"supported": true, "retention_days": database.MonitoringRetentionDays, "resolution_seconds": database.MonitoringResolutionSeconds, "storage_error": message}
+}
+
+func (a *App) DNSMonitoringView(_ context.Context, source string) (dnsserver.DNSMonitoringSnapshot, error) {
+	if source == "" {
+		return a.dnsMonitoring.View(), nil
+	}
+	snapshot, ok := a.dnsMonitoring.SourceSnapshot(source)
+	if !ok {
+		return snapshot, errors.New("monitoring source is unavailable")
+	}
+	return snapshot, nil
 }

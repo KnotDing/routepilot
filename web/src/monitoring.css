@@ -39,6 +39,14 @@
 .monitor-trend-chart { min-height: 180px; display: block; width: 100%; }
 .monitor-grid-line { stroke: var(--border); stroke-dasharray: 4 4; }
 .monitor-footnote { font-size: 12px; margin-bottom: 0; }
+.monitor-view-controls { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 14px; margin-bottom: 20px; }
+.monitor-view-controls .tabs { margin: 0; }
+.monitor-view-controls label { display: grid; gap: 6px; color: var(--muted); font-size: 12px; min-width: 160px; }
+.monitor-view-controls input { min-width: 190px; }
+.monitor-source-table { max-height: 320px; }
+.monitor-source-selected { background: var(--accent-soft); }
+.monitor-source-table button { height: 32px; }
+.monitor-screen .notice button { margin-left: 12px; }
 @media (min-width: 2200px) {
  .monitor-screen { font-size: 16px; }
  .monitor-metrics .metric strong { font-size: 38px; line-height: 48px; }

@@ -211,3 +211,19 @@ func TestRelayForwardsClientStatisticsToOlderBackend(t *testing.T) {
 		t.Fatalf("old backend response was not forwarded: status=%d path=%v", status, requestedPath.Load())
 	}
 }
+
+func TestMonitoringRelayIsReadOnly(t *testing.T) {
+	for _, path := range []string{"dns/monitoring", "dns/monitoring/history"} {
+		if !allowed(path, "GET") {
+			t.Fatal("monitoring read blocked", path)
+		}
+		for _, method := range []string{"POST", "PUT", "DELETE"} {
+			if allowed(path, method) {
+				t.Fatal("monitoring mutation allowed", path, method)
+			}
+		}
+	}
+	if allowed("dns/monitoring/history/anything", "GET") {
+		t.Fatal("unexpected monitoring subresource allowed")
+	}
+}

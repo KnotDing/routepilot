@@ -121,6 +121,10 @@ func (s *Store) migrate() error {
 	if _, e = tx.Exec("CREATE TABLE IF NOT EXISTS statistics(id TEXT PRIMARY KEY, document BLOB NOT NULL)"); e != nil {
 		return e
 	}
+	// Additive telemetry storage; older configuration and secret schemas remain compatible.
+	if _, e = tx.Exec("CREATE TABLE IF NOT EXISTS dns_monitoring_history(bucket INTEGER PRIMARY KEY, document BLOB NOT NULL)"); e != nil {
+		return e
+	}
 	if _, e = tx.Exec("CREATE TABLE IF NOT EXISTS decision_cache(id TEXT PRIMARY KEY, document BLOB NOT NULL)"); e != nil {
 		return e
 	}

@@ -310,7 +310,7 @@ func (d *Dispatcher) Dispatch(ctx context.Context, q model.DNSQueryContext, m *d
 	}
 	result := model.DecisionResult{Decision: model.Unknown, Confidence: model.Uncertain, Source: "safety", CreatedAt: started, ClientIP: q.ClientIP}
 	if d.Monitoring != nil {
-		d.Monitoring.Begin()
+		d.Monitoring.BeginSource(q.ClientIP)
 	}
 	defer func() {
 		if reply == nil {
@@ -331,7 +331,7 @@ func (d *Dispatcher) Dispatch(ctx context.Context, q model.DNSQueryContext, m *d
 			if rcode == "" {
 				rcode = "RCODE" + strconv.Itoa(reply.Rcode)
 			}
-			d.Monitoring.Finish(q.Intercepted, result, destination, rcode, time.Since(started))
+			d.Monitoring.FinishSource(q.ClientIP, q.Intercepted, result, destination, rcode, time.Since(started))
 		}
 		if d.ClientStatistics != nil {
 			d.ClientStatistics.Record(q.ClientIP, result.Decision, reply.Rcode == dns.RcodeServerFailure, q.ReceivedAt)

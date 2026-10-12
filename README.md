@@ -15,7 +15,7 @@ RoutePilot 是一款 macOS 状态栏应用：向 Surge 查询分流策略，为 
 - **缩短直连路径：** DIRECT 查询返回真实地址，客户端后续流量由网关直接送往 WAN，不必绕经 Surge；Fake-IP 和下一跳配置为 Surge 的受管理前缀仍按路由经过 Surge。
 - **Surge 故障时保留新连接的直连路径：** RoutePilot 停止发放新的 Fake-IP，后续查询改用独立真实 DNS 解析，让网关可将新连接直连出网（真实 DNS 与 WAN 可用时）。已发放 Fake-IP 在 TTL / 宽限期内仍可能依赖 Surge。
 
-[📦 下载最新版本](https://github.com/KnotDing/routepilot/releases) · [🧪 大屏监控测试版 v1.0.4-beta.1](https://github.com/KnotDing/routepilot/releases/tag/v1.0.4-beta.1) · [Gitea 备用下载](https://gitea.knotding.com/knot/routepilot/releases) · [🚀 快速开始](#quick-start) · [🤖 安装 skill](#agent-skill) · [📚 文档导航](#documentation)
+[📦 下载最新版本](https://github.com/KnotDing/routepilot/releases) · [🧪 大屏监控测试版 v1.0.4-beta.2](https://github.com/KnotDing/routepilot/releases/tag/v1.0.4-beta.2) · [Gitea 备用下载](https://gitea.knotding.com/knot/routepilot/releases) · [🚀 快速开始](#quick-start) · [🤖 安装 skill](#agent-skill) · [📚 文档导航](#documentation)
 
 <p align="center">
   <img src="docs/images/management-4k.png" width="100%" alt="RoutePilot App 管理界面 4K 截图">
@@ -31,7 +31,7 @@ RoutePilot 是一款 macOS 状态栏应用：向 Surge 查询分流策略，为 
 | 规则维护 | URL 导入先预览，定时同步 IPv4、IPv6 或两者，支持批量删除 |
 | 本地解析 | 自定义域名、通配符和 TTL，也可导入 Surge `[Host]` 静态映射 |
 | 缓存与统计 | 持久化累计 DNS 统计和稳定决策，查看客户端分流统计；响应缓存可开启持久化与乐观刷新 |
-| 大屏监控 | 策略与策略组命中排行、DNS 请求流向与占比、流入 / 响应速率趋势，支持 4K 与大屏模式 |
+| 大屏监控 | 策略命中、DNS 流向与占比、按客户端源筛选、实时与持久历史趋势，支持 4K 与大屏模式 |
 | 状态与告警 | 流动图标、可选 DNS / 缓存 / 客户端状态栏指标、健康检查、异常通知与 Webhook |
 | 远程与升级 | 一处切换多台后端，保存登录凭证，在线升级完整 App 与网络服务 |
 | AI agent 控制 | JSON CLI 与 `routepilot-control` skill，支持多种 agent 集成 |
@@ -149,7 +149,7 @@ DNS 查询不会生成单 IP BGP 路由。Surge 不可用时停止新 Fake-IP、
 
 ## 📊 把运行状态放在眼前
 
-在 **总览 → 大屏监控** 查看当前连接后端的策略 / 策略组命中统计、DNS 接入到实际处理去向的流向图、请求 / 响应速率与分布占比。点击「大屏模式」放大监控空间，按 Escape 退出。流带按请求数量同比例绘制，策略与最终策略分别统计；缓存、本地应答和错误不会被误算为新的上游流量。累计数据独立于查询记录并跨重启保留。统计口径、采样与持久化边界见 [大屏监控说明](docs/monitoring.md)。
+在 **总览 → 大屏监控** 查看当前连接后端的策略 / 策略组命中统计、DNS 接入到实际处理去向的流向图、请求 / 响应速率与分布占比。点击「大屏模式」放大监控空间，按 Escape 退出。流带按请求数量同比例绘制，策略与最终策略分别统计；缓存、本地应答和错误不会被误算为新的上游流量。可切换实时与历史视图，查询七天内的分钟统计；选择客户端 IP 后，流向、策略和趋势仅展示该源。累计与历史数据独立于查询记录并跨重启保留。统计口径、采样与持久化边界见 [大屏监控说明](docs/monitoring.md)。
 
 在 **设置 → 状态栏** 中选择图标动画和附加指标：
 

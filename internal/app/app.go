@@ -189,6 +189,7 @@ type App struct {
 	savedResponseDigest [32]byte
 	dnsCounters         dnsserver.Counters
 	dnsMonitoring       *dnsserver.Monitoring
+	monitorPersistError atomic.Pointer[string]
 	statsCancel         context.CancelFunc
 	statsDone           chan struct{}
 	queryRateDone       chan struct{}
@@ -268,6 +269,9 @@ func Open(ctx context.Context, path string) (*App, error) {
 		return nil, fmt.Errorf("load DNS monitoring: %w", e)
 	}
 	a.dnsMonitoring = dnsserver.NewMonitoring(monitoring)
+	if e = a.saveDNSMonitoring(a.dnsMonitoring.Snapshot()); e != nil {
+		slog.Error("DNS monitoring history initialization failed", "error", e)
+	}
 	a.remote = remote.New(func() []config.Backend { return a.Configuration().Settings.RemoteBackends })
 	a.eventRetention.Store(int64(d.Settings.Logging.EventRetention))
 	a.setLogging(d.Settings.Logging.Level)
@@ -1107,7 +1111,7 @@ func (a *App) View(ctx context.Context, key string) (any, error) {
 		return application, nil
 	case "status":
 		p := rt.machine.Plan()
-		return map[string]any{"software": buildinfo.Current(), "go_runtime": currentGoRuntimeStatus(), "online_update": true, "remote_credential_origin_binding": true, "fast_configuration_save": true, "configuration_application": application, "mode": mode, "state": p.State, "fake_ip_enabled": p.AllowFakeIP, "queries_per_minute": rt.queryRate.Load(), "queries_per_second": math.Float64frombits(a.queryRateBits.Load()), "surge_restart": a.surgeRecovery.Status(), "counters": rt.dispatcher.Statistics().Snapshot(), "client_statistics": clientStatistics, "dns_monitoring": a.dnsMonitoring.Snapshot(), "cache": map[string]any{"decision": rt.engine.Cache.Stats(), "response": responseCacheStats(rt)}, "warning": rt.Fault(), "uptime_seconds": int(time.Since(rt.started).Seconds())}, nil
+		return map[string]any{"software": buildinfo.Current(), "go_runtime": currentGoRuntimeStatus(), "online_update": true, "remote_credential_origin_binding": true, "fast_configuration_save": true, "configuration_application": application, "mode": mode, "state": p.State, "fake_ip_enabled": p.AllowFakeIP, "queries_per_minute": rt.queryRate.Load(), "queries_per_second": math.Float64frombits(a.queryRateBits.Load()), "surge_restart": a.surgeRecovery.Status(), "counters": rt.dispatcher.Statistics().Snapshot(), "client_statistics": clientStatistics, "dns_monitoring": a.dnsMonitoring.View(), "dns_monitoring_history": a.monitoringHistoryStatus(), "cache": map[string]any{"decision": rt.engine.Cache.Stats(), "response": responseCacheStats(rt)}, "warning": rt.Fault(), "uptime_seconds": int(time.Since(rt.started).Seconds())}, nil
 	case "health":
 		values := rt.health.Values()
 		sort.Slice(values, func(i, j int) bool { return values[i].Name < values[j].Name })
@@ -1337,6 +1341,20 @@ func (a *App) Metrics() string {
 	for _, policy := range monitoring.Policies {
 		fmt.Fprintf(&b, "dns_monitor_policy_total{policy=%q,final_policy=%q,destination=%q,other=%q} %d\n", policy.Policy, policy.FinalPolicy, policy.Destination, strconv.FormatBool(policy.Other), policy.Queries)
 	}
+	for _, src := range monitoring.Sources {
+		fmt.Fprintf(&b, "dns_monitor_source_received_total{source=%q} %d\ndns_monitor_source_completed_total{source=%q} %d\n", src.Source, src.Counts.Received, src.Source, src.Counts.Completed)
+		for _, flow := range src.Counts.Flows {
+			fmt.Fprintf(&b, "dns_monitor_source_flow_total{source=%q,ingress=%q,destination=%q} %d\n", src.Source, flow.Ingress, flow.Destination, flow.Queries)
+		}
+		for _, policy := range src.Counts.Policies {
+			fmt.Fprintf(&b, "dns_monitor_source_policy_total{source=%q,policy=%q,final_policy=%q,destination=%q,other=%q} %d\n", src.Source, policy.Policy, policy.FinalPolicy, policy.Destination, strconv.FormatBool(policy.Other), policy.Queries)
+		}
+	}
+	healthy := 1
+	if a.monitorPersistError.Load() != nil {
+		healthy = 0
+	}
+	fmt.Fprintf(&b, "dns_monitor_history_storage_healthy %d\n", healthy)
 	for _, code := range sortedMonitoringKeys(monitoring.ResponseCodes) {
 		fmt.Fprintf(&b, "dns_monitor_response_total{rcode=%q} %d\n", code, monitoring.ResponseCodes[code])
 	}

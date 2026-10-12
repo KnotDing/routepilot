@@ -417,5 +417,22 @@
   "management proxy origin is not allowed": "反向代理访问地址未获允许，请在安全设置中登记外部源地址",
   "management origin must be an HTTP(S) origin without credentials, path, query or fragment": "管理地址必须是 HTTP(S) 源地址，不能包含凭据、路径、查询参数或片段",
   "invalid management origin host": "管理地址的主机名或 IP 无效",
-  "invalid management origin port": "管理地址的端口无效"
+  "invalid management origin port": "管理地址的端口无效",
+  "invalid monitoring source": "无效的监控来源",
+  "monitoring statistics are unsupported": "此后端不支持监控统计",
+  "monitoring history storage is unavailable": "历史监控存储暂不可用",
+  "invalid monitoring history start": "无效的历史监控开始时间",
+  "invalid monitoring history end": "无效的历史监控结束时间",
+  "monitoring history range must use whole minutes and span at most 7 days": "历史监控时间需对齐整分钟，且最长七天",
+  "monitoring source is unavailable": "此来源的监控数据未采集或暂不可用",
+  "monitoring counters regressed": "监控累计计数发生倒退，无法保存历史",
+  "monitoring dimension regressed": "监控统计维度计数发生倒退",
+  "monitoring flow regressed": "监控流向计数发生倒退",
+  "monitoring policy regressed": "监控策略计数发生倒退",
+  "monitoring dimensions do not conserve completed requests": "监控维度与完成请求数不一致",
+  "monitoring timestamp did not advance": "监控采样时间没有前进",
+  "monitoring bucket exceeds size limit": "历史监控数据超过大小限制",
+  "decode monitoring checkpoint: {reason}": "历史监控检查点无法读取：{reason}",
+  "decode monitoring history: {reason}": "历史监控数据无法读取：{reason}",
+  "persist DNS monitoring: {reason}": "监控统计保存失败：{reason}"
 }

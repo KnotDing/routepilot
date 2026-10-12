@@ -58,7 +58,17 @@ const fixture=Function(source.slice(source.indexOf('const settings='),source.ind
    }
    await check(width+' '+label);
   }
-  await go('大屏监控');await page.screenshot({path:out+'/monitoring-'+width+'.png',fullPage:true});
+  await go('大屏监控');
+  await page.getByRole('button',{name:'查看 192.0.2.10 的流向',exact:true}).click();
+  await page.getByText('当前统计来源：192.0.2.10',{exact:true}).waitFor();
+  await page.locator('.monitor-policies .monitor-policy-name').filter({hasText:'Proxy'}).waitFor();
+  if(await page.locator('.monitor-policies .monitor-policy-name').filter({hasText:'DIRECT'}).count())throw Error('Source selection leaked other policies');
+  await page.getByRole('button',{name:'历史数据',exact:true}).click();
+  await page.getByText('窗口末处理中',{exact:true}).waitFor();await check('source history '+width);
+  await page.screenshot({path:out+'/monitoring-history-'+width+'.png',fullPage:true});
+  await page.getByLabel('请求来源',{exact:true}).selectOption('');await page.getByRole('button',{name:'实时数据',exact:true}).click();
+  await page.getByRole('heading',{name:'DNS 请求流向',exact:true}).waitFor();
+  await page.screenshot({path:out+'/monitoring-'+width+'.png',fullPage:true});
   await go('DNS 概览');await page.screenshot({path:out+'/dns-'+width+'.png',fullPage:true});
   await go('设置');await page.locator('.tabs').getByRole('button',{name:'DNS',exact:true}).click();await page.screenshot({path:out+'/dns-settings-'+width+'.png',fullPage:true});
   await page.locator('.tabs').getByRole('button',{name:'Surge',exact:true}).click();await page.getByLabel('启用 Surge 异常重启',{exact:true}).check();await page.getByLabel('Surge DNS 不可用时重启',{exact:true}).check();await check('surge restart '+width);await page.screenshot({path:out+'/surge-restart-'+width+'.png',fullPage:true});
