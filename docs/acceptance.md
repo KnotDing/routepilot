@@ -471,3 +471,11 @@ button beside Save; responsive checks assert its computed border is absent.
 Local beta.8 gates passed: 28 frontend files / 133 tests, production frontend
 build, 17-page responsive UI checks plus actual SVG label-boundary checks at
 1440/3840, and full App/package validation for 1.0.4-beta.8 / build 90.
+
+Published beta.8: commit f1d3eefb43b6528dcb56ed927e36addc33a5b076;
+GitHub regression #27 (38214203645), release #16 (38214203939), and Gitea
+release #110 (2081) succeeded. Gitea mirrored GitHub assets without fallback.
+Both prerelease pages contain exactly DMG, ZIP and SHA256SUMS; downloaded
+checksums match, App/backend identity is 1.0.4-beta.8 / build 16, and archive,
+resource, code signature and DMG checks passed. Evidence is retained under
+artifacts/releases/v1.0.4-beta.8/. No live installation was performed.

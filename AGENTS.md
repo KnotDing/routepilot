@@ -120,11 +120,12 @@
 
 ## 最近已核验发布（2026-10-12）
 
-- 最新已发布正式版仍为 `v1.0.3`（`5ca0fd97496776d9949dbe3218d57f982dc0e04f`）；最新已核验测试版为 `v1.0.4-beta.6`，标签指向 `80d509b70f8d9886e4c237bb8406c74d9d8bf0a6`。
-- beta.6 GitHub 回归 #25（run `38211972553`）、GitHub Release #14（`38211972337`）成功；Gitea Release run `2079` 成功复用 GitHub 制品。双仓库 main 与标签已核对一致。
-- 两个发布页均为 `prerelease=true`、`draft=false`，只有 DMG、ZIP、SHA256SUMS 三项附件，下载非空且两边 SHA256 完全相同。实际包内 App 与后台均为 `1.0.4-beta.6 / build 14`；签名、ZIP 资源和 DMG 校验通过。证据位于 `artifacts/releases/v1.0.4-beta.6/publication-verification.json`。
+- 最新已发布正式版仍为 `v1.0.3`（`5ca0fd97496776d9949dbe3218d57f982dc0e04f`）；最新已核验测试版为 `v1.0.4-beta.8`，标签指向 `f1d3eefb43b6528dcb56ed927e36addc33a5b076`。
+- beta.8 GitHub 回归 #27（run `38214203645`）、GitHub Release #16（`38214203939`）成功；Gitea Release #110（run `2081`）成功复用 GitHub 制品，macOS 回退任务跳过。双仓库发布提交与标签已核对一致；后续仅交接文档提交不移动发布标签。
+- 两个发布页均为 `prerelease=true`、`draft=false`，只有 DMG、ZIP、SHA256SUMS 三项附件，下载非空且两边 SHA256 完全相同。实际包内 App 与后台均为 `1.0.4-beta.8 / build 16`；签名、ZIP 资源和 DMG 校验通过。证据位于 `artifacts/releases/v1.0.4-beta.8/publication-verification.json`。
 - 本轮测试版新增大屏实时 / 七天历史统计、按源流向及占比、独立来源占比卡片，隐藏启用前未知来源并排除其分母；修复历史统计维度共享导致保存失败，区分普通与乐观响应缓存，检查更新不预下载并提供安装下载进度。
 - beta.6 新增持久化客户端备注与强制 DIRECT / SURGE / REJECT 策略，以及与 DNS 请求流向并列的「客户端策略流向」。图表使用实际来源与策略请求对，支持实时、历史及单源筛选；不以边际占比推算关联。
+- beta.8 包含软件更新提示简化、检查按钮移到保存旁、分割线移除，以及小流量客户端 / 策略文字重叠修复。图表只增加节点间距与画布高度，节点和流带仍使用实际请求比例。
 - 验证范围包括前端、相关 Go race / vet、原生检查、响应式 UI、GitHub 完整回归与发布包。未安装或升级现用环境，未验收真实 LAN / NAT / IPv6 客户端流量；历史缺失的来源 / 缓存类型不会倒填。详见 `docs/acceptance.md`。
 - 此节仅为带日期的快照。接手时以 `git status`、`internal/buildinfo/release.json`、远端标签与实际 Release/Actions 为准。
 
@@ -141,12 +142,13 @@
 ## 任务交接（2026-10-12）
 
 - 目标与验收条件：完成客户端设置及并列策略流向图；调整软件更新提示、按钮与分割线；修复小流量流向节点文字重叠；发布测试版并更新交接。
-- 当前状态：进行中。beta.6 已核验发布；beta.7 GitHub 回归 #26（38212925616）与 Release #15（38212925505）成功，Gitea run 2080 的 Ubuntu runner 在拉取 Docker 镜像时遇到 unexpected EOF；备用任务成功，但总体门禁失败，不将 beta.7 记为完整核验发布。用户新增分割线及流向文字重叠修复，候选版本为 `v1.0.4-beta.8`。
-- 已完成与修改文件：客户端及监控见 `docs/client-settings.md`、`docs/monitoring.md` 和 beta.6 功能提交；更新按钮使用 `web/src/main.jsx`、`app-preferences.jsx`、`backend-update.jsx` 的现有更新状态和 portal，保留本机 / 浏览器 / 远程目标，新增布局断言与 UI 截图。
-- 验证：beta.6 本地前端 28 文件 / 132 测试、相关 Go race / vet、响应式页面与完整包校验通过；实际发布证据见上节。beta.7 本地前端 28 文件 / 132 测试、生产构建、17 页响应式 UI 和完整 App 包校验通过（源码 build 89）；beta.8 前端 28 文件 / 133 测试、构建与包校验通过（源码 build 90），小流量图文字间距保持实际比例，17 页响应式 UI 和 1440 / 3840 小流量 SVG 文字边界检查通过；CI / 发布核验待补齐。未执行真实安装升级。
-- 已发布：beta.6 双仓库及三附件已核验；beta.7 已推送双仓库并在 GitHub 发布，但 Gitea 总体工作流失败，见上文；beta.8 尚未发布，不复用或移动旧标签。
+- 当前状态：已完成。最终测试版 `v1.0.4-beta.8` 已在 GitHub 与 Gitea 发布并核验，双仓库提交 / 标签同步。
+- 已完成与修改文件：客户端备注 / 强制策略的配置、API、运行时、远程允许列表及 UI 见 `internal/config/clients.go`、`internal/dnsserver/client_policy.go`、`web/src/client-settings.jsx`、`docs/client-settings.md`；监控逐源策略流向在 `internal/dnsserver/source_policy_flows.go`、`internal/database/monitoring.go`、`web/src/monitoring*`，说明见 `docs/monitoring.md`。更新按钮在 `web/src/main.jsx`、`app-preferences.jsx`、`backend-update.jsx` 使用现有状态与 portal；分割线样式在 `style.css`。小流量图间距与双侧节点高度在 `monitoring-data.js`，保留真实流带比例。
+- 验证：本地 beta.8 前端 28 文件 / 133 测试、生产构建、17 页响应式 UI、1440 / 3840 实际 SVG 文字边界检查、`make package package-check` 通过（源码 build 90）。客户端 / 持久化功能相关 Go race 与 vet 在 beta.6 通过。最终 GitHub 回归 #27 运行 `make verify`、`make native-test ui-test`、`make fuzz` 并成功；Release #16 与 Gitea #110 成功。下载的两个安装包版本 / build、资源、签名及 SHA256 校验通过。未安装升级现用环境，未验收真实 LAN / NAT / IPv6 流量。
+- 已发布：`v1.0.4-beta.8`，tag 指向 `f1d3eefb43b6528dcb56ed927e36addc33a5b076`，实际 App 与捆绑后台 `1.0.4-beta.8 / build 16`。GitHub: https://github.com/KnotDing/routepilot/releases/tag/v1.0.4-beta.8；Gitea: https://gitea.knotding.com/knot/routepilot/releases/tag/v1.0.4-beta.8。两边均为非草稿测试版，各有 DMG、ZIP、SHA256SUMS 三附件且哈希相同；完整核验见上节与 `artifacts/releases/v1.0.4-beta.8/`。
+- 发布故障记录：beta.7 GitHub 回归 #26 / Release #15 成功，Gitea run 2080 的 Ubuntu runner 拉取 Docker 镜像时遇到 unexpected EOF，备用任务成功但总体门禁失败，因此不记为完整核验发布。beta.8 新运行的 Ubuntu 镜像拉取恢复，成功镜像 GitHub 制品；未移动标签或删除旧附件。
 - 保留的无关改动：无。
-- 下一步与依赖：完成 beta.8 UI 和发布核验，提交并双推 main / 标签，等待 GitHub 回归和两边发布成功，下载核验附件，再将本节更新为实际完成状态。
+- 下一步与依赖：无发布阻碍。后续如需升级正在使用的环境，另按用户授权执行现场安装 / 升级与网络验收；不将本次离线、CI 和制品校验视为现场证据。后续提交仍须同时推送 Gitea 与 GitHub。
 
 ## 代码地图：按任务定位
 
@@ -180,11 +182,11 @@
 | BGP 邻居、详情与路由发布 | `internal/bgp/gobgp.go`（`peerConfig` / `SyncPeers` / `Peers` / `Exported`）；`manager.go`（`Reconcile` / `Refresh`） | `internal/routing/manager.go`；`web/src/bgp-peer-details.jsx`、`routing.jsx`、`main.jsx` 的 `Resource`；`docs/routing-backends.md` |
 | URL 路由导入与定时同步 | `internal/routeimport/import.go`；`internal/api/api.go` 的 `RunRouteFeedScheduler` | `web/src/route-import.jsx`；配置中的 route feeds；导入与后台任务状态 |
 | 健康检查、异常通知、Surge 重启 | `internal/app/app.go` 的 `monitor`；`surge_recovery.go`；`internal/state/machine.go` | `internal/surge/recovery.go`；`internal/notifications/notifications.go`；`native/notifications.swift`；`web/src/surge-restart.jsx`、`notification-errors.jsx` |
-| 大屏监控、策略命中与 DNS 流向 | `internal/dnsserver/monitoring.go`（`Begin` / `Finish` / `Snapshot`）；`dispatcher.go` 的实际解析路径标记；`internal/app/statistics.go`；`internal/database/monitoring.go`（事务检查点与分钟增量桶） | `internal/api/monitoring.go`（实时源详情 / 历史 GET）、`internal/remote/remote.go`；`app.go` 的 `status.dns_monitoring` / `Metrics`；`web/src/monitoring.jsx`、`monitoring-history.jsx`、`monitoring-data.js`、`monitoring.css`；`docs/monitoring.md` |
+| 大屏监控、策略命中与 DNS 流向 | `internal/dnsserver/monitoring.go`（`Begin` / `Finish` / `Snapshot`）；`source_policy_flows.go`（有界真实源策略对）；`dispatcher.go` 的实际解析路径标记；`internal/app/statistics.go`；`internal/database/monitoring.go`（事务检查点与分钟增量桶） | `internal/api/monitoring.go`（实时源详情 / 历史 GET）、`internal/remote/remote.go`；`app.go` 的 `status.dns_monitoring` / `Metrics`；`web/src/monitoring.jsx`、`monitoring-history.jsx`、`monitoring-data.js`、`monitoring.css`；`docs/monitoring.md` |
 | DNS 累计统计、客户端与查询历史 | `internal/dnsserver/dispatcher.go` 的 `Counters` / `ClientStatistics` / `History`；`internal/app/statistics.go` | `web/src/dns-overview.jsx`、`clients.jsx`、`client-settings.jsx`、`dns-result.jsx`；客户端配置校验在 `internal/config/clients.go`，分流在 `internal/dnsserver/client_policy.go`；查询历史不要误当成持久化累计统计 |
 | 登录、管理 IP 白名单、反向代理 | `internal/security/security.go`（`Wrap`）；`client_ip.go`；`internal/config/management_security.go` | `internal/controlclient/access.go`；`web/src/credentials.js`、`backends.jsx`；`native/credentials.swift`、`remote_credentials.swift`；`docs/remote-management.md` |
 | 远程连接与接口兼容 | `internal/remote/remote.go` 的接口允许列表与中继；`web/src/client.js` 的 `request` / `requestOptional` / `selectBackend` | `web/src/backends.jsx`、`version-notice.jsx`；`Workspace` 的页面请求与登录恢复 |
-| 检查版本、更新源、自动下载/安装与跳过版本 | `internal/config/config.go` 的 `Updates.UpdateSource`；`internal/softwareupdate/update.go`（`Check` / `StartForChannel` / 版本比较）；`internal/softwareupdate/worker.go` 保留已选来源；`internal/api/update_scheduler.go` | `web/src/main.jsx` 的 `Settings`、`form-fields.jsx`；`native/release_updater.swift`；`native/credentials.swift` 的 `GitHubAccessTokenVault` 保存本机 App 的 GitHub token；`update_dialog.swift`、`update_assistant.swift` |
+| 检查版本、更新源、自动下载/安装与跳过版本 | `internal/config/config.go` 的 `Updates.UpdateSource`；`internal/softwareupdate/update.go`（`Check` / `StartForChannel` / 版本比较）；`internal/softwareupdate/worker.go` 保留已选来源；`internal/api/update_scheduler.go` | `web/src/main.jsx` 的 `Settings`、`app-preferences.jsx`、`backend-update.jsx`（持久挂载更新器 / 检查按钮 portal）、`form-fields.jsx`；`native/release_updater.swift`；`native/credentials.swift` 的 `GitHubAccessTokenVault` 保存本机 App 的 GitHub token；`update_dialog.swift`、`update_assistant.swift` |
 | 完整升级、回滚、远端 App 重启 | `internal/softwareupdate/application.go`、`worker.go`、`app_restart.go`；`agent.go`（更新助手）、`download_progress.go`（实际下载字节采样） | `native/remote_update_restart.swift`、`installer.swift`；`internal/security/update_sessions.go`；凭证与管理窗口恢复 |
 | CLI / skill 开关、安装目标与冲突 | `internal/api/automation.go`；`internal/appautomation/automation.go`（目标后端的桌面用户 helper） | `native/automation.swift`；`web/src/automation-settings.jsx`；`scripts/install_cli.sh` / `install_skill.sh`；`skills/routepilot-control/` |
 | 状态栏菜单、动画与指标 | `native/main.swift` 的 `rebuildMenu` / `refreshFromBackend`；`status_icon.swift`、`status_preferences.swift` | `web/src/status-bar-settings.jsx`；`internal/app/surge_recovery.go` 的请求速率采样 |
