@@ -39,3 +39,38 @@ func TestClientStatisticsIgnoresInvalidClientAddress(t *testing.T) {
 		t.Fatalf("invalid client address was recorded: %+v", snapshot)
 	}
 }
+
+func TestClientStatisticsRestorePreservesEvictionsAndRejectsInvalidRowsAtomically(t *testing.T) {
+	original := NewClientStatistics(2)
+	for i := 1; i <= 3; i++ {
+		original.Record(netip.AddrFrom4([4]byte{192, 0, 2, byte(i)}), model.Direct, false, time.Now())
+	}
+	saved := original.Snapshot()
+	restored := NewClientStatistics(2)
+	if err := restored.Restore(saved); err != nil {
+		t.Fatal(err)
+	}
+	got := restored.Snapshot()
+	if got.Stats.Queries != 3 || got.EvictedClients != 1 || len(got.Clients) != 2 {
+		t.Fatal(got)
+	}
+	saved.Clients[0].ClientIP = "invalid"
+	if err := restored.Restore(saved); err == nil {
+		t.Fatal("invalid restore accepted")
+	}
+	if restored.Snapshot().Clients[0].ClientIP != got.Clients[0].ClientIP {
+		t.Fatal("failed restore mutated data")
+	}
+}
+
+func TestClientStatisticsPreservesScopedIPv6StatisticsAcrossRestore(t *testing.T) {
+	original := NewClientStatistics(2)
+	original.Record(netip.MustParseAddr("fe80::10%en0"), model.Direct, false, time.Now())
+	restored := NewClientStatistics(2)
+	if err := restored.Restore(original.Snapshot()); err != nil {
+		t.Fatal(err)
+	}
+	if got := restored.Snapshot(); got.Clients[0].ClientIP != "fe80::10%en0" || got.Stats.Queries != 1 {
+		t.Fatal(got)
+	}
+}

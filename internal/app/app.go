@@ -188,6 +188,8 @@ type App struct {
 	responsePersistMu   sync.Mutex
 	savedResponseDigest [32]byte
 	dnsCounters         dnsserver.Counters
+	clientStatistics    *dnsserver.ClientStatistics
+	clientPersistError  atomic.Pointer[string]
 	dnsMonitoring       *dnsserver.Monitoring
 	monitorPersistError atomic.Pointer[string]
 	statsCancel         context.CancelFunc
@@ -263,6 +265,17 @@ func Open(ctx context.Context, path string) (*App, error) {
 		}
 	}
 	a.dnsCounters.Restore(counters)
+	var clients dnsserver.ClientStatsSnapshot
+	if e = store.LoadStatistics(ctx, "dns_clients", &clients); e != nil {
+		store.Close()
+		return nil, fmt.Errorf("load client statistics: %w", e)
+	}
+	a.clientStatistics = dnsserver.NewClientStatistics(4096)
+	if e = a.clientStatistics.Restore(clients); e != nil {
+		store.Close()
+		return nil, fmt.Errorf("restore client statistics: %w", e)
+	}
+
 	var monitoring dnsserver.DNSMonitoringSnapshot
 	if e = store.LoadStatistics(ctx, "dns_monitoring", &monitoring); e != nil {
 		store.Close()
@@ -424,7 +437,7 @@ func (a *App) build(d config.Document, saved *decisionCacheSnapshot, responses *
 	}
 	rt.hosts = localdns.New(d.Hosts)
 	maxFakeTTL := uint32(s.Health.GraceSeconds)
-	rt.dispatcher = &dnsserver.Dispatcher{AAAAFallback: s.DNS.AAAAFallback, IPv6Status: rt.adapter, SharedCounters: &a.dnsCounters, Local: rt.hosts, RealIPDomains: rt.adapter, FakeTTLMax: &maxFakeTTL, Classifier: rt.policy, Surge: &observedSurge{SurgeAdapter: rt.adapter, rt: rt}, Gate: rt.machine, FakeIssuer: rt.machine, History: dnsserver.NewHistory(s.Logging.HistoryCapacity, s.Logging.QueryHistory && s.Logging.LogDomains), ClientStatistics: dnsserver.NewClientStatistics(4096)}
+	rt.dispatcher = &dnsserver.Dispatcher{AAAAFallback: s.DNS.AAAAFallback, IPv6Status: rt.adapter, SharedCounters: &a.dnsCounters, Local: rt.hosts, RealIPDomains: rt.adapter, FakeTTLMax: &maxFakeTTL, Classifier: rt.policy, Surge: &observedSurge{SurgeAdapter: rt.adapter, rt: rt}, Gate: rt.machine, FakeIssuer: rt.machine, History: dnsserver.NewHistory(s.Logging.HistoryCapacity, s.Logging.QueryHistory && s.Logging.LogDomains), ClientStatistics: a.clientStatistics}
 	rt.previousQueries.Store(a.dnsCounters.Queries.Load())
 	rt.dispatcher.Monitoring = a.dnsMonitoring
 	rt.dispatcher.ClientPolicies = make(map[netip.Addr]model.Decision)
@@ -1112,6 +1125,9 @@ func (a *App) View(ctx context.Context, key string) (any, error) {
 	if rt.dispatcher != nil && rt.dispatcher.ClientStatistics != nil {
 		clientStatistics = rt.dispatcher.ClientStatistics.Snapshot()
 	}
+	if e := a.clientPersistError.Load(); e != nil {
+		clientStatistics.StorageError = *e
+	}
 	switch key {
 	case "configuration/status":
 		return application, nil
@@ -1339,6 +1355,11 @@ func (a *App) Metrics() string {
 	}
 	fmt.Fprintf(&b, "dns_query_duration_seconds_sum %f\ndns_query_duration_seconds_count %d\n", float64(rt.latencySum.Load())/float64(time.Second), rt.latency[7].Load())
 
+	clientStorageHealthy := 1
+	if a.clientPersistError.Load() != nil {
+		clientStorageHealthy = 0
+	}
+	fmt.Fprintf(&b, "dns_client_statistics_storage_healthy %d\n", clientStorageHealthy)
 	monitoring := a.dnsMonitoring.Snapshot()
 	fmt.Fprintf(&b, "dns_monitor_received_total %d\ndns_monitor_completed_total %d\ndns_monitor_unconfirmed_total %d\ndns_monitor_in_flight %d\n", monitoring.Received, monitoring.Completed, monitoring.Unconfirmed, monitoring.InFlight)
 	for _, flow := range monitoring.Flows {
@@ -1528,7 +1549,7 @@ func (a *App) Close() error {
 		if a.queryRateDone != nil {
 			<-a.queryRateDone
 		}
-		statsErr = errors.Join(a.saveDNSStatistics(a.dnsCounters.Snapshot()), a.saveDNSMonitoring(a.dnsMonitoring.Snapshot()))
+		statsErr = errors.Join(a.saveDNSStatistics(a.dnsCounters.Snapshot()), a.saveDNSMonitoring(a.dnsMonitoring.Snapshot()), a.saveClientStatistics())
 	}
 	cacheErr := a.saveDecisionCache()
 	responseErr := a.saveResponseCache()

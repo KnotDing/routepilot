@@ -15,7 +15,7 @@ RoutePilot 是一款 macOS 状态栏应用：向 Surge 查询分流策略，为 
 - **缩短直连路径：** DIRECT 查询返回真实地址，客户端后续流量由网关直接送往 WAN，不必绕经 Surge；Fake-IP 和下一跳配置为 Surge 的受管理前缀仍按路由经过 Surge。
 - **Surge 故障时保留新连接的直连路径：** RoutePilot 停止发放新的 Fake-IP，后续查询改用独立真实 DNS 解析，让网关可将新连接直连出网（真实 DNS 与 WAN 可用时）。已发放 Fake-IP 在 TTL / 宽限期内仍可能依赖 Surge。
 
-[📦 下载最新版本](https://github.com/KnotDing/routepilot/releases) · [🧪 大屏监控测试版 v1.0.4-beta.8](https://github.com/KnotDing/routepilot/releases/tag/v1.0.4-beta.8) · [Gitea 备用下载](https://gitea.knotding.com/knot/routepilot/releases) · [🚀 快速开始](#quick-start) · [🤖 安装 skill](#agent-skill) · [📚 文档导航](#documentation)
+[📦 下载最新版本](https://github.com/KnotDing/routepilot/releases) · [🧪 大屏监控测试版 v1.0.4-beta.9](https://github.com/KnotDing/routepilot/releases/tag/v1.0.4-beta.9) · [Gitea 备用下载](https://gitea.knotding.com/knot/routepilot/releases) · [🚀 快速开始](#quick-start) · [🤖 安装 skill](#agent-skill) · [📚 文档导航](#documentation)
 
 <p align="center">
   <img src="docs/images/management-4k.png" width="100%" alt="RoutePilot App 管理界面 4K 截图">
@@ -124,7 +124,7 @@ DNS 查询不会生成单 IP BGP 路由。Surge 不可用时停止新 Fake-IP、
 - **AAAA 回落**：Surge 关闭 IPv6 时，可沿用分流规则、返回成功空响应，或直接查询真实上游。回落优先于本地 Hosts 和 `always-real-ip`；Surge 状态未知时沿用原有规则。
 - **分流模式**：在「设置 → 路由」选择自动分流、强制直连或全部交给 Surge；总览旁显示当前模式。
 
-在「DNS 与决策 → 客户端」查看各客户端请求数、分流决策、DNS 错误和最近活动。状态栏指标可显示客户端汇总，客户端明细最多保留 4096 个地址；统计在后台运行期间累计，后台重启后重新开始。
+在「DNS 与决策 → 客户端」查看各客户端请求数、分流决策、DNS 错误和最近活动。状态栏指标可显示客户端汇总，客户端明细最多保留 4096 个地址；客户端统计每五秒写入数据库，正常退出保存最终值，重新应用配置和重启继续累计；强制结束可能丢失最近尚未落盘的增量。升级前未保存的客户端计数不会倒填。
 
 ### 配置备份与恢复
 
@@ -187,9 +187,9 @@ App 菜单的 **应用偏好 → 登录凭证保存方式** 可选 macOS 钥匙�
 
 ### 客户端设置
 
-在 **客户端 → 客户端设置** 添加具体 IPv4 / IPv6 地址，或从已发现的客户端选择。可保存备注名称，并为该客户端选择 **自动 / DIRECT / SURGE / REJECT**。自动沿用现有规则；强制策略优先于本地 DNS、AAAA 回落、always-real-ip、全局模式与域名 / Surge 规则，但仍保留查询格式校验、ANY 拒绝、透明入口环路防护和 Fake-IP 健康门禁。SURGE 未就绪时返回错误，不通过真实 DNS 绕开强制策略。
+在 **客户端 → 客户端列表** 点击对应行的 **编辑**。可保存备注名称，并为该客户端选择 **自动 / DIRECT / SURGE / REJECT**。自动沿用现有规则；强制策略优先于本地 DNS、AAAA 回落、always-real-ip、全局模式与域名 / Surge 规则，但仍保留查询格式校验、ANY 拒绝、透明入口环路防护和 Fake-IP 健康门禁。SURGE 未就绪时返回错误，不通过真实 DNS 绕开强制策略。
 
-备注名称在客户端列表和大屏来源中显示，统计与匹配仍以 IP 为准。配置作用于当前连接的后端，跨重启保留，并随 DNS 配置备份 / 恢复。删除配置或改为自动后恢复正常规则；备注可以单独保留。详见 [客户端设置说明](docs/client-settings.md)。
+备注名称在客户端列表和大屏来源中显示，统计与匹配仍以 IP 为准。配置作用于当前连接的后端，跨重启保留，并随 DNS 配置备份 / 恢复。清除客户端设置或改为自动后恢复正常规则；备注可以单独保留。详见 [客户端设置说明](docs/client-settings.md)。
 
 ### 更新完整应用，不再分开升级
 
@@ -257,6 +257,7 @@ GitHub 脚本无法访问时，可用 [Gitea 备用安装脚本](https://gitea.k
 | 常驻服务程序与日志 | `/usr/local/libexec/surge-controller`、`/var/log/surge-controller/service.log` |
 | 登录凭证 | macOS 钥匙串，或 `~/Library/Application Support/RoutePilot/Credentials` |
 | 配置、事件、累计统计、稳定决策及乐观响应缓存 | SQLite，事件和缓存有容量上限 |
+| 客户端 IP、累计计数与最后活动 | SQLite 检查点，统计明细最多 4096 个地址 |
 | 逐条 DNS 查询历史 | 有界内存，不写入数据库或服务日志 |
 
 累计统计和持久化缓存定期保存，正常停止时保存最终值；强制结束可能丢失最近尚未保存的增量。缓存可能包含域名与客户端地址。

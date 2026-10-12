@@ -2,7 +2,9 @@ package app
 
 import (
 	"context"
+	"net/netip"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"surge-controller/internal/cache"
 	"surge-controller/internal/dnsserver"
@@ -114,5 +116,82 @@ func TestCacheReliabilityStatisticsSurviveServiceRestart(t *testing.T) {
 	}
 	if got := restarted.runtime.responseOptimisticStats; got != want {
 		t.Fatalf("response reliability stats after restart=%+v want=%+v", got, want)
+	}
+}
+
+func TestClientStatisticsPersistPeriodicallyAcrossRebuildAndRestart(t *testing.T) {
+	a := fixtureApp(t)
+	ip := netip.MustParseAddr("192.0.2.10")
+	seen := time.Date(2026, 10, 12, 1, 2, 3, 0, time.UTC)
+	a.clientStatistics.Record(ip, model.Direct, false, seen)
+	a.clientStatistics.Record(netip.MustParseAddr("::ffff:192.0.2.10"), model.Surge, true, seen.Add(time.Second))
+	deadline := time.Now().Add(8 * time.Second)
+	for {
+		var saved dnsserver.ClientStatsSnapshot
+		if err := a.store.LoadStatistics(context.Background(), "dns_clients", &saved); err != nil {
+			t.Fatal(err)
+		}
+		if saved.Stats.Queries == 2 {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("periodic client checkpoint not written")
+		}
+		time.Sleep(25 * time.Millisecond)
+	}
+	previous := a.runtime.dispatcher
+	d := a.Configuration()
+	d.Settings.DNS.TimeoutMS++
+	if err := a.activateConfiguration(context.Background(), d); err != nil {
+		t.Fatal(err)
+	}
+	if previous == a.runtime.dispatcher || a.runtime.dispatcher.ClientStatistics != a.clientStatistics || a.clientStatistics.Snapshot().Stats.Queries != 2 {
+		t.Fatal("rebuild lost client statistics")
+	}
+	path := filepath.Join(a.dir, "c.sqlite")
+	a.clientStatistics.Record(netip.MustParseAddr("2001:db8::10"), model.Reject, false, seen)
+	want := a.clientStatistics.Snapshot()
+	if err := a.Close(); err != nil {
+		t.Fatal(err)
+	}
+	reopened, err := Open(context.Background(), path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer reopened.Close()
+	if got := reopened.clientStatistics.Snapshot(); !reflect.DeepEqual(got, want) {
+		t.Fatalf("client checkpoint not restored: got %+v want %+v", got, want)
+	}
+	reopened.clientStatistics.Record(ip, model.Direct, false, seen.Add(2*time.Second))
+	if got := reopened.clientStatistics.Snapshot(); got.Stats.Queries != 4 || got.Clients[0].Queries != 3 || got.Clients[0].Errors != 1 {
+		t.Fatal(got)
+	}
+}
+
+func TestClientPersistenceErrorsAreVisibleAndRetryPreservesCounts(t *testing.T) {
+	a := fixtureApp(t)
+	a.clientStatistics.Record(netip.MustParseAddr("192.0.2.10"), model.Reject, false, time.Now())
+	if _, err := a.store.DB.Exec("CREATE TRIGGER fail_clients BEFORE INSERT ON statistics WHEN NEW.id='dns_clients' BEGIN SELECT RAISE(ABORT, 'test persistence failure'); END"); err != nil {
+		t.Fatal(err)
+	}
+	if err := a.saveClientStatistics(); err == nil {
+		t.Fatal("storage error hidden")
+	}
+	view, err := a.View(context.Background(), "dns/clients")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if view.(dnsserver.ClientStatsSnapshot).StorageError == "" || !strings.Contains(a.Metrics(), "dns_client_statistics_storage_healthy 0") {
+		t.Fatal("missing persistence error")
+	}
+	if _, err := a.store.DB.Exec("DROP TRIGGER fail_clients"); err != nil {
+		t.Fatal(err)
+	}
+	if err := a.saveClientStatistics(); err != nil {
+		t.Fatal(err)
+	}
+	view, _ = a.View(context.Background(), "dns/clients")
+	if got := view.(dnsserver.ClientStatsSnapshot); got.StorageError != "" || got.Stats.Queries != 1 {
+		t.Fatal(got)
 	}
 }

@@ -142,13 +142,13 @@
 ## 任务交接（2026-10-12）
 
 - 目标与验收条件：完成客户端设置及并列策略流向图；调整软件更新提示、按钮与分割线；修复小流量流向节点文字重叠；发布测试版并更新交接。
-- 当前状态：已完成。最终测试版 `v1.0.4-beta.8` 已在 GitHub 与 Gitea 发布并核验，双仓库提交 / 标签同步。
+- 当前状态：进行中。beta.8 已核验发布；后续按用户要求移除单独客户端设置卡片，从客户端列表编辑，并持久化客户端列表累计统计。候选版本为 `v1.0.4-beta.9`，尚未发布。
 - 已完成与修改文件：客户端备注 / 强制策略的配置、API、运行时、远程允许列表及 UI 见 `internal/config/clients.go`、`internal/dnsserver/client_policy.go`、`web/src/client-settings.jsx`、`docs/client-settings.md`；监控逐源策略流向在 `internal/dnsserver/source_policy_flows.go`、`internal/database/monitoring.go`、`web/src/monitoring*`，说明见 `docs/monitoring.md`。更新按钮在 `web/src/main.jsx`、`app-preferences.jsx`、`backend-update.jsx` 使用现有状态与 portal；分割线样式在 `style.css`。小流量图间距与双侧节点高度在 `monitoring-data.js`，保留真实流带比例。
 - 验证：本地 beta.8 前端 28 文件 / 133 测试、生产构建、17 页响应式 UI、1440 / 3840 实际 SVG 文字边界检查、`make package package-check` 通过（源码 build 90）。客户端 / 持久化功能相关 Go race 与 vet 在 beta.6 通过。最终 GitHub 回归 #27 运行 `make verify`、`make native-test ui-test`、`make fuzz` 并成功；Release #16 与 Gitea #110 成功。下载的两个安装包版本 / build、资源、签名及 SHA256 校验通过。未安装升级现用环境，未验收真实 LAN / NAT / IPv6 流量。
 - 已发布：`v1.0.4-beta.8`，tag 指向 `f1d3eefb43b6528dcb56ed927e36addc33a5b076`，实际 App 与捆绑后台 `1.0.4-beta.8 / build 16`。GitHub: https://github.com/KnotDing/routepilot/releases/tag/v1.0.4-beta.8；Gitea: https://gitea.knotding.com/knot/routepilot/releases/tag/v1.0.4-beta.8。两边均为非草稿测试版，各有 DMG、ZIP、SHA256SUMS 三附件且哈希相同；完整核验见上节与 `artifacts/releases/v1.0.4-beta.8/`。
 - 发布故障记录：beta.7 GitHub 回归 #26 / Release #15 成功，Gitea run 2080 的 Ubuntu runner 拉取 Docker 镜像时遇到 unexpected EOF，备用任务成功但总体门禁失败，因此不记为完整核验发布。beta.8 新运行的 Ubuntu 镜像拉取恢复，成功镜像 GitHub 制品；未移动标签或删除旧附件。
 - 保留的无关改动：无。
-- 下一步与依赖：无发布阻碍。后续如需升级正在使用的环境，另按用户授权执行现场安装 / 升级与网络验收；不将本次离线、CI 和制品校验视为现场证据。后续提交仍须同时推送 Gitea 与 GitHub。
+- 下一步与依赖：完成 beta.9 本地验证、提交与双仓库发布，等待全部门禁并下载核验后更新交接。未授权安装升级现用环境。
 
 ## 代码地图：按任务定位
 
@@ -183,7 +183,7 @@
 | URL 路由导入与定时同步 | `internal/routeimport/import.go`；`internal/api/api.go` 的 `RunRouteFeedScheduler` | `web/src/route-import.jsx`；配置中的 route feeds；导入与后台任务状态 |
 | 健康检查、异常通知、Surge 重启 | `internal/app/app.go` 的 `monitor`；`surge_recovery.go`；`internal/state/machine.go` | `internal/surge/recovery.go`；`internal/notifications/notifications.go`；`native/notifications.swift`；`web/src/surge-restart.jsx`、`notification-errors.jsx` |
 | 大屏监控、策略命中与 DNS 流向 | `internal/dnsserver/monitoring.go`（`Begin` / `Finish` / `Snapshot`）；`source_policy_flows.go`（有界真实源策略对）；`dispatcher.go` 的实际解析路径标记；`internal/app/statistics.go`；`internal/database/monitoring.go`（事务检查点与分钟增量桶） | `internal/api/monitoring.go`（实时源详情 / 历史 GET）、`internal/remote/remote.go`；`app.go` 的 `status.dns_monitoring` / `Metrics`；`web/src/monitoring.jsx`、`monitoring-history.jsx`、`monitoring-data.js`、`monitoring.css`；`docs/monitoring.md` |
-| DNS 累计统计、客户端与查询历史 | `internal/dnsserver/dispatcher.go` 的 `Counters` / `ClientStatistics` / `History`；`internal/app/statistics.go` | `web/src/dns-overview.jsx`、`clients.jsx`、`client-settings.jsx`、`dns-result.jsx`；客户端配置校验在 `internal/config/clients.go`，分流在 `internal/dnsserver/client_policy.go`；查询历史不要误当成持久化累计统计 |
+| DNS 累计统计、客户端与查询历史 | `internal/dnsserver/dispatcher.go` 的 `Counters` / `ClientStatistics` / `History`；`internal/app/statistics.go`（客户端共享累计实例与五秒检查点）；`internal/dnsserver/client_statistics.go`（恢复校验） | `web/src/dns-overview.jsx`、`clients.jsx`、`client-settings.jsx`（列表编辑窗口）、`dns-result.jsx`；客户端配置校验在 `internal/config/clients.go`，分流在 `internal/dnsserver/client_policy.go`；查询历史不要误当成持久化累计统计 |
 | 登录、管理 IP 白名单、反向代理 | `internal/security/security.go`（`Wrap`）；`client_ip.go`；`internal/config/management_security.go` | `internal/controlclient/access.go`；`web/src/credentials.js`、`backends.jsx`；`native/credentials.swift`、`remote_credentials.swift`；`docs/remote-management.md` |
 | 远程连接与接口兼容 | `internal/remote/remote.go` 的接口允许列表与中继；`web/src/client.js` 的 `request` / `requestOptional` / `selectBackend` | `web/src/backends.jsx`、`version-notice.jsx`；`Workspace` 的页面请求与登录恢复 |
 | 检查版本、更新源、自动下载/安装与跳过版本 | `internal/config/config.go` 的 `Updates.UpdateSource`；`internal/softwareupdate/update.go`（`Check` / `StartForChannel` / 版本比较）；`internal/softwareupdate/worker.go` 保留已选来源；`internal/api/update_scheduler.go` | `web/src/main.jsx` 的 `Settings`、`app-preferences.jsx`、`backend-update.jsx`（持久挂载更新器 / 检查按钮 portal）、`form-fields.jsx`；`native/release_updater.swift`；`native/credentials.swift` 的 `GitHubAccessTokenVault` 保存本机 App 的 GitHub token；`update_dialog.swift`、`update_assistant.swift` |

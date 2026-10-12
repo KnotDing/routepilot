@@ -34,7 +34,6 @@ import {LanguageSelector} from './language';
 import {cacheText} from './cache-i18n';
 import {RoutingPanel,RoutingSettingsFields} from './routing';
 import {ClientsPanel} from './clients';
-import {ClientSettings} from './client-settings';
 import {MonitoringPanel} from './monitoring';
 import {useWindowVisible} from './window-visibility';
 export {RoutingPanel} from './routing';
@@ -244,7 +243,7 @@ function Workspace({backend,onManage,onLocalSession}){const t=useT();const [sess
  {page==='Monitor'&&<MonitoringPanel snapshot={status.dns_monitoring} clientSettings={data.settings?.dns?.clients||[]} historyStatus={status.dns_monitoring_history} backendName={backend?.name} backendURL={backend?.url||location.origin} focus={monitorFocus} onFocus={setMonitorFocus} loading={!data.status&&!error} unavailable={Boolean(error)}/>}
  {page==='DNS'&&<><div className="metrics">{Object.entries(c).map(([k,v])=>metric(k,v))}</div><DNSForwardingOverview settings={data.settings} surge={data['surge/status']} Table={Table}/></>}
  {page==='Queries'&&<>{responseMetrics&&<div className="metrics">{responseMetrics.map(([label,value])=>metric(label,value))}</div>}<OptimisticReliability kind="response" stats={responseStats} enabled={data.settings?.cache?.optimistic_responses}/><Queries rows={data['dns/queries']||[]}/></>}
- {page==='Clients'&&<><ClientSettings configs={data['dns/client-settings']} clients={data['dns/clients']?.clients||[]} refresh={refresh} notify={notify}/><ClientsPanel snapshot={data['dns/clients']} configs={data['dns/client-settings']}/></>}
+ {page==='Clients'&&<ClientsPanel snapshot={data['dns/clients']} configs={data['dns/client-settings']} refresh={refresh} notify={notify}/>}
  {page==='Cache'&&<CachePanel notify={notify}/>}
  {page==='Interception'&&<div className="notice">UDP/53 · TCP/53 <Badge value={data.settings?.dns.interception_enabled&&health.find(h=>h.name==='Transparent DNS')?.state==='UP'}/>{' · '}{data.settings?.dns.preserve_original?t('保留原始解析器'):t('配置的上游池')}</div>}{paths[page]&&<Resource page={page} rows={data[paths[page]]||[]} refresh={refresh} notify={notify} bgpRoutes={bgp.routes||[]} peerStates={bgp.peers||[]} realIPSnapshot={data['surge/status']?.snapshot||{}} settings={data.settings||{}}/>}
  {page==='Rule'&&<Rule notify={notify}/>}

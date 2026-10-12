@@ -479,3 +479,26 @@ Both prerelease pages contain exactly DMG, ZIP and SHA256SUMS; downloaded
 checksums match, App/backend identity is 1.0.4-beta.8 / build 16, and archive,
 resource, code signature and DMG checks passed. Evidence is retained under
 artifacts/releases/v1.0.4-beta.8/. No live installation was performed.
+
+## v1.0.4-beta.9 client-list editing and persistence — 2026-10-12
+
+Client settings are edited from the client list with a fixed source IP; the
+separate configuration card is removed. Configured clients absent from the
+current bounded statistics list remain editable with unknown counts, rather
+than fabricated zeros. Clear settings preserves the statistics identity.
+Existing frontend regressions cover POST/PUT/DELETE from list rows, failed
+saves, old-backend fallback, and configured clients without activity.
+
+Client statistics now share the App lifetime across runtime rebuilds, checkpoint
+to SQLite every five seconds when changed, and save after DNS workers drain on
+normal shutdown. Disk reopen tests cover periodic writes, final unsampled
+requests, IPv4-mapped identities, IPv6, counts and original last activity.
+Restore validates before mutation; bounded list eviction and aggregate counts
+survive restore. An injected SQLite write error is visible in the client API
+and metrics; retry clears the error without losing counts. Older unsaved client
+statistics are not reconstructed; abrupt exit can lose the last unsaved window.
+
+Local beta.9 gates passed: 28 frontend files / 133 tests; related Go race
+tests and vet; final client-restore race tests including scoped IPv6; production
+frontend build; 17-page responsive UI checks; full App/package validation for
+source version 1.0.4-beta.9 / build 91. No live upgrade was performed.

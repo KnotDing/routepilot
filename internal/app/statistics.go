@@ -22,6 +22,18 @@ func (a *App) saveDNSStatistics(snapshot dnsserver.CounterSnapshot) error {
 	return nil
 }
 
+func (a *App) saveClientStatistics() error {
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	if err := a.store.SaveStatistics(ctx, "dns_clients", a.clientStatistics.Snapshot()); err != nil {
+		message := err.Error()
+		a.clientPersistError.Store(&message)
+		return fmt.Errorf("persist client statistics: %w", err)
+	}
+	a.clientPersistError.Store(nil)
+	return nil
+}
+
 func (a *App) saveDNSMonitoring(snapshot dnsserver.DNSMonitoringSnapshot) error {
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()
@@ -45,6 +57,7 @@ func sortedMonitoringKeys(values map[string]uint64) []string {
 
 func (a *App) persistStatistics(ctx context.Context, last dnsserver.CounterSnapshot) {
 	defer close(a.statsDone)
+	var lastClients uint64
 	ticker := time.NewTicker(statisticsInterval)
 	defer ticker.Stop()
 	for {
@@ -58,6 +71,14 @@ func (a *App) persistStatistics(ctx context.Context, last dnsserver.CounterSnaps
 					slog.Error("DNS statistics persistence failed", "error", err)
 				} else {
 					last = snapshot
+				}
+			}
+			clientQueries := a.clientStatistics.Snapshot().Stats.Queries
+			if clientQueries != lastClients || a.clientPersistError.Load() != nil {
+				if err := a.saveClientStatistics(); err != nil {
+					slog.Error("Client statistics persistence failed", "error", err)
+				} else {
+					lastClients = clientQueries
 				}
 			}
 			monitoring := a.dnsMonitoring.Snapshot()

@@ -69,6 +69,7 @@ type ClientStatsTotals struct {
 }
 
 type ClientStatsSnapshot struct {
+	StorageError   string            `json:"storage_error,omitempty"`
 	Clients        []ClientStats     `json:"clients"`
 	Stats          ClientStatsTotals `json:"stats"`
 	Capacity       int               `json:"capacity"`

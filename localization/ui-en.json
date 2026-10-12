@@ -1201,5 +1201,8 @@
   "此后端暂不支持客户端策略流向，请升级后端。": "This backend does not support client policy flows. Upgrade the backend.",
   "客户端策略流向": "Client policy flows",
   "客户端到策略或策略组的流向图": "Clients to policies or policy groups flow diagram",
-  "查看客户端策略流向明细": "View exact client policy flows"
+  "查看客户端策略流向明细": "View exact client policy flows",
+  "编辑客户端 {client}": "Edit client {client}",
+  "清除客户端设置": "Clear client settings",
+  "客户端统计保存失败": "Failed to persist client statistics"
 }
