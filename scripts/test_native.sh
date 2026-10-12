@@ -10,6 +10,8 @@ compile() {
 }
 compile installer native/installer.swift native/installer_test.swift
 .cache/native-tests/installer
+compile monitoring native/monitoring_preferences.swift native/monitoring_preferences_test.swift
+.cache/native-tests/monitoring
 compile localization native/localization.swift native/localization_test.swift
 .cache/native-tests/localization localization
 compile core -framework AppKit -framework WebKit -framework Security native/test_support.swift native/localization.swift native/release_updater.swift native/update_assistant.swift native/status_icon.swift native/status_preferences.swift native/credentials.swift native/automation.swift native/core_test.swift

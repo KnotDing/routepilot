@@ -25,7 +25,7 @@ const fixture=Function(source.slice(source.indexOf('const settings='),source.ind
    if(path==='status'){value.online_update=true;value.software={...value.software,...JSON.parse(fs.readFileSync('internal/buildinfo/release.json'))};}
    if(path==='status'&&crowdedPolicyFlows){
     const pairs=[['192.168.20.131','',1492],['192.168.20.131','Hidding',1061],['192.168.20.131','REJECT',900],['192.168.20.131','US_FallBack',130],['192.168.20.131','LX_US',20],['192.168.20.131','DIRECT',6],['192.168.20.3','REJECT',143],['192.168.20.3','US_FallBack',583],['192.168.20.3','LX_US',135],['192.168.20.3','DIRECT',58],['192.168.20.3','HK_FallBack',14],['192.168.20.3','JP_FallBack',6],['192.168.20.111','JP_FallBack',4],['192.168.20.111','SG_FallBack',5],['192.168.20.246','SG_FallBack',3]];
-    value.dns_monitoring.source_policy_flows=pairs.map(([source,policy,queries])=>({source,policy,queries,kind:policy?'named':'unnamed',final_kind:policy?'named':'unnamed',final_policy:policy?policy+'_Node':''}));
+    value.dns_monitoring.source_policy_flows=pairs.map(([source,policy,queries],i)=>({source,policy,queries,kind:policy?'named':'unnamed',final_kind:policy?'named':'unnamed',final_policy:policy?'DNS Node '+i%10:''}));
    }
    if(path==='surge/status'){value.snapshot.ipv6_state='disabled';value.snapshot.always_real_ip_count=61;}
    return route.fulfill({contentType:'application/json',body:JSON.stringify(value)});
@@ -50,7 +50,7 @@ const fixture=Function(source.slice(source.indexOf('const settings='),source.ind
   if(overflow)throw Error(name+' overflows the viewport');
  }
  const pages=['仪表盘','大屏监控','DNS 概览','查询记录','决策缓存','客户端','DNS 拦截','本地 DNS','域名覆盖','规则测试','路由','BGP 概览','BGP 邻居','手动路由','健康状态','事件','设置'];
- const categories=['通用','DNS','Surge','路由','缓存','健康','日志与隐私','安全','软件更新','通知','状态栏','CLI 与 skill','关于'];
+ const categories=['通用','DNS','Surge','路由','缓存','健康','日志与隐私','安全','软件更新','大屏监控','通知','状态栏','CLI 与 skill','关于'];
  for(const width of [1440,1120,390]){
   await page.setViewportSize({width,height:1000});
   for(const label of pages){await go(label);await check(width+' '+label);}
@@ -116,6 +116,11 @@ const fixture=Function(source.slice(source.indexOf('const settings='),source.ind
    const sides={};for(const group of svg.querySelectorAll(':scope > g')){const rect=group.querySelector('rect'),texts=[...group.querySelectorAll(':scope > text')].map(el=>el.getBBox());if(!rect||!texts.length)continue;const key=rect.getAttribute('x');(sides[key]??=[]).push({top:Math.min(...texts.map(b=>b.y)),bottom:Math.max(...texts.map(b=>b.y+b.height))})}
    return Object.values(sides).some(side=>side.sort((a,b)=>a.top-b.top).some((box,i)=>i>0&&box.top<side[i-1].bottom));
   });if(overlap)throw Error('Crowded policy labels overlap at '+width);
+  await page.locator('.monitor-client-policy svg').evaluate(svg=>{
+   const bands=[...svg.querySelectorAll(':scope > path')].map(path=>{const n=path.getAttribute('d').match(/[-+]?\d*\.?\d+(?:e[-+]?\d+)?/gi).map(Number),count=Number(path.querySelector('title').textContent.match(/: ([\d,.]+) ·/)[1].replaceAll(',',''));return {n,scale:(n[15]-n[1])/count}});
+   if(bands.some(b=>Math.abs(b.scale-bands[0].scale)>1e-8))throw Error('Three-stage ribbons do not use the same scale');
+   for(const rect of svg.querySelectorAll('g > rect[x="600"]')){const y=Number(rect.getAttribute('y')),end=y+Number(rect.getAttribute('height')),incoming=bands.filter(b=>b.n[6]===600&&b.n[7]>=y-1e-8&&b.n[9]<=end+1e-8),outgoing=bands.filter(b=>b.n[0]===614&&b.n[1]>=y-1e-8&&b.n[15]<=end+1e-8);for(const [rows,top,bottom] of [[incoming,7,9],[outgoing,1,15]])if(!rows.length||Math.abs(Math.min(...rows.map(b=>b.n[top]))-y)>1e-8||Math.abs(Math.max(...rows.map(b=>b.n[bottom]))-end)>1e-8)throw Error('Ribbons do not align with the middle node');}
+  });
   await page.locator('.monitor-client-policy').screenshot({path:out+'/monitoring-crowded-policies-'+width+'.png'});
  }
  crowdedPolicyFlows=false;sourceNames=true;await page.reload();await page.getByRole('heading',{level:1,name:'仪表盘',exact:true}).waitFor();await go('大屏监控');
@@ -129,6 +134,13 @@ const fixture=Function(source.slice(source.indexOf('const settings='),source.ind
   }
   await page.screenshot({path:out+'/monitoring-named-'+width+'.png',fullPage:true});
  }
+ await page.setViewportSize({width:1440,height:1000});await go('设置');await page.locator('.tabs').getByRole('button',{name:'大屏监控',exact:true}).click();
+ await page.getByRole('checkbox',{name:'DNS 请求流向',exact:true}).uncheck();await page.getByRole('checkbox',{name:'平均处理耗时',exact:true}).uncheck();await page.getByRole('checkbox',{name:'启用敏感数据保护',exact:true}).check();await page.getByRole('button',{name:'保存设置',exact:true}).click();await page.getByText('大屏监控设置已保存',{exact:true}).waitFor();
+ await page.reload();await page.getByRole('heading',{level:1,name:'仪表盘',exact:true}).waitFor();await go('大屏监控');await page.getByText('敏感数据保护已启用',{exact:true}).waitFor();
+ if(await page.locator('.monitor-flow,.monitor-metrics').filter({hasText:'平均处理耗时'}).count()||await page.locator('.monitor-flow').count())throw Error('Hidden monitor cards returned after reload');
+ const protectedHTML=await page.locator('.layout').innerHTML();for(const secret of ['192.0.2.10','192.0.2.1:1055',sourceRemark,'Proxy','Node A'])if(protectedHTML.includes(secret))throw Error('Sensitive monitor data remains in text, attributes or tooltips: '+secret);
+ await page.getByRole('button',{name:'查看 客户端 1 的流向',exact:true}).click();await page.getByText('当前统计来源：客户端 1',{exact:true}).waitFor();await page.getByRole('heading',{name:'客户端策略流向',exact:true}).waitFor();await page.locator('.monitor-policies .monitor-policy-name').filter({hasText:'策略 1'}).waitFor();const selectedHTML=await page.locator('.layout').innerHTML();for(const secret of ['192.0.2.10',sourceRemark,'Proxy','Node A'])if(selectedHTML.includes(secret))throw Error('Selected protected source exposed '+secret);await page.screenshot({path:out+'/monitoring-protected-1440.png',fullPage:true});
+ await go('设置');await page.locator('.tabs').getByRole('button',{name:'大屏监控',exact:true}).click();await page.getByRole('checkbox',{name:'DNS 请求流向',exact:true}).check();await page.getByRole('checkbox',{name:'平均处理耗时',exact:true}).check();await page.getByRole('checkbox',{name:'启用敏感数据保护',exact:true}).uncheck();await page.getByRole('button',{name:'保存设置',exact:true}).click();
  sourceNames=false;await page.setViewportSize({width:1440,height:1000});
  await page.getByRole('button',{name:'收起侧边栏',exact:true}).click();
  if(!(await page.locator('.desktop-sidebar').evaluate(el=>el.classList.contains('sidebar-icons')&&el.getBoundingClientRect().width===72&&getComputedStyle(el.querySelector('.nav-label')).display==='none')))throw Error('Sidebar icon mode failed');

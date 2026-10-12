@@ -144,14 +144,14 @@
 ## 任务交接（2026-10-12）
 
 - 目标与验收条件：完成监控与客户端持久化、列表内编辑、更新按钮位置、完整备注 / IP 切换、三层客户端策略流向、请求来源占比排行，以及侧边栏展开 / 图标 / 隐藏 / 悬浮；发布测试版并更新交接。
-- 当前状态：已完成。`v1.0.4-beta.11` 在 GitHub 与 Gitea 已核验发布。
+- 当前状态：进行中。`v1.0.4-beta.11` 已核验发布；追加大屏卡片显示设置、敏感数据保护及三列节点数不同时的比例尺 / 中间对齐修复，候选版本为 `v1.0.4-beta.12`。
 - 已完成与修改文件：客户端配置与列表内编辑见 `internal/config/clients.go`、`internal/dnsserver/client_policy.go`、`web/src/clients.jsx`、`client-settings.jsx`、`docs/client-settings.md`；累计客户端持久化见 `internal/app/statistics.go`、`internal/dnsserver/dispatcher.go`。监控真实三元组在 `internal/dnsserver/source_policy_flows.go`，历史在 `internal/database/monitoring.go`，图形 / 完整名称 / 比例条在 `web/src/monitoring*`；说明见 `docs/monitoring.md`。更新操作在 `main.jsx`、`app-preferences.jsx`、`backend-update.jsx` 使用现有状态与 portal；导航及持久化偏好在 `navigation.jsx`、`style.css`。双语、自动化检查与发行说明已同步。
 - 验证：beta.11 本地前端 29 文件 / 138 测试、相关 Go race 与 vet、1331 条三元组容量与守恒检查、生产前端构建、`node scripts/ui_forms_check.cjs` 的 17 页响应式检查及实际长备注 / IP 切换 / 悬浮导航检查、`make package package-check` 通过（源码 build 93）。GitHub 回归 #31 运行完整回归成功，Release #19 与 Gitea #113 成功。下载包版本 / build、资源、签名、DMG 及双仓库 SHA256 校验通过。未安装升级现用环境，未验收真实 LAN / NAT / IPv6 流量。
 - 已发布：`v1.0.4-beta.11`，tag 指向 `ff9eec65b4f1620788d59b5977caec4290d64927`，实际 App 与捆绑后台 `1.0.4-beta.11 / build 19`。GitHub: https://github.com/KnotDing/routepilot/releases/tag/v1.0.4-beta.11；Gitea: https://gitea.knotding.com/knot/routepilot/releases/tag/v1.0.4-beta.11。两边均为非草稿测试版，各有 DMG、ZIP、SHA256SUMS 三附件且哈希相同；完整证据见上节与 `artifacts/releases/v1.0.4-beta.11/`。
 - DNS 三层图评估：用户允许不合适时不做。本轮保留「来源 → 实际处理去向」两层；现有持久化数据可添加直接请求 / 透明拦截的接入方式，但会减弱来源到去向的直观关联。更有价值的具体上游地址尚未纳入累计 / 历史计数，不能用有限查询历史或配置补造；缓存命中未访问上游，未来扩展需明确此边界。
 - 发布故障记录：beta.7 GitHub 回归 #26 / Release #15 成功，Gitea run 2080 的 Ubuntu runner 拉取 Docker 镜像时遇到 unexpected EOF，备用任务成功但总体门禁失败，因此不记为完整核验发布。beta.8 新运行的 Ubuntu 镜像拉取恢复，成功镜像 GitHub 制品；未移动标签或删除旧附件。
 - 保留的无关改动：无。
-- 下一步与依赖：无待完成的发布工作。保持标签不动，交接文档单独同步双仓库。未授权安装升级现用环境；具体上游三层图尚未实现。
+- 下一步与依赖：完成 beta.12 本地包检查、双仓库发布与附件核验后更新交接。未授权安装升级现用环境；具体上游三层图尚未实现。
 
 ## 代码地图：按任务定位
 
@@ -193,8 +193,8 @@
 | 完整升级、回滚、远端 App 重启 | `internal/softwareupdate/application.go`、`worker.go`、`app_restart.go`；`agent.go`（更新助手）、`download_progress.go`（实际下载字节采样） | `native/remote_update_restart.swift`、`installer.swift`；`internal/security/update_sessions.go`；凭证与管理窗口恢复 |
 | CLI / skill 开关、安装目标与冲突 | `internal/api/automation.go`；`internal/appautomation/automation.go`（目标后端的桌面用户 helper） | `native/automation.swift`；`web/src/automation-settings.jsx`；`scripts/install_cli.sh` / `install_skill.sh`；`skills/routepilot-control/` |
 | 状态栏菜单、动画与指标 | `native/main.swift` 的 `rebuildMenu` / `refreshFromBackend`；`status_icon.swift`、`status_preferences.swift` | `web/src/status-bar-settings.jsx`；`internal/app/surge_recovery.go` 的请求速率采样 |
-| 窗口尺寸、重开页面与 JS bridge | `native/main.swift` 的管理窗口与 `userContentController`；`window_frame.swift` | `web/src/credentials.js`、`app-preferences.jsx`、`window-visibility.js` |
-| 页面布局、主题与双语 | `web/src/style.css`、对应专用 JSX；导航在 `navigation.jsx`（完整 / 图标 / 隐藏悬浮状态，当前界面 localStorage 偏好） | `web/src/i18n.js`、`locale.js`；`localization/ui-en.json` / `errors-zh.json`；缓存与路由另有专用 i18n；帮助气泡的触发器和定位在 `.inline-help-control` / `.inline-help-popover` |
+| 窗口尺寸、重开页面与 JS bridge | `native/main.swift` 的管理窗口与 `userContentController`；`window_frame.swift`；`monitoring_preferences.swift`（大屏显示偏好） | `web/src/credentials.js`、`app-preferences.jsx`、`window-visibility.js` |
+| 页面布局、主题与双语 | `web/src/style.css`、对应专用 JSX；导航在 `navigation.jsx`（完整 / 图标 / 隐藏悬浮状态，当前界面 localStorage 偏好） | `web/src/monitoring-preferences.jsx`（卡片显示 / 展示脱敏，App 偏好与浏览器保存）；`web/src/i18n.js`、`locale.js`；`localization/ui-en.json` / `errors-zh.json`；缓存与路由另有专用 i18n；帮助气泡的触发器和定位在 `.inline-help-control` / `.inline-help-popover` |
 | 数据库与重启恢复 | `internal/database/store.go`（迁移 / `Save` / `Load`）；`active_configuration.go` 区分已保存与已生效配置 | `internal/app/decision_cache.go`、`response_cache.go`、`statistics.go`；不要改变现有 secret 加密边界 |
 | 版本与安装包 | `internal/buildinfo/release.json` / `info.go`；`scripts/build_app.sh` / `check_package.py`；DMG 矢量 PDF 背景图 `native/dmg_background.swift`、Finder 布局 `scripts/dmg_layout.sh` / `scripts/dmg/DS_Store` | `Makefile`；`.gitea/workflows/release.yaml`；`.github/workflows/test.yaml` / `release.yaml`；`.gitea/release-notes/`；`native/Info.plist` |
 

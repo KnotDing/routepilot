@@ -94,3 +94,9 @@
 .monitor-node-label { paint-order: stroke; stroke: var(--panel); stroke-width: 4px; stroke-linejoin: round; }
 .monitor-source-bars { max-height: 420px; overflow-y: auto; }
 .monitor-source-bars .monitor-source-link { text-align: left; max-width: none; }
+.monitor-primary-grid:has(> :only-child), .monitor-secondary-grid:has(> :only-child) { grid-template-columns: minmax(0,1fr); }
+.monitor-flow-grid:empty, .monitor-primary-grid:empty, .monitor-secondary-grid:empty { display: none; }
+.monitoring-settings fieldset { border: 0; padding: 0; margin: 0; min-width: 0; }
+@media (min-width: 601px) {
+ .monitor-secondary-grid:has(> :nth-child(2):last-child) { grid-template-columns: repeat(2,minmax(0,1fr)); }
+}

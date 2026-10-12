@@ -554,3 +554,33 @@ are `1.0.4-beta.11 / build 19`; ZIP resources, signatures and DMG integrity
 passed. Evidence: `artifacts/releases/v1.0.4-beta.11/publication-verification.json`.
 No deployed installation, live upgrade or real LAN client-flow commissioning
 was performed.
+
+## v1.0.4-beta.12 display preferences and ribbon alignment — 2026-10-12
+
+Settings → Monitoring controls six individual summary cards and seven chart /
+ranking cards. App preferences use the acknowledged native bridge and
+UserDefaults because the management WKWebView is nonpersistent; browsers use
+site storage. Old App bridges report unsupported persistence. Failed preference
+reads are visible and use protected labels; failed writes do not report success.
+
+Protection replaces IPv4/IPv6 client addresses, remarks, matched/final policy
+names and backend identifiers in visible text, SVG titles, detail tables,
+accessibility labels and source selector values. Anonymous source selection
+still sends the original source identity to the backend. Live/history tests
+preserve counts and aliases; enabling protection clears an existing raw policy
+filter. This is display protection, not API access control or data anonymization
+in the persistent database.
+
+Three-stage layout now deducts node gaps using the maximum of all three
+columns, so both segments share the same scale and middle-node geometry even
+when the final column has more nodes. Browser checks inspect every actual SVG
+ribbon's thickness/count ratio and both ends' coverage of each middle node.
+
+Local gates passed: 30 frontend files / 146 tests; production frontend build;
+`make native-test`, including preference migration/round-trip/validation and
+real WKWebView checks; `node scripts/ui_forms_check.cjs` with 17 pages and
+14 settings categories at 1440/1120/390 plus 4K flow checks; and
+`make package package-check` for 1.0.4-beta.12 / source build 94. Privacy browser
+checks reopen the page, retain hidden cards, select an anonymous source, and
+inspect the rendered markup for raw identifiers. No actual environment was
+installed or restarted.

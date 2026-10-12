@@ -1217,5 +1217,22 @@
   "固定侧边栏": "Pin sidebar",
   "隐藏侧边栏": "Hide sidebar",
   "显示侧边栏": "Show sidebar",
-  "侧边栏偏好保存失败：{error}": "Failed to save sidebar preference: {error}"
+  "侧边栏偏好保存失败：{error}": "Failed to save sidebar preference: {error}",
+  "这些显示设置保存在当前管理界面，重新打开后保留。": "These display settings are saved in this management interface and retained when reopened.",
+  "显示的卡片": "Visible cards",
+  "敏感数据保护": "Sensitive data protection",
+  "启用敏感数据保护": "Enable sensitive data protection",
+  "使用匿名标识替代客户端 IP、备注及策略名称，隐藏后端名称和地址；悬停提示与明细同样保护。": "Replace client IPs, remarks and policy names with anonymous labels, and hide the backend name and address. Tooltips and details are protected too.",
+  "大屏监控设置已保存": "Monitoring settings saved",
+  "大屏监控设置保存失败：{error}": "Failed to save monitoring settings: {error}",
+  "大屏监控设置读取失败：{error}": "Failed to read monitoring settings: {error}",
+  "敏感数据保护已启用": "Sensitive data protection is enabled",
+  "所有卡片已隐藏，可在设置中的大屏监控调整。": "All cards are hidden. Adjust them under Settings → Monitoring.",
+  "客户端 {number}": "Client {number}",
+  "策略 {number}": "Policy {number}",
+  "最终策略 {number}": "Final policy {number}",
+  "敏感信息已隐藏": "Sensitive information hidden",
+  "地址已隐藏": "Address hidden",
+  "当前后端": "Current backend",
+  "更新 App 后可保存大屏监控设置。": "Update the App to save monitoring settings."
 }

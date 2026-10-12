@@ -1,6 +1,7 @@
 import React,{useMemo,useState} from 'react';
 import {useT} from './i18n';
 import {sourceName} from './monitoring-history';
+import {useMonitoringDisplay} from './monitoring-preferences';
 
 // Conservative glyph widths keep full names and IPv6 addresses inside the
 // source column, without requiring canvas or hiding part of the label.
@@ -11,9 +12,9 @@ export function wrapSourceLabel(value){
 }
 
 export function useSourceLabels(settings){
- const t=useT(),[ips,setIPs]=useState({}),names=useMemo(()=>new Map(settings.filter(row=>row.name?.trim()).map(row=>[row.ip,row.name.trim()])),[settings]);
- const label=key=>key==='remaining-sources'?t('其余来源'):names.has(key)&&!ips[key]?names.get(key):sourceName(key,t);
- return {label,lines:key=>wrapSourceLabel(label(key)),named:key=>names.has(key),showingIP:key=>Boolean(ips[key]),toggle:key=>setIPs(old=>({...old,[key]:!old[key]})),title:key=>names.has(key)?`${names.get(key)} · ${key}`:label(key)};
+ const t=useT(),display=useMonitoringDisplay(),[ips,setIPs]=useState({}),names=useMemo(()=>new Map(settings.filter(row=>row.name?.trim()).map(row=>[row.ip,row.name.trim()])),[settings]);
+ const label=key=>display.protected?display.source(key):key==='remaining-sources'?t('其余来源'):names.has(key)&&!ips[key]?names.get(key):sourceName(key,t);
+ return {label,lines:key=>wrapSourceLabel(label(key)),named:key=>!display.protected&&names.has(key),showingIP:key=>Boolean(ips[key]),toggle:key=>setIPs(old=>({...old,[key]:!old[key]})),title:key=>display.protected?label(key):names.has(key)?`${names.get(key)} · ${key}`:label(key)};
 }
 
 export function FlowSourceLabel({node,labels,value}){

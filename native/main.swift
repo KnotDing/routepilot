@@ -432,7 +432,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
                 webView?.evaluateJavaScript("window.dispatchEvent(new CustomEvent('routepilot-preferences-saved',{detail:" + json + "}));", completionHandler: nil)
             }
             guard let data = try? JSONSerialization.data(withJSONObject: values),
-                  var preferences = try? JSONDecoder().decode(AppPreferences.self, from: data), preferences.statusBar.valid else { reply(false); return }
+                  var preferences = try? JSONDecoder().decode(AppPreferences.self, from: data), preferences.statusBar.valid, preferences.monitoring.valid else { reply(false); return }
             let previous = AppPreferences.current
             if values["_automation"] as? Bool == true {
                 reply(false, extra: ["error": L("请通过当前后端的 CLI 与 skill 设置保存。")]); return

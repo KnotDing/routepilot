@@ -116,3 +116,12 @@ it('keeps the middle column identical across both stages and preserves the commo
  expect(first.scale).toBe(second.scale);expect(first.right[0].y).toBe(second.left[0].y);expect(first.right[0].height).toBe(second.left[0].height);
  expect(first.edges.reduce((sum,e)=>sum+e.count,0)).toBe(10);expect(second.edges.reduce((sum,e)=>sum+e.count,0)).toBe(10);
 });
+
+it('uses the same scale and middle coordinates when the final column has more nodes',()=>{
+ const sources=['client-a','client-b'],policies=['Proxy','DIRECT','REJECT'],finals=Array.from({length:11},(_,i)=>'Node '+i);
+ const triples=finals.map((final,i)=>({source:sources[i%2],policy:policies[i%3],final,count:i+1})),total=66;
+ const first=flowLayout(triples.map(r=>({ingress:r.source,destination:r.policy,queries:r.count})),total,sources,policies,2,{sourceX:210,targetX:600,nodeCount:11});
+ const second=flowLayout(triples.map(r=>({ingress:r.policy,destination:r.final,queries:r.count})),total,policies,finals,2,{sourceX:600,targetX:1040,nodeCount:11});
+ expect(first.scale).toBe(second.scale);expect(first.svgHeight).toBe(second.svgHeight);
+ for(const middle of first.right){const next=second.left.find(n=>n.key===middle.key);expect(next.y).toBe(middle.y);expect(next.height).toBe(middle.height);expect(second.edges.filter(e=>e.source===middle.key).reduce((sum,e)=>sum+e.count,0)).toBe(middle.count)}
+});
