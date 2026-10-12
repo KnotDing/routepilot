@@ -1,6 +1,7 @@
 import React from 'react';
 
 const icons={
+ Monitor:<><rect x="3" y="4" width="18" height="13" rx="2"/><path d="M8 21h8M12 17v4M6 12l3-3 4 4 5-6"/></>,
  Dashboard:<><rect x="3.5" y="3.5" width="7" height="7" rx="1.5"/><rect x="13.5" y="3.5" width="7" height="7" rx="1.5"/><rect x="3.5" y="13.5" width="7" height="7" rx="1.5"/><rect x="13.5" y="13.5" width="7" height="7" rx="1.5"/></>,
  DNS:<><circle cx="12" cy="12" r="8.75"/><path d="M3.5 12h17M12 3.25c-4.9 4.8-4.9 12.7 0 17.5M12 3.25c4.9 4.8 4.9 12.7 0 17.5"/></>,
  Queries:<><path d="M6 3.5h8l4 4v13H6zM14 3.5v4h4M9 11h6M9 14.5h6M9 18h4"/></>,

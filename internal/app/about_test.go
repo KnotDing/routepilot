@@ -18,7 +18,7 @@ import (
 
 func TestAboutStatusExposesBackendRelease(t *testing.T) {
 	d := config.Default()
-	a := &App{config: d, runtime: &Runtime{machine: state.New(d.Settings.Health, "auto"), dispatcher: &dnsserver.Dispatcher{}, engine: &classifier.Engine{Cache: cache.New[classifier.Key, model.DecisionResult](d.Settings.Cache.Capacity)}, settings: d, started: time.Now()}}
+	a := &App{dnsMonitoring: dnsserver.NewMonitoring(dnsserver.DNSMonitoringSnapshot{}), config: d, runtime: &Runtime{machine: state.New(d.Settings.Health, "auto"), dispatcher: &dnsserver.Dispatcher{}, engine: &classifier.Engine{Cache: cache.New[classifier.Key, model.DecisionResult](d.Settings.Cache.Capacity)}, settings: d, started: time.Now()}}
 	view, err := a.View(context.Background(), "status")
 	if err != nil {
 		t.Fatal(err)

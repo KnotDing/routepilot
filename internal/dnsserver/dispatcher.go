@@ -6,6 +6,7 @@ import (
 	"net"
 	"net/netip"
 	"sort"
+	"strconv"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -209,8 +210,9 @@ func summarizeResponse(m *dns.Msg) DNSResponse {
 type resolutionKey struct{}
 type resolution struct {
 	model.ResolutionTrace
-	Duration time.Duration
-	Error    string
+	Destination string
+	Duration    time.Duration
+	Error       string
 }
 type History struct {
 	mu          sync.Mutex
@@ -268,6 +270,7 @@ type Dispatcher struct {
 	SharedCounters   *Counters
 	History          *History
 	ClientStatistics *ClientStatistics
+	Monitoring       *Monitoring
 	FakeTTLMax       *uint32
 	RealIPDomains    interface{ MatchAlwaysRealIP(string) (string, bool) }
 	PolicyDNS        []PolicyDNSBinding
@@ -306,12 +309,29 @@ func (d *Dispatcher) Dispatch(ctx context.Context, q model.DNSQueryContext, m *d
 		counters.Addressed.Add(1)
 	}
 	result := model.DecisionResult{Decision: model.Unknown, Confidence: model.Uncertain, Source: "safety", CreatedAt: started, ClientIP: q.ClientIP}
+	if d.Monitoring != nil {
+		d.Monitoring.Begin()
+	}
 	defer func() {
 		if reply == nil {
 			reply = failure(m, dns.RcodeServerFailure)
 		}
 		if reply.Rcode == dns.RcodeServerFailure {
 			counters.Errors.Add(1)
+		}
+		if d.Monitoring != nil {
+			destination := trace.Destination
+			if destination == "" {
+				destination = "unavailable"
+			}
+			if trace.CacheHit {
+				destination = "cache"
+			}
+			rcode := dns.RcodeToString[reply.Rcode]
+			if rcode == "" {
+				rcode = "RCODE" + strconv.Itoa(reply.Rcode)
+			}
+			d.Monitoring.Finish(q.Intercepted, result, destination, rcode, time.Since(started))
 		}
 		if d.ClientStatistics != nil {
 			d.ClientStatistics.Record(q.ClientIP, result.Decision, reply.Rcode == dns.RcodeServerFailure, q.ReceivedAt)
@@ -349,6 +369,7 @@ func (d *Dispatcher) Dispatch(ctx context.Context, q model.DNSQueryContext, m *d
 	// ANY can return address records and bypass A/AAAA steering. A forwarding
 	// policy server may decline it (RFC 8482); do not send it to real upstreams.
 	if q.Question.Qtype == dns.TypeANY {
+		trace.Destination = "blocked"
 		result.Decision = model.Reject
 		result.Reason = "ANY is refused to avoid address-policy bypass"
 		counters.Reject.Add(1)
@@ -362,6 +383,7 @@ func (d *Dispatcher) Dispatch(ctx context.Context, q model.DNSQueryContext, m *d
 		result.Confidence = model.Certain
 		result.Source = "surge-ipv6-fallback"
 		if aaaaFallback == "block" {
+			trace.Destination = "blocked"
 			result.Decision = model.Reject
 			result.Reason = "Surge IPv6 is disabled; AAAA query blocked with an empty successful response"
 			trace.Endpoint = "AAAA fallback: blocked"
@@ -379,6 +401,7 @@ func (d *Dispatcher) Dispatch(ctx context.Context, q model.DNSQueryContext, m *d
 	}
 	if d.Local != nil {
 		if r, ok := d.Local.ResolveLocal(ctx, q, m); ok {
+			trace.Destination = "local"
 			result.Decision = model.Direct
 			result.Confidence = model.Certain
 			result.Source = "local-dns"
@@ -423,6 +446,7 @@ func (d *Dispatcher) Dispatch(ctx context.Context, q model.DNSQueryContext, m *d
 		return d.real(ctx, q, m)
 	}
 	if result.Decision == model.Reject && result.Confidence == model.Certain {
+		trace.Destination = "blocked"
 		counters.Reject.Add(1)
 		return failure(m, dns.RcodeRefused)
 	}
@@ -445,6 +469,7 @@ func (d *Dispatcher) Dispatch(ctx context.Context, q model.DNSQueryContext, m *d
 func (d *Dispatcher) resolveSurge(ctx context.Context, q model.DNSQueryContext, m *dns.Msg, gate SafetySnapshot) *dns.Msg {
 	trace, _ := ctx.Value(resolutionKey{}).(*resolution)
 	if q.Question.Qtype == dns.TypeHTTPS || q.Question.Qtype == dns.TypeSVCB {
+		trace.Destination = "blocked"
 		trace.Endpoint = "策略空响应：使用 A/AAAA 解析，避免地址提示绕过 Surge"
 		// RFC 9460 section 3: an empty successful response signals fallback to
 		// A/AAAA. No address hints, alias target, AD bit, or forged DNSSEC proofs.
@@ -464,6 +489,7 @@ func (d *Dispatcher) resolveSurge(ctx context.Context, q model.DNSQueryContext, 
 	}
 	defer lease.Release()
 	fakeStarted := time.Now()
+	trace.Destination = "surge"
 	r, err := d.Surge.ResolveFakeIP(ctx, m)
 	trace.Duration = time.Since(fakeStarted)
 	trace.Endpoint = "Surge Fake-IP DNS"
@@ -518,6 +544,9 @@ func (d *Dispatcher) resolveReal(ctx context.Context, q model.DNSQueryContext, m
 	}
 	if upstream == nil {
 		return failure(m, dns.RcodeServerFailure)
+	}
+	if trace != nil {
+		trace.Destination = "real"
 	}
 	r, err := upstream.Resolve(ctx, model.ResolveRequest{Query: q, Message: m, Trace: record, UseConfiguredUpstreams: configured})
 	if err != nil || r == nil {

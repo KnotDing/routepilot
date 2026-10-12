@@ -3,9 +3,12 @@ package app
 import (
 	"context"
 	"path/filepath"
+	"strings"
 	"surge-controller/internal/cache"
 	"surge-controller/internal/dnsserver"
+	"surge-controller/internal/model"
 	"testing"
+	"time"
 )
 
 func TestDNSStatisticsSurviveShutdownAndContinueAcrossRestarts(t *testing.T) {
@@ -34,6 +37,47 @@ func TestDNSStatisticsSurviveShutdownAndContinueAcrossRestarts(t *testing.T) {
 		want.Addressed++
 	}
 	t.Cleanup(func() { _ = a.Close() })
+}
+
+func TestDNSMonitoringSurvivesRuntimeRebuildRestartAndExposesStatusAndMetrics(t *testing.T) {
+	a := fixtureApp(t)
+	a.dnsMonitoring.Begin()
+	a.dnsMonitoring.Finish(true, model.DecisionResult{Decision: model.Surge, Policy: "Proxy", FinalPolicy: "Node A"}, "real", "NOERROR", 2*time.Millisecond)
+	previous := a.runtime.dispatcher
+	document := a.Configuration()
+	document.Settings.DNS.TimeoutMS += 100
+	if err := a.activateConfiguration(context.Background(), document); err != nil {
+		t.Fatal(err)
+	}
+	if a.runtime.dispatcher == previous {
+		t.Fatal("test did not exercise a DNS runtime rebuild")
+	}
+	if a.runtime.dispatcher.Monitoring != a.dnsMonitoring {
+		t.Fatal("reconfiguration replaced cumulative monitoring")
+	}
+	path := filepath.Join(a.dir, "c.sqlite")
+	if err := a.Close(); err != nil {
+		t.Fatal(err)
+	}
+	restarted, err := Open(context.Background(), path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = restarted.Close() })
+	view, err := restarted.View(context.Background(), "status")
+	if err != nil {
+		t.Fatal(err)
+	}
+	s := view.(map[string]any)["dns_monitoring"].(dnsserver.DNSMonitoringSnapshot)
+	if s.Received != 1 || s.Completed != 1 || s.Decisions["SURGE"] != 1 || s.Policies[0].Policy != "Proxy" {
+		t.Fatalf("monitoring was not restored: %+v", s)
+	}
+	metrics := restarted.Metrics()
+	for _, line := range []string{"dns_monitor_completed_total 1", `dns_monitor_flow_total{ingress="intercepted",destination="real"} 1`, `dns_monitor_policy_total{policy="Proxy",final_policy="Node A",destination="real",other="false"} 1`} {
+		if !strings.Contains(metrics, line) {
+			t.Fatalf("missing metric %q", line)
+		}
+	}
 }
 
 func TestCacheReliabilityStatisticsSurviveServiceRestart(t *testing.T) {

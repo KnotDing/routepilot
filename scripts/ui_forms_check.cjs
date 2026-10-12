@@ -41,7 +41,7 @@ const fixture=Function(source.slice(source.indexOf('const settings='),source.ind
   const overflow=await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth+1);
   if(overflow)throw Error(name+' overflows the viewport');
  }
- const pages=['仪表盘','DNS 概览','查询记录','决策缓存','客户端','DNS 拦截','本地 DNS','域名覆盖','规则测试','路由','BGP 概览','BGP 邻居','手动路由','健康状态','事件','设置'];
+ const pages=['仪表盘','大屏监控','DNS 概览','查询记录','决策缓存','客户端','DNS 拦截','本地 DNS','域名覆盖','规则测试','路由','BGP 概览','BGP 邻居','手动路由','健康状态','事件','设置'];
  const categories=['通用','DNS','Surge','路由','缓存','健康','日志与隐私','安全','软件更新','通知','状态栏','CLI 与 skill','关于'];
  for(const width of [1440,1120,390]){
   await page.setViewportSize({width,height:1000});
@@ -58,6 +58,7 @@ const fixture=Function(source.slice(source.indexOf('const settings='),source.ind
    }
    await check(width+' '+label);
   }
+  await go('大屏监控');await page.screenshot({path:out+'/monitoring-'+width+'.png',fullPage:true});
   await go('DNS 概览');await page.screenshot({path:out+'/dns-'+width+'.png',fullPage:true});
   await go('设置');await page.locator('.tabs').getByRole('button',{name:'DNS',exact:true}).click();await page.screenshot({path:out+'/dns-settings-'+width+'.png',fullPage:true});
   await page.locator('.tabs').getByRole('button',{name:'Surge',exact:true}).click();await page.getByLabel('启用 Surge 异常重启',{exact:true}).check();await page.getByLabel('Surge DNS 不可用时重启',{exact:true}).check();await check('surge restart '+width);await page.screenshot({path:out+'/surge-restart-'+width+'.png',fullPage:true});
@@ -70,6 +71,15 @@ const fixture=Function(source.slice(source.indexOf('const settings='),source.ind
   await go('手动路由');await page.getByRole('button',{name:'＋ 添加',exact:true}).click();
   const required=await page.locator('.modal label[data-missing=true]').count();if(required<2)throw Error('Missing route requirements');
   await check('route modal '+width);await page.screenshot({path:out+'/route-'+width+'.png',fullPage:true});await page.getByRole('dialog').getByRole('button',{name:'关闭',exact:true}).click();
+ }
+ for(const theme of ['light','dark']){
+  await page.setViewportSize({width:3840,height:2160});await go('大屏监控');
+  await page.evaluate(theme=>document.documentElement.dataset.theme=theme,theme);
+  await page.getByRole('button',{name:'大屏模式',exact:true}).click();
+  if(await page.locator('.desktop-sidebar').isVisible())throw Error('Monitoring focus mode still shows navigation');
+  await check('monitoring 4K '+theme);await page.screenshot({path:out+'/monitoring-4k-'+theme+'.png',fullPage:true});
+  await page.keyboard.press('Escape');
+  if(!(await page.locator('.desktop-sidebar').isVisible()))throw Error('Escape did not exit monitoring focus mode');
  }
  await page.setViewportSize({width:1440,height:1000});await go('DNS 概览');
  await page.evaluate(()=>document.documentElement.dataset.theme='dark');await page.screenshot({path:out+'/dns-dark.png',fullPage:true});

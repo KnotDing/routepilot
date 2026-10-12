@@ -1,5 +1,68 @@
 # Acceptance evidence — 2026-10-08
 
+## DNS monitoring addition — 2026-10-12
+
+The management UI now includes **大屏监控 / Monitoring** for the selected backend.
+It uses completed-request snapshots, with one ingress/path, decision and policy
+path per request. Ribbon widths and percentages share a common denominator;
+policy DNS overrides, cache hits and fallback paths remain distinct from policy
+decisions. See [monitoring semantics](monitoring.md).
+
+Executed for this change:
+
+- `npm --prefix web run build`: management UI and offline native notes built.
+- `npm --prefix web test`: all 25 files / 116 tests passed before the final
+  focused adjustments; the final `npm --prefix web test -- src/monitoring.test.jsx
+  src/full-i18n.test.jsx` passed all 13 tests, including two added regressions for
+  stale/gapped samples and exiting large-screen mode after data loss.
+- `env GOCACHE=/tmp/routepilot-go-build-monitoring go test -race
+  ./internal/dnsserver ./internal/app`: both packages passed. Coverage includes
+  concurrent request conservation, bounded policy detail, UNKNOWN, non-address
+  queries, local records, refusal/empty answers, Fake-IP gating, policy DNS
+  fallback and an actual resolver response cache.
+- Final `env GOCACHE=/tmp/routepilot-go-build-monitoring go test -race
+  ./internal/app -run TestDNSMonitoring`: passed after strengthening the test to
+  force an actual DNS Runtime rebuild. It verifies shared cumulative statistics,
+  shutdown/disk restart, the optional status field and metrics.
+- `env GOCACHE=/tmp/routepilot-go-build-monitoring go build ./...`: passed with
+  the final embedded frontend resources.
+- `node scripts/ui_forms_check.cjs`: 17 pages / 13 settings categories passed
+  at 1440, 1120 and 390 px with no page errors or document overflow. Monitoring
+  additionally passed 3840 × 2160 light/dark screenshots, hidden navigation in
+  large-screen mode and Escape restoration. Screenshots under
+  `artifacts/ui-forms/monitoring-*.png` use synthetic API fixtures.
+
+Sandbox execution initially blocked localhost UDP test listeners and Chromium
+process communication; the checks above passed after granting execution access.
+The existing lockfile dependencies were restored to run the frontend checks;
+no dependency or lockfile change was introduced.
+
+This verifies implementation, fixture UI layout and local test persistence.
+It does not establish live Surge/gateway traffic commissioning, installed native
+WKWebView behavior, or package/install/update acceptance. No release, deployment,
+service restart or user configuration change was performed during the implementation checks.
+
+## v1.0.4-beta.1 packaging checks — 2026-10-12
+
+- Source identity: `1.0.4-beta.1`, build `83`. CI sets the package build from
+  its Actions run number; downloaded release identities are checked separately.
+- `npm --prefix web test`: all 25 files / 118 tests passed. The multi-page
+  localization test exceeded its default five-second limit while packaging
+  competed for CPU; its scoped timeout is now 15 seconds, with assertions intact.
+- `env GOCACHE=/tmp/routepilot-go-build-monitoring make package package-check`:
+  passed App/backend version and resource checks, ZIP/App equality, checksums,
+  ad-hoc signatures, DMG integrity, installer layout and vector background.
+- `env GOCACHE=/tmp/routepilot-go-build-monitoring make native-test`: passed
+  isolated installer, localization, core and real WKWebView UI checks.
+- Previous canonical artifacts and binaries were preserved under
+  `/tmp/routepilot-pre-v1.0.4-beta.1` before packaging. Local checks did not install
+  or restart the user's deployed application or network service.
+
+Beta tags perform packaging, while the corresponding main push must pass the
+GitHub regression gate. Publication requires both release workflows and the
+three downloadable, checksum-verified assets; package integrity does not prove
+live upgrade or network commissioning.
+
 This document separates verified implementation from site commissioning.
 The IPv4 Phase 2 prerequisite passed before SQLite/UI/BGP/state implementation
 continued. There are no simulated BGP or UI paths in the normal executable.

@@ -61,6 +61,7 @@ func (d *Dispatcher) resolvePolicyDNS(ctx context.Context, q model.DNSQueryConte
 	match.FallbackUsed = true
 	trace.Error = ""
 	trace.ResolutionTrace = model.ResolutionTrace{}
+	trace.Destination = ""
 	if binding.Fallback == "surge" {
 		attemptCtx, cancel := policyAttemptContext(ctx, binding.AttemptTimeout)
 		defer cancel()
@@ -98,6 +99,8 @@ func (d *Dispatcher) policyRealAttempt(ctx context.Context, q model.DNSQueryCont
 	if upstream == nil {
 		err = errors.New("policy DNS resolver unavailable")
 	} else {
+		trace, _ := ctx.Value(resolutionKey{}).(*resolution)
+		trace.Destination = "real"
 		reply, err = upstream.Resolve(attemptCtx, model.ResolveRequest{Query: q, Message: m, Trace: &record, UseConfiguredUpstreams: true, RetryDNSFailures: true})
 	}
 	if err == nil && attemptCtx.Err() != nil {
