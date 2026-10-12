@@ -3,6 +3,7 @@ import {request} from './client';
 import {useT} from './i18n';
 import {currentLocale} from './locale';
 import {useWindowVisible} from './window-visibility';
+import {visibleSources} from './monitoring-data';
 
 export function sourceName(source,t){return ({unknown:t('无法识别的源'),other:t('超出源明细容量'),legacy:t('启用前未采集来源')})[source]||source}
 export function historyRange(snapshot,mode,range,from,to){
@@ -47,6 +48,7 @@ export function useMonitoringData({snapshot,historyStatus,mode,range,from,to,sou
 const localDateInput=date=>new Date(date.getTime()-date.getTimezoneOffset()*60000).toISOString().slice(0,16);
 export function MonitoringControls({mode,onMode,range,onRange,from,onFrom,to,onTo,source,onSource,sources,snapshot,reload}){
  const t=useT();
+ sources=visibleSources(sources);
  const chooseRange=value=>{if(value==='custom'&&!from){const end=new Date(Math.floor(Date.parse(snapshot?.observed_at||new Date().toISOString())/60000)*60000+60000);onFrom(localDateInput(new Date(end-3600000)));onTo(localDateInput(end))}onRange(value)};
  return <div className="monitor-view-controls"><div className="tabs" role="group" aria-label={t('监控数据视图')}>{[['live','实时数据'],['history','历史数据']].map(([key,label])=><button key={key} aria-pressed={mode===key} className={mode===key?'selected':''} onClick={()=>onMode(key)}>{t(label)}</button>)}</div>
   <label>{t('请求来源')}<select aria-label={t('请求来源')} value={source} onChange={e=>onSource(e.target.value)}><option value="">{t('全部来源')}</option>{sources.map(s=><option key={s.source} value={s.source}>{sourceName(s.source,t)}</option>)}{source&&!sources.some(s=>s.source===source)&&<option value={source}>{sourceName(source,t)}</option>}</select></label>
@@ -55,7 +57,8 @@ export function MonitoringControls({mode,onMode,range,onRange,from,onFrom,to,onT
 }
 
 export function SourceStatistics({sources,total,selected,onSelect}){
- const t=useT(),number=n=>n.toLocaleString(currentLocale());
+ const t=useT(),number=n=>n.toLocaleString(currentLocale()),hiddenLegacy=sources?.some(s=>s.source==='legacy'&&(s.counts.received>0||s.counts.completed>0));
+ sources=visibleSources(sources);
  if(!Array.isArray(sources))return <div className="notice">{t('此后端未提供来源统计，请升级后端。')}</div>;
- return <div className="monitor-source-shares"><h3>{t('来源请求占比')}</h3><p className="field-hint">{t('按各源流入请求数计算占比，点击来源查看该源的流向和策略命中。')}</p><div className="table-wrap monitor-source-table"><table><thead><tr><th>{t('请求来源')}</th><th>{t('流入占比')}</th><th>{t('DNS 请求数')}</th></tr></thead><tbody>{[...sources].sort((a,b)=>b.counts.received-a.counts.received||a.source.localeCompare(b.source)).map(s=><tr key={s.source} className={selected===s.source?'monitor-source-selected':''}><td><button className="monitor-source-link" aria-label={t('查看 {source} 的流向',{source:sourceName(s.source,t)})} aria-pressed={selected===s.source} onClick={()=>onSelect(selected===s.source?'':s.source)}>{sourceName(s.source,t)}</button></td><td><div className="monitor-source-share"><div className="monitor-bar-track"><span style={{width:`${total?s.counts.received/total*100:0}%`}}/></div><small>{total?`${(s.counts.received/total*100).toFixed(2)}%`:'—'}</small></div></td><td>{number(s.counts.received)}</td></tr>)}</tbody></table>{!sources.length&&<div className="empty">{t('暂无来源统计')}</div>}</div></div>;
+ return <section className="panel monitor-source-shares"><header className="section-heading"><h2>{t('来源请求占比')}</h2><p>{t('按各源流入请求数计算占比，点击来源查看该源的流向和策略命中。')}</p></header>{hiddenLegacy&&<p className="field-hint">{t('来源视图仅展示已采集来源的请求，占比仍以全部请求为分母。')}</p>}<div className="table-wrap monitor-source-table"><table><thead><tr><th>{t('请求来源')}</th><th>{t('流入占比')}</th><th>{t('DNS 请求数')}</th></tr></thead><tbody>{[...sources].sort((a,b)=>b.counts.received-a.counts.received||a.source.localeCompare(b.source)).map(s=><tr key={s.source} className={selected===s.source?'monitor-source-selected':''}><td><button className="monitor-source-link" aria-label={t('查看 {source} 的流向',{source:sourceName(s.source,t)})} aria-pressed={selected===s.source} onClick={()=>onSelect(selected===s.source?'':s.source)}>{sourceName(s.source,t)}</button></td><td><div className="monitor-source-share"><div className="monitor-bar-track"><span style={{width:`${total?s.counts.received/total*100:0}%`}}/></div><small>{total?`${(s.counts.received/total*100).toFixed(2)}%`:'—'}</small></div></td><td>{number(s.counts.received)}</td></tr>)}</tbody></table>{!sources.length&&<div className="empty">{t('暂无来源统计')}</div>}</div></section>;
 }

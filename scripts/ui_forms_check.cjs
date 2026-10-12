@@ -60,7 +60,8 @@ const fixture=Function(source.slice(source.indexOf('const settings='),source.ind
   }
   await go('大屏监控');
   if(await page.getByRole('heading',{name:'按源统计 DNS 流入',exact:true}).count())throw Error('Standalone source panel remains');
-  await page.locator('.monitor-flow').getByRole('heading',{name:'来源请求占比',exact:true}).waitFor();
+  await page.locator('.monitor-source-shares').getByRole('heading',{name:'来源请求占比',exact:true}).waitFor();
+  if(await page.locator('.monitor-flow').getByRole('heading',{name:'来源请求占比',exact:true}).count())throw Error('Source shares remain inside the flow card');
   await page.getByRole('img',{name:'DNS 来源到实际处理去向的流向图',exact:true}).waitFor();
   await page.getByRole('button',{name:'查看 192.0.2.10 的流向',exact:true}).click();
   await page.getByText('当前统计来源：192.0.2.10',{exact:true}).waitFor();

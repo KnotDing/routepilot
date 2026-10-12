@@ -9,11 +9,12 @@ const colors={addressed:'var(--accent)',intercepted:'#8872db',local:'var(--succe
 const number=n=>Number(n).toLocaleString(currentLocale(),{maximumFractionDigits:1});
 const percent=(n,total)=>total?`${(share(n,total)*100).toLocaleString(currentLocale(),{minimumFractionDigits:1,maximumFractionDigits:2})}%`:'—';
 
-function FlowChart({snapshot,sources,selected,onSelect,totalReceived}){
+function FlowChart({snapshot,sources,selected}){
  const t=useT(),classified=sourceFlows(snapshot,sources,selected),flows=classified?.flows||snapshot.flows,{left,right,edges,height}=flowLayout(flows,snapshot.completed,classified?.keys);
  const label=key=>classified?(key==='remaining-sources'?t('其余来源'):sourceName(key,t)):t(ingressLabels[key]);
+ const hasFlows=flows.some(f=>f.queries>0);
  return <section className="panel monitor-flow"><header className="section-heading"><h2>{t('DNS 请求流向')}</h2><p>{t('流带宽度按请求数同比例绘制；每条请求只归入一个最终处理去向，占比以已完成请求为分母。')}</p></header>
-  {!snapshot.completed?<div className="empty">{t('暂无已完成请求')}</div>:<>
+  {!hasFlows?<div className="empty">{t(snapshot.completed?'暂无可展示的来源流向':'暂无已完成请求')}</div>:<>
    <div className="monitor-chart-scroll" tabIndex="0" aria-label={t('DNS 请求流向')}><svg viewBox={`0 0 980 ${height+95}`} className="monitor-sankey" role="img" aria-label={t(classified?'DNS 来源到实际处理去向的流向图':'DNS 接入方式到实际处理去向的流向图')}>
     <text x="20" y="22" className="monitor-svg-heading">{t('DNS 流入')}</text><text x="750" y="22" className="monitor-svg-heading">{t('DNS 处理去向')}</text>
     {edges.map(e=><path key={JSON.stringify([e.source,e.target])} d={e.path} fill={colors[e.target]} fillOpacity=".25"><title>{label(e.source)} → {t(destinationLabels[e.target])}: {number(e.count)} · {percent(e.count,snapshot.completed)}</title></path>)}
@@ -23,7 +24,6 @@ function FlowChart({snapshot,sources,selected,onSelect,totalReceived}){
    <details className="monitor-detail"><summary>{t('查看精确流向数据')}</summary><div className="table-wrap"><table><thead><tr><th>{t(classified?'请求来源':'接入方式')}</th><th>{t('DNS 处理去向')}</th><th>{t('DNS 请求数')}</th><th>{t('占已完成请求')}</th></tr></thead><tbody>{flows.map((f,i)=><tr key={i}><td>{label(f.ingress)}</td><td>{t(destinationLabels[f.destination]||f.destination)}</td><td>{number(f.queries)}</td><td>{percent(f.queries,snapshot.completed)}</td></tr>)}</tbody></table></div></details>
   </>}
   {!classified&&<p className="field-hint">{t('此后端未提供来源流向明细，暂按接入方式展示。')}</p>}
-  <SourceStatistics sources={sources} total={totalReceived} selected={selected} onSelect={onSelect}/>
  </section>;
 }
 
@@ -77,7 +77,8 @@ export function MonitoringPanel({snapshot,backendName,focus,onFocus,backendURL,h
   {mode==='history'&&historical.history&&<p className="field-hint">{new Date(historical.history.from).toLocaleString(currentLocale())} → {new Date(historical.history.to).toLocaleString(currentLocale())} · {t('历史保留七天，时间按分钟聚合。')}</p>}
   {source&&<p className="notice">{t('当前统计来源：{source}',{source:sourceName(source,t)})}</p>}
   {mode==='history'&&historical.history?.points.length===0?<div className="notice">{t('所选时间范围暂无历史采样')}</div>:view&&<><div className="metrics monitor-metrics">{metrics.map(([label,value])=><div className="metric" key={label}><span>{t(label)}</span><strong>{value}</strong></div>)}</div>
-  <div className="monitor-primary-grid"><FlowChart snapshot={view} sources={mode==='history'?historical.history?.sources:snapshot.sources} selected={source} onSelect={setSource} totalReceived={mode==='history'?historical.history?.total_received:snapshot.received}/><Policies snapshot={view} limit={source&&source!=='legacy'?64:512}/></div>
+  <div className="monitor-primary-grid"><FlowChart snapshot={view} sources={mode==='history'?historical.history?.sources:snapshot.sources} selected={source}/><Policies snapshot={view} limit={source&&source!=='legacy'?64:512}/></div>
+  <SourceStatistics sources={mode==='history'?historical.history?.sources:snapshot.sources} total={mode==='history'?historical.history?.total_received:snapshot.received} selected={source} onSelect={setSource}/>
   <div className="monitor-secondary-grid"><Trend samples={historical.history?historicalSamples(historical.history):mode==='history'||source?[]:samples} historical={mode==='history'} persisted={Boolean(historical.history)}/><Distribution title="分流决策占比" rows={decisions} total={total}/><Distribution title="DNS 响应码占比" rows={rcodes} total={total}/></div></>}
   <p className="monitor-footnote">{t('统计自监控功能启用起累计并跨重启保存，不依赖查询记录开关。流向表示 DNS 请求的最终处理路径；上游重试、后台刷新、网络字节和后续上网流量不在此统计范围。')}</p>
  </div>;

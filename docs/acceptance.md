@@ -369,3 +369,19 @@ for source version 1.0.4-beta.3 / build 85. Added checks cover source-flow
 conservation, small-source aggregation, missing-detail fallback, embedded
 table placement and persisted history flow counts. No production service was
 installed or restarted during these checks.
+
+## v1.0.4-beta.4 source presentation — 2026-10-12
+
+The source share table is now an independent card below the DNS flow and
+policy cards. Pre-collection source entries are hidden from live and historical
+selectors, diagrams and source tables, while stored totals and the request
+denominators remain unchanged. Visible source flows continue to use their
+observed destinations; omitted old requests are not assigned to other clients.
+
+Local checks passed: 26 frontend files / 124 tests, production frontend build,
+17-page browser checks at 1440/1120/390 and 4K light/dark, and full App package
+validation for source version 1.0.4-beta.4 / build 86. The history regression
+checks hidden entries, retained totals and correct source shares in both modes;
+browser checks assert the share card is outside the flow card. Backend
+statistics and persistence behavior were not changed. No installed service was
+upgraded or restarted.

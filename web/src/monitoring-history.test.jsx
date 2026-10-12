@@ -26,7 +26,8 @@ it('filters live and historical policy paths by source and uses that source deno
  vi.stubGlobal('fetch',vi.fn(async url=>({ok:true,status:200,json:async()=>valueFor(url)})));
  render(<MonitoringPanel {...props}/>);
  expect(screen.queryByText('按源统计 DNS 流入')).not.toBeInTheDocument();
- expect(screen.getByRole('heading',{name:'来源请求占比'}).closest('.monitor-flow')).toBeInTheDocument();
+ expect(screen.getByRole('heading',{name:'来源请求占比'}).closest('.monitor-flow')).toBeNull();
+ expect(screen.getByRole('heading',{name:'来源请求占比'}).closest('.panel')).toHaveClass('monitor-source-shares');
  expect(screen.getByRole('img',{name:'DNS 来源到实际处理去向的流向图'})).toHaveTextContent('192.0.2.10 → Surge DNS: 4');
  expect(screen.getByRole('img',{name:'DNS 来源到实际处理去向的流向图'})).not.toHaveTextContent('直接请求');
  expect(document.querySelector('.monitor-source-table')).toHaveTextContent('40.00%');
@@ -58,6 +59,23 @@ it('ignores an old source response after selection changes',async()=>{
  await act(async()=>releaseA());
  expect(document.querySelector('.monitor-policy-name')).toHaveTextContent('DIRECT');
  expect(screen.getByText('当前统计来源：192.0.2.20')).toBeInTheDocument();
+});
+
+it('hides legacy source entries in live and history without changing totals or denominators',async()=>{
+ const recorded={...snapshot,received:16,completed:16,flows:[...snapshot.flows,...b.flows],sources:[...snapshot.sources,{source:'legacy',counts:b}]};
+ vi.stubGlobal('fetch',vi.fn(async()=>({ok:true,status:200,json:async()=>({...history(recorded),sources:recorded.sources,total_received:16})})));
+ render(<MonitoringPanel {...props} snapshot={recorded}/>);
+ const check=()=>{
+  expect(screen.queryByText('启用前未采集来源')).not.toBeInTheDocument();
+  expect(screen.queryByRole('option',{name:'启用前未采集来源'})).not.toBeInTheDocument();
+  expect(document.querySelector('.monitor-source-table')).toHaveTextContent('25.00%');
+  expect(document.querySelector('.monitor-source-table')).toHaveTextContent('37.50%');
+  expect(document.querySelector('.monitor-metrics')).toHaveTextContent('16');
+  expect(screen.getByRole('img',{name:'DNS 来源到实际处理去向的流向图'})).toHaveTextContent('192.0.2.10 → Surge DNS: 4 · 25.0%');
+ };
+ check();
+ fireEvent.click(screen.getByRole('button',{name:'历史数据',exact:true}));
+ await screen.findByText('窗口末处理中');check();
 });
 
 it('shows a localized historical-query failure without fabricated statistics',async()=>{

@@ -2,6 +2,7 @@ export const destinations=['local','cache','real','surge','blocked','unavailable
 export const destinationLabels={local:'本地记录',cache:'响应缓存',real:'真实 DNS 上游',surge:'Surge DNS',blocked:'本机拒绝 / 空响应',unavailable:'未发往解析器'};
 export const ingressLabels={addressed:'直接请求',intercepted:'透明拦截'};
 export function share(count,total){return total>0?count/total:0}
+export function visibleSources(sources){return sources?.filter(s=>s.source!=='legacy')}
 
 // A common scale on both sides preserves every ingress/destination edge.
 // No minimum ribbon width: a small request share must remain a small share.
@@ -26,10 +27,10 @@ export function flowLayout(flows,total,sourceKeys=['addressed','intercepted']){
 export function sourceFlows(snapshot,sources,selected=''){
  if(selected)return {flows:mergeSourceFlows(snapshot.flows.map(f=>({...f,ingress:selected}))),keys:[selected]};
  if(!Array.isArray(sources)||sources.some(s=>s.counts.completed>0&&(!s.counts.flows?.length)))return null;
- const ranked=[...sources].filter(s=>s.counts.completed>0).sort((a,b)=>b.counts.completed-a.counts.completed||a.source.localeCompare(b.source));
+ if(sources.reduce((n,s)=>n+(s.counts.flows||[]).reduce((sum,f)=>sum+f.queries,0),0)!==snapshot.completed)return null;
+ const ranked=visibleSources(sources).filter(s=>s.counts.completed>0).sort((a,b)=>b.counts.completed-a.counts.completed||a.source.localeCompare(b.source));
  const top=ranked.slice(0,10),rest=ranked.slice(10),flows=[];
  for(const s of ranked)for(const f of s.counts.flows||[])flows.push({...f,ingress:top.includes(s)?s.source:'remaining-sources'});
- if(flows.reduce((n,f)=>n+f.queries,0)!==snapshot.completed)return null;
  return {flows:mergeSourceFlows(flows),keys:[...top.map(s=>s.source),...(rest.length?['remaining-sources']:[])]};
 }
 
