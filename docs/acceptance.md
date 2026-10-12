@@ -542,3 +542,15 @@ Local beta.11 gates passed: 29 frontend files / 138 tests, related Go race
 tests and vet, bounded 1331-triple aggregation regression, production frontend
 build, 17-page responsive checks plus full name/IP toggles and sidebar hover
 state checks, and full App/package validation for 1.0.4-beta.11 / build 93.
+
+Published tag `v1.0.4-beta.11` points to
+`ff9eec65b4f1620788d59b5977caec4290d64927`. GitHub regression #31
+(`38222205627`) and release #19 (`38222205910`) passed; Gitea release #113
+(`2084`) mirrored the GitHub artifacts successfully, with fallback skipped.
+Both pages are non-draft prereleases with exactly DMG, ZIP and SHA256SUMS.
+Downloaded attachments are nonempty, match metadata sizes and checksums,
+and have identical hashes across providers. Actual App and bundled backend
+are `1.0.4-beta.11 / build 19`; ZIP resources, signatures and DMG integrity
+passed. Evidence: `artifacts/releases/v1.0.4-beta.11/publication-verification.json`.
+No deployed installation, live upgrade or real LAN client-flow commissioning
+was performed.

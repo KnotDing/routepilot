@@ -120,13 +120,14 @@
 
 ## 最近已核验发布（2026-10-12）
 
-- 最新已发布正式版仍为 `v1.0.3`（`5ca0fd97496776d9949dbe3218d57f982dc0e04f`）；最新已核验测试版为 `v1.0.4-beta.10`，标签指向 `bc975665023e5b34706ff0951eba13f845845a52`。
-- beta.10 GitHub 回归 #30（run `38218034998`）、GitHub Release #18（`38218035019`）成功；Gitea Release #112（run `2083`）成功复用 GitHub 制品，macOS 回退任务跳过。双仓库发布提交与标签已核对一致；后续仅交接文档提交不移动发布标签。
-- 两个发布页均为 `prerelease=true`、`draft=false`，只有 DMG、ZIP、SHA256SUMS 三项附件，下载非空且两边 SHA256 完全相同。实际包内 App 与后台均为 `1.0.4-beta.10 / build 18`；签名、ZIP 资源和 DMG 校验通过。证据位于 `artifacts/releases/v1.0.4-beta.10/publication-verification.json`。
+- 最新已发布正式版仍为 `v1.0.3`（`5ca0fd97496776d9949dbe3218d57f982dc0e04f`）；最新已核验测试版为 `v1.0.4-beta.11`，标签指向 `ff9eec65b4f1620788d59b5977caec4290d64927`。
+- beta.11 GitHub 回归 #31（run `38222205627`）、GitHub Release #19（`38222205910`）成功；Gitea Release #113（run `2084`）成功复用 GitHub 制品，macOS 回退任务跳过。双仓库发布提交与标签已核对一致；后续仅交接文档提交不移动发布标签。
+- 两个发布页均为 `prerelease=true`、`draft=false`，只有 DMG、ZIP、SHA256SUMS 三项附件，下载非空且两边 SHA256 完全相同。实际包内 App 与后台均为 `1.0.4-beta.11 / build 19`；签名、ZIP 资源和 DMG 校验通过。证据位于 `artifacts/releases/v1.0.4-beta.11/publication-verification.json`。
 - 本轮测试版新增大屏实时 / 七天历史统计、按源流向及占比、独立来源占比卡片，隐藏启用前未知来源并排除其分母；修复历史统计维度共享导致保存失败，区分普通与乐观响应缓存，检查更新不预下载并提供安装下载进度。
 - beta.6 新增持久化客户端备注与强制 DIRECT / SURGE / REJECT 策略，以及与 DNS 请求流向并列的「客户端策略流向」。图表使用实际来源与策略请求对，支持实时、历史及单源筛选；不以边际占比推算关联。
 - beta.8 包含软件更新提示简化、检查按钮移到保存旁、分割线移除，以及小流量客户端 / 策略文字重叠修复。图表只增加节点间距与画布高度，节点和流带仍使用实际请求比例。
 - beta.9 移除独立客户端配置卡片，改从列表行编辑。客户端计数、决策、错误、最后活动与淘汰汇总每五秒保存 SQLite 检查点，正常退出保存最终值，重启及配置应用后保留；写入失败显示并自动重试。旧版未落盘数据不倒填。
+- beta.10 将立即安装 / 升级操作与立即检查更新放在保存设置旁的同一行。beta.11 两个流向图默认只显示备注，点击切换 IP；客户端策略图按真实请求展示来源 → 命中策略 → 最终策略，宽度不足时排列在 DNS 图下方。「请求来源占比」改为策略排行样式。导航支持展开、仅图标、完全隐藏和左边缘悬浮，状态仅保存在当前管理界面。
 - 验证范围包括前端、相关 Go race / vet、原生检查、响应式 UI、GitHub 完整回归与发布包。未安装或升级现用环境，未验收真实 LAN / NAT / IPv6 客户端流量；历史缺失的来源 / 缓存类型不会倒填。详见 `docs/acceptance.md`。
 - 此节仅为带日期的快照。接手时以 `git status`、`internal/buildinfo/release.json`、远端标签与实际 Release/Actions 为准。
 
@@ -142,14 +143,15 @@
 
 ## 任务交接（2026-10-12）
 
-- 目标与验收条件：完成客户端设置及并列策略流向图；调整软件更新提示、按钮与分割线；修复小流量流向节点文字重叠；发布测试版并更新交接。
-- 当前状态：进行中。beta.10 已核验发布。用户追加备注 / IP 切换、真实三层策略流向、窄屏上下排列、请求来源占比排行，以及侧边栏图标 / 隐藏 / 边缘悬浮状态；候选版本为 `v1.0.4-beta.11`，尚未发布。
-- 已完成与修改文件：客户端备注 / 强制策略的配置、API、运行时、远程允许列表及 UI 见 `internal/config/clients.go`、`internal/dnsserver/client_policy.go`、`web/src/client-settings.jsx`、`docs/client-settings.md`；监控逐源策略流向在 `internal/dnsserver/source_policy_flows.go`、`internal/database/monitoring.go`、`web/src/monitoring*`，说明见 `docs/monitoring.md`。更新按钮在 `web/src/main.jsx`、`app-preferences.jsx`、`backend-update.jsx` 使用现有状态与 portal；分割线样式在 `style.css`。小流量图间距与双侧节点高度在 `monitoring-data.js`，保留真实流带比例。
-- 验证：本地 beta.8 前端 28 文件 / 133 测试、生产构建、17 页响应式 UI、1440 / 3840 实际 SVG 文字边界检查、`make package package-check` 通过（源码 build 90）。客户端 / 持久化功能相关 Go race 与 vet 在 beta.6 通过。最终 GitHub 回归 #27 运行 `make verify`、`make native-test ui-test`、`make fuzz` 并成功；Release #16 与 Gitea #110 成功。下载的两个安装包版本 / build、资源、签名及 SHA256 校验通过。未安装升级现用环境，未验收真实 LAN / NAT / IPv6 流量。
-- 已发布：`v1.0.4-beta.8`，tag 指向 `f1d3eefb43b6528dcb56ed927e36addc33a5b076`，实际 App 与捆绑后台 `1.0.4-beta.10 / build 18`。GitHub: https://github.com/KnotDing/routepilot/releases/tag/v1.0.4-beta.8；Gitea: https://gitea.knotding.com/knot/routepilot/releases/tag/v1.0.4-beta.8。两边均为非草稿测试版，各有 DMG、ZIP、SHA256SUMS 三附件且哈希相同；完整核验见上节与 `artifacts/releases/v1.0.4-beta.8/`。
+- 目标与验收条件：完成监控与客户端持久化、列表内编辑、更新按钮位置、完整备注 / IP 切换、三层客户端策略流向、请求来源占比排行，以及侧边栏展开 / 图标 / 隐藏 / 悬浮；发布测试版并更新交接。
+- 当前状态：已完成。`v1.0.4-beta.11` 在 GitHub 与 Gitea 已核验发布。
+- 已完成与修改文件：客户端配置与列表内编辑见 `internal/config/clients.go`、`internal/dnsserver/client_policy.go`、`web/src/clients.jsx`、`client-settings.jsx`、`docs/client-settings.md`；累计客户端持久化见 `internal/app/statistics.go`、`internal/dnsserver/dispatcher.go`。监控真实三元组在 `internal/dnsserver/source_policy_flows.go`，历史在 `internal/database/monitoring.go`，图形 / 完整名称 / 比例条在 `web/src/monitoring*`；说明见 `docs/monitoring.md`。更新操作在 `main.jsx`、`app-preferences.jsx`、`backend-update.jsx` 使用现有状态与 portal；导航及持久化偏好在 `navigation.jsx`、`style.css`。双语、自动化检查与发行说明已同步。
+- 验证：beta.11 本地前端 29 文件 / 138 测试、相关 Go race 与 vet、1331 条三元组容量与守恒检查、生产前端构建、`node scripts/ui_forms_check.cjs` 的 17 页响应式检查及实际长备注 / IP 切换 / 悬浮导航检查、`make package package-check` 通过（源码 build 93）。GitHub 回归 #31 运行完整回归成功，Release #19 与 Gitea #113 成功。下载包版本 / build、资源、签名、DMG 及双仓库 SHA256 校验通过。未安装升级现用环境，未验收真实 LAN / NAT / IPv6 流量。
+- 已发布：`v1.0.4-beta.11`，tag 指向 `ff9eec65b4f1620788d59b5977caec4290d64927`，实际 App 与捆绑后台 `1.0.4-beta.11 / build 19`。GitHub: https://github.com/KnotDing/routepilot/releases/tag/v1.0.4-beta.11；Gitea: https://gitea.knotding.com/knot/routepilot/releases/tag/v1.0.4-beta.11。两边均为非草稿测试版，各有 DMG、ZIP、SHA256SUMS 三附件且哈希相同；完整证据见上节与 `artifacts/releases/v1.0.4-beta.11/`。
+- DNS 三层图评估：用户允许不合适时不做。本轮保留「来源 → 实际处理去向」两层；现有持久化数据可添加直接请求 / 透明拦截的接入方式，但会减弱来源到去向的直观关联。更有价值的具体上游地址尚未纳入累计 / 历史计数，不能用有限查询历史或配置补造；缓存命中未访问上游，未来扩展需明确此边界。
 - 发布故障记录：beta.7 GitHub 回归 #26 / Release #15 成功，Gitea run 2080 的 Ubuntu runner 拉取 Docker 镜像时遇到 unexpected EOF，备用任务成功但总体门禁失败，因此不记为完整核验发布。beta.8 新运行的 Ubuntu 镜像拉取恢复，成功镜像 GitHub 制品；未移动标签或删除旧附件。
 - 保留的无关改动：无。
-- 下一步与依赖：完成 beta.11 本地验证、提交与双仓库发布，等待全部门禁并下载核验后更新交接。未授权安装升级现用环境。
+- 下一步与依赖：无待完成的发布工作。保持标签不动，交接文档单独同步双仓库。未授权安装升级现用环境；具体上游三层图尚未实现。
 
 ## 代码地图：按任务定位
 
@@ -183,7 +185,7 @@
 | BGP 邻居、详情与路由发布 | `internal/bgp/gobgp.go`（`peerConfig` / `SyncPeers` / `Peers` / `Exported`）；`manager.go`（`Reconcile` / `Refresh`） | `internal/routing/manager.go`；`web/src/bgp-peer-details.jsx`、`routing.jsx`、`main.jsx` 的 `Resource`；`docs/routing-backends.md` |
 | URL 路由导入与定时同步 | `internal/routeimport/import.go`；`internal/api/api.go` 的 `RunRouteFeedScheduler` | `web/src/route-import.jsx`；配置中的 route feeds；导入与后台任务状态 |
 | 健康检查、异常通知、Surge 重启 | `internal/app/app.go` 的 `monitor`；`surge_recovery.go`；`internal/state/machine.go` | `internal/surge/recovery.go`；`internal/notifications/notifications.go`；`native/notifications.swift`；`web/src/surge-restart.jsx`、`notification-errors.jsx` |
-| 大屏监控、策略命中与 DNS 流向 | `internal/dnsserver/monitoring.go`（`Begin` / `Finish` / `Snapshot`）；`source_policy_flows.go`（有界真实源策略对）；`dispatcher.go` 的实际解析路径标记；`internal/app/statistics.go`；`internal/database/monitoring.go`（事务检查点与分钟增量桶） | `internal/api/monitoring.go`（实时源详情 / 历史 GET）、`internal/remote/remote.go`；`app.go` 的 `status.dns_monitoring` / `Metrics`；`web/src/monitoring.jsx`、`monitoring-source-label.jsx`（完整备注换行 / 点击 IP 切换）、`monitoring-history.jsx`、`monitoring-data.js`（三层共享比例尺）、`monitoring.css`；`docs/monitoring.md` |
+| 大屏监控、策略命中与 DNS 流向 | `internal/dnsserver/monitoring.go`（`Begin` / `Finish` / `Snapshot`）；`source_policy_flows.go`（有界真实来源 / 命中策略 / 最终策略三元组）；`dispatcher.go` 的实际解析路径标记；`internal/app/statistics.go`；`internal/database/monitoring.go`（事务检查点与分钟增量桶） | `internal/api/monitoring.go`（实时源详情 / 历史 GET）、`internal/remote/remote.go`；`app.go` 的 `status.dns_monitoring` / `Metrics`；`web/src/monitoring.jsx`、`monitoring-source-label.jsx`（完整备注换行 / 点击 IP 切换）、`monitoring-history.jsx`、`monitoring-data.js`（三层共享比例尺）、`monitoring.css`；`docs/monitoring.md` |
 | DNS 累计统计、客户端与查询历史 | `internal/dnsserver/dispatcher.go` 的 `Counters` / `ClientStatistics` / `History`；`internal/app/statistics.go`（客户端共享累计实例与五秒检查点）；`internal/dnsserver/client_statistics.go`（恢复校验） | `web/src/dns-overview.jsx`、`clients.jsx`、`client-settings.jsx`（列表编辑窗口）、`dns-result.jsx`；客户端配置校验在 `internal/config/clients.go`，分流在 `internal/dnsserver/client_policy.go`；查询历史不要误当成持久化累计统计 |
 | 登录、管理 IP 白名单、反向代理 | `internal/security/security.go`（`Wrap`）；`client_ip.go`；`internal/config/management_security.go` | `internal/controlclient/access.go`；`web/src/credentials.js`、`backends.jsx`；`native/credentials.swift`、`remote_credentials.swift`；`docs/remote-management.md` |
 | 远程连接与接口兼容 | `internal/remote/remote.go` 的接口允许列表与中继；`web/src/client.js` 的 `request` / `requestOptional` / `selectBackend` | `web/src/backends.jsx`、`version-notice.jsx`；`Workspace` 的页面请求与登录恢复 |
