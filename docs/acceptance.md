@@ -502,3 +502,22 @@ Local beta.9 gates passed: 28 frontend files / 133 tests; related Go race
 tests and vet; final client-restore race tests including scoped IPv6; production
 frontend build; 17-page responsive UI checks; full App/package validation for
 source version 1.0.4-beta.9 / build 91. No live upgrade was performed.
+
+## v1.0.4-beta.10 update action row — 2026-10-12
+
+The persistent updater renders both check and install/upgrade actions into the
+settings footer. Existing tests now assert the shared row after an update
+becomes available for native, browser and remote connections, including native
+install dispatch and remote relay ownership. Responsive checks compare actual
+button positions at 1440/1120/390. Update progress and confirmation use the
+existing components; no real installation is triggered by these tests.
+
+Published beta.9: GitHub regression #29 (38216768389), release #17
+(38216768399), Gitea mirror #111 (2082) succeeded. Both providers retain
+exactly three matching assets; downloaded App/backend identity is
+1.0.4-beta.9 / build 17. Full integrity evidence is under
+artifacts/releases/v1.0.4-beta.9/.
+
+Local beta.10 gates passed: 28 frontend files / 133 tests, production frontend
+build, 17-page responsive checks including same-row check/install buttons at
+1440/1120/390, and full App/package validation for 1.0.4-beta.10 / build 92.

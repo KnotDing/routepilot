@@ -120,12 +120,13 @@
 
 ## 最近已核验发布（2026-10-12）
 
-- 最新已发布正式版仍为 `v1.0.3`（`5ca0fd97496776d9949dbe3218d57f982dc0e04f`）；最新已核验测试版为 `v1.0.4-beta.8`，标签指向 `f1d3eefb43b6528dcb56ed927e36addc33a5b076`。
-- beta.8 GitHub 回归 #27（run `38214203645`）、GitHub Release #16（`38214203939`）成功；Gitea Release #110（run `2081`）成功复用 GitHub 制品，macOS 回退任务跳过。双仓库发布提交与标签已核对一致；后续仅交接文档提交不移动发布标签。
-- 两个发布页均为 `prerelease=true`、`draft=false`，只有 DMG、ZIP、SHA256SUMS 三项附件，下载非空且两边 SHA256 完全相同。实际包内 App 与后台均为 `1.0.4-beta.8 / build 16`；签名、ZIP 资源和 DMG 校验通过。证据位于 `artifacts/releases/v1.0.4-beta.8/publication-verification.json`。
+- 最新已发布正式版仍为 `v1.0.3`（`5ca0fd97496776d9949dbe3218d57f982dc0e04f`）；最新已核验测试版为 `v1.0.4-beta.9`，标签指向 `25f90652c09302cd6fd55794bdb363a67a6cf1b9`。
+- beta.9 GitHub 回归 #29（run `38216768389`）、GitHub Release #17（`38216768399`）成功；Gitea Release #111（run `2082`）成功复用 GitHub 制品，macOS 回退任务跳过。双仓库发布提交与标签已核对一致；后续仅交接文档提交不移动发布标签。
+- 两个发布页均为 `prerelease=true`、`draft=false`，只有 DMG、ZIP、SHA256SUMS 三项附件，下载非空且两边 SHA256 完全相同。实际包内 App 与后台均为 `1.0.4-beta.9 / build 17`；签名、ZIP 资源和 DMG 校验通过。证据位于 `artifacts/releases/v1.0.4-beta.9/publication-verification.json`。
 - 本轮测试版新增大屏实时 / 七天历史统计、按源流向及占比、独立来源占比卡片，隐藏启用前未知来源并排除其分母；修复历史统计维度共享导致保存失败，区分普通与乐观响应缓存，检查更新不预下载并提供安装下载进度。
 - beta.6 新增持久化客户端备注与强制 DIRECT / SURGE / REJECT 策略，以及与 DNS 请求流向并列的「客户端策略流向」。图表使用实际来源与策略请求对，支持实时、历史及单源筛选；不以边际占比推算关联。
 - beta.8 包含软件更新提示简化、检查按钮移到保存旁、分割线移除，以及小流量客户端 / 策略文字重叠修复。图表只增加节点间距与画布高度，节点和流带仍使用实际请求比例。
+- beta.9 移除独立客户端配置卡片，改从列表行编辑。客户端计数、决策、错误、最后活动与淘汰汇总每五秒保存 SQLite 检查点，正常退出保存最终值，重启及配置应用后保留；写入失败显示并自动重试。旧版未落盘数据不倒填。
 - 验证范围包括前端、相关 Go race / vet、原生检查、响应式 UI、GitHub 完整回归与发布包。未安装或升级现用环境，未验收真实 LAN / NAT / IPv6 客户端流量；历史缺失的来源 / 缓存类型不会倒填。详见 `docs/acceptance.md`。
 - 此节仅为带日期的快照。接手时以 `git status`、`internal/buildinfo/release.json`、远端标签与实际 Release/Actions 为准。
 
@@ -142,13 +143,13 @@
 ## 任务交接（2026-10-12）
 
 - 目标与验收条件：完成客户端设置及并列策略流向图；调整软件更新提示、按钮与分割线；修复小流量流向节点文字重叠；发布测试版并更新交接。
-- 当前状态：进行中。beta.8 已核验发布；后续按用户要求移除单独客户端设置卡片，从客户端列表编辑，并持久化客户端列表累计统计。候选版本为 `v1.0.4-beta.9`，尚未发布。
+- 当前状态：进行中。beta.9 客户端列表编辑与累计统计持久化已核验发布；用户追加要求安装按钮与检查按钮并排，候选版本为 `v1.0.4-beta.10`，尚未发布。
 - 已完成与修改文件：客户端备注 / 强制策略的配置、API、运行时、远程允许列表及 UI 见 `internal/config/clients.go`、`internal/dnsserver/client_policy.go`、`web/src/client-settings.jsx`、`docs/client-settings.md`；监控逐源策略流向在 `internal/dnsserver/source_policy_flows.go`、`internal/database/monitoring.go`、`web/src/monitoring*`，说明见 `docs/monitoring.md`。更新按钮在 `web/src/main.jsx`、`app-preferences.jsx`、`backend-update.jsx` 使用现有状态与 portal；分割线样式在 `style.css`。小流量图间距与双侧节点高度在 `monitoring-data.js`，保留真实流带比例。
 - 验证：本地 beta.8 前端 28 文件 / 133 测试、生产构建、17 页响应式 UI、1440 / 3840 实际 SVG 文字边界检查、`make package package-check` 通过（源码 build 90）。客户端 / 持久化功能相关 Go race 与 vet 在 beta.6 通过。最终 GitHub 回归 #27 运行 `make verify`、`make native-test ui-test`、`make fuzz` 并成功；Release #16 与 Gitea #110 成功。下载的两个安装包版本 / build、资源、签名及 SHA256 校验通过。未安装升级现用环境，未验收真实 LAN / NAT / IPv6 流量。
-- 已发布：`v1.0.4-beta.8`，tag 指向 `f1d3eefb43b6528dcb56ed927e36addc33a5b076`，实际 App 与捆绑后台 `1.0.4-beta.8 / build 16`。GitHub: https://github.com/KnotDing/routepilot/releases/tag/v1.0.4-beta.8；Gitea: https://gitea.knotding.com/knot/routepilot/releases/tag/v1.0.4-beta.8。两边均为非草稿测试版，各有 DMG、ZIP、SHA256SUMS 三附件且哈希相同；完整核验见上节与 `artifacts/releases/v1.0.4-beta.8/`。
+- 已发布：`v1.0.4-beta.8`，tag 指向 `f1d3eefb43b6528dcb56ed927e36addc33a5b076`，实际 App 与捆绑后台 `1.0.4-beta.9 / build 17`。GitHub: https://github.com/KnotDing/routepilot/releases/tag/v1.0.4-beta.8；Gitea: https://gitea.knotding.com/knot/routepilot/releases/tag/v1.0.4-beta.8。两边均为非草稿测试版，各有 DMG、ZIP、SHA256SUMS 三附件且哈希相同；完整核验见上节与 `artifacts/releases/v1.0.4-beta.8/`。
 - 发布故障记录：beta.7 GitHub 回归 #26 / Release #15 成功，Gitea run 2080 的 Ubuntu runner 拉取 Docker 镜像时遇到 unexpected EOF，备用任务成功但总体门禁失败，因此不记为完整核验发布。beta.8 新运行的 Ubuntu 镜像拉取恢复，成功镜像 GitHub 制品；未移动标签或删除旧附件。
 - 保留的无关改动：无。
-- 下一步与依赖：完成 beta.9 本地验证、提交与双仓库发布，等待全部门禁并下载核验后更新交接。未授权安装升级现用环境。
+- 下一步与依赖：完成 beta.10 本地验证、提交与双仓库发布，等待全部门禁并下载核验后更新交接。未授权安装升级现用环境。
 
 ## 代码地图：按任务定位
 

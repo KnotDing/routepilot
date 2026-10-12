@@ -15,7 +15,7 @@ RoutePilot 是一款 macOS 状态栏应用：向 Surge 查询分流策略，为 
 - **缩短直连路径：** DIRECT 查询返回真实地址，客户端后续流量由网关直接送往 WAN，不必绕经 Surge；Fake-IP 和下一跳配置为 Surge 的受管理前缀仍按路由经过 Surge。
 - **Surge 故障时保留新连接的直连路径：** RoutePilot 停止发放新的 Fake-IP，后续查询改用独立真实 DNS 解析，让网关可将新连接直连出网（真实 DNS 与 WAN 可用时）。已发放 Fake-IP 在 TTL / 宽限期内仍可能依赖 Surge。
 
-[📦 下载最新版本](https://github.com/KnotDing/routepilot/releases) · [🧪 大屏监控测试版 v1.0.4-beta.9](https://github.com/KnotDing/routepilot/releases/tag/v1.0.4-beta.9) · [Gitea 备用下载](https://gitea.knotding.com/knot/routepilot/releases) · [🚀 快速开始](#quick-start) · [🤖 安装 skill](#agent-skill) · [📚 文档导航](#documentation)
+[📦 下载最新版本](https://github.com/KnotDing/routepilot/releases) · [🧪 大屏监控测试版 v1.0.4-beta.10](https://github.com/KnotDing/routepilot/releases/tag/v1.0.4-beta.10) · [Gitea 备用下载](https://gitea.knotding.com/knot/routepilot/releases) · [🚀 快速开始](#quick-start) · [🤖 安装 skill](#agent-skill) · [📚 文档导航](#documentation)
 
 <p align="center">
   <img src="docs/images/management-4k.png" width="100%" alt="RoutePilot App 管理界面 4K 截图">

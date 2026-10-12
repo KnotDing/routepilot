@@ -170,6 +170,8 @@ it('combines local update controls and policy into one form, saving prompts with
  act(()=>{Object.assign(window.routepilotNativePreferences,{updateAvailable:true,updateVersion:'v9.0.0',desktopNotifications:true});window.dispatchEvent(new Event('routepilot-preferences-changed'))});
  expect(screen.getByLabelText('发现新版本时提示')).not.toBeChecked();
  expect(screen.getByText('已发现可用更新：v9.0.0')).toBeInTheDocument();
+ expect(screen.getByRole('button',{name:'立即安装'}).parentElement).toBe(screen.getByRole('button',{name:'立即检查更新'}).parentElement);
+ fireEvent.click(screen.getByRole('button',{name:'立即安装'}));expect(postAction).toHaveBeenCalledWith('installAvailable');
  fireEvent.click(screen.getByRole('button',{name:'保存设置'}));
  await waitFor(()=>expect(notify).toHaveBeenCalledWith('设置已保存'));
  expect(fetch).toHaveBeenCalledTimes(1);
@@ -185,6 +187,7 @@ it('checks and upgrades the remote connection without invoking the local App',as
  render(<Settings settings={updateSettings} backend={{id:'hermes',name:'Hermes'}} status={{online_update:true}} refresh={()=>{}} notify={()=>{}}/>);
  fireEvent.click(screen.getByRole('button',{name:'软件更新',exact:true}));
  await screen.findByText('有可用的软件新版本');
+ expect(screen.getByRole('button',{name:'升级远程应用'}).parentElement).toBe(screen.getByRole('button',{name:'立即检查更新'}).parentElement);
  expect(screen.queryByLabelText('发现新版本时提示')).not.toBeInTheDocument();
  expect(screen.queryByRole('button',{name:'停用更新助手'})).not.toBeInTheDocument();
  expect(screen.getAllByRole('heading',{level:2})).toHaveLength(1);
@@ -206,8 +209,10 @@ it('checks the connected local Mac from a browser through the backend API',async
  await screen.findByText('软件已是最新版本');
  expect(screen.queryByText('检查与升级针对当前连接的后端所在 Mac。')).not.toBeInTheDocument();
  expect(screen.getByRole('button',{name:'立即检查更新'}).parentElement).toBe(screen.getByRole('button',{name:'保存设置'}).parentElement);
+ fetch.mockImplementation(async()=>({ok:true,status:200,json:async()=>({available:true,supported:true,current:'1.0.1',latest:'v1.0.2',phase:'idle'})}));
  fireEvent.click(screen.getByRole('button',{name:'立即检查更新'}));
  await waitFor(()=>expect(fetch.mock.calls.filter(([url])=>url==='/api/v1/updates/check')).toHaveLength(2));
+ expect((await screen.findByRole('button',{name:'升级应用',exact:true})).parentElement).toBe(screen.getByRole('button',{name:'立即检查更新'}).parentElement);
 });
 
 it('shows the local GitHub token beside the update source only when GitHub is selected',async()=>{
