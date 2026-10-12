@@ -457,3 +457,17 @@ Local beta.7 gates passed: 28 frontend files / 132 tests, production frontend
 build, 17-page responsive browser checks and full App/package validation for
 source version 1.0.4-beta.7 / build 89. Backend DNS code is unchanged from the
 validated beta.6 release.
+
+## v1.0.4-beta.8 small-share flow labels — 2026-10-12
+
+Flow node gaps now reserve both name and count/share lines even when adjacent
+nodes carry a fraction of a percent. Node and band sizes remain proportional;
+no artificial minimum thickness is added. A layout regression checks tiny
+clients and eleven policies, and browser checks compare actual SVG text bounds
+for the reported crowded client/policy pattern at 1440 and 3840 pixels.
+Software update settings remove the unused divider while retaining the check
+button beside Save; responsive checks assert its computed border is absent.
+
+Local beta.8 gates passed: 28 frontend files / 133 tests, production frontend
+build, 17-page responsive UI checks plus actual SVG label-boundary checks at
+1440/3840, and full App/package validation for 1.0.4-beta.8 / build 90.

@@ -9,7 +9,9 @@ export function visibleSources(sources){return sources?.filter(s=>s.source!=='le
 export function flowLayout(flows,total,sourceKeys=['addressed','intercepted'],targetKeys=destinations){
  const sources=sourceKeys.map(key=>({key,count:flows.filter(f=>f.ingress===key).reduce((s,f)=>s+f.queries,0)})).filter(n=>n.count);
  const targets=targetKeys.map(key=>({key,count:flows.filter(f=>f.destination===key).reduce((s,f)=>s+f.queries,0)})).filter(n=>n.count);
- const gap=32,height=Math.max(300,sources.length*50,targets.length*50),scale=total?(height-gap*Math.max(0,targets.length-1,sources.length-1))/total:0;
+ // Reserve enough space for both label lines even when a node is a tiny share.
+ // Only gaps grow; node and ribbon thickness remain proportional to requests.
+ const gap=52,height=Math.max(350,sources.length*70,targets.length*70),scale=total?(height-gap*Math.max(0,targets.length-1,sources.length-1))/total:0;
  function place(nodes){let y=50+(height-(total*scale+gap*Math.max(0,nodes.length-1)))/2;return nodes.map(n=>{const node={...n,y,height:n.count*scale,used:0};y+=node.height+gap;return node})}
  const left=place(sources),right=place(targets),edges=[];
  for(const source of left)for(const target of right){

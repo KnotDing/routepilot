@@ -35,6 +35,14 @@ it('keeps proportional bands positive when one client hits eleven policy nodes',
  for(const n of right){expect(n.height).toBe(n.count*scale);expect(n.y+n.height).toBeLessThanOrEqual(height+50)}
 });
 
+it('separates two-line labels for tiny clients and policies without inflating their bands',()=>{
+ const clients=['large','tiny-a','tiny-b','tiny-c'],policies=['main',...Array.from({length:10},(_,i)=>`small-${i}`)];
+ const flows=[{ingress:'large',destination:'main',queries:100000},...policies.slice(1).map((destination,i)=>({ingress:clients[1+i%3],destination,queries:1}))];
+ const {left,right,scale}=flowLayout(flows,100010,clients,policies);
+ for(const side of [left,right])for(let i=1;i<side.length;i++)expect(side[i].y+side[i].height/2-side[i-1].y-side[i-1].height/2).toBeGreaterThanOrEqual(52);
+ expect(right[1].height).toBe(scale);expect(right[1].height/right[0].height).toBeCloseTo(1/100000,10);
+});
+
 it('uses observed source destinations and preserves shares when grouping small sources',()=>{
  const sources=Array.from({length:12},(_,i)=>({source:`192.0.2.${i+1}`,counts:{completed:i+1,flows:[{ingress:'addressed',destination:i%2?'real':'surge',queries:i+1}]}}));
  const total=78,result=sourceFlows({completed:total},sources),layout=flowLayout(result.flows,total,result.keys);

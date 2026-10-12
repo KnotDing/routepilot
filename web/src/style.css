@@ -520,7 +520,7 @@ label[data-missing=true] > :is(input,textarea,select):not(:disabled),.form-grid 
 .automation-installations code{overflow-wrap:anywhere}
 
 /* Update controls share the same settings card as update policy. */
-.update-status { margin-bottom: 22px; padding-bottom: 18px; border-bottom: 1px solid var(--border); }
+.update-status { margin-bottom: 22px; }
 .update-status .toolbar { margin-bottom: 0; }
 
 .download-progress { display: flex; align-items: center; flex-wrap: wrap; gap: 12px; margin: 12px 0; }
