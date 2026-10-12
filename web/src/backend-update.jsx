@@ -10,7 +10,7 @@ const appPending=phase=>['checking','awaiting_confirmation','restarting'].includ
 const appNotice=phase=>appPending(phase)||['deferred','failed'].includes(phase);
 const appPhases={checking:'正在检查远端 App 的运行状态',awaiting_confirmation:'远端 App 正在使用，等待远端用户确认重启',restarting:'正在重启远端 App',deferred:'远端用户选择稍后重启 App；应用文件和网络服务已更新',failed:'远端 App 未能重启，请在远端手动重新打开'};
 const phases={idle:'尚未检查软件更新',downloading:'正在下载完整应用更新',validating:'正在校验完整应用更新',restarting:'正在重启后台，请稍候',succeeded:'远程软件升级已完成',failed:'远程软件升级失败'};
-export function BackendUpdate({backend=null,capable,software,onReady,target=null,showCurrent=false,embedded=false,authentication=true}){
+export function BackendUpdate({backend=null,capable,software,onReady,target=null,checkTarget=null,showCurrent=false,embedded=false,authentication=true}){
  // Keep one updater mounted while moving its panel into Settings, so
  // navigation does not restart checks or interrupt installation polling.
  const expanded=showCurrent||Boolean(target),remote=Boolean(backend);
@@ -71,6 +71,7 @@ export function BackendUpdate({backend=null,capable,software,onReady,target=null
  if(!expanded&&!capable&&!update&&!error)return null;
  if(!expanded&&update?.available&&skipped===update.latest&&!confirmation&&!active(update.phase)&&update.phase!=='failed'&&!update.error&&!update.check_error&&!update.automation_error&&!appNotice(update.app_restart)&&!error)return null;
  if(!expanded&&!confirmation&&update&&!update.available&&!active(update.phase)&&update.phase!=='failed'&&!update.error&&!update.check_error&&!update.automation_error&&!appNotice(update.app_restart)&&!error)return null;
+ const checkButton=<button type="button" disabled={!capable||busy||active(update?.phase)} onClick={()=>check()}>{t(busy?'处理中…':'立即检查更新')}</button>;
  const content=<><section className={(embedded||target?'update-status':'notice')+' backend-update '+(update?.phase==='failed'?'error':'')} aria-label={t(title)}>
   {!embedded&&!target&&<strong>{t(title)}</strong>}<p>{t('当前后台：{version}',{version:software?.version||update?.current||'—'})}{update&&' · '+t(remote?'远端 App：{version}':'App：{version}',{version:update.app_current||t('未安装')})}{update?.latest&&' · '+t('最新发布：{version}',{version:update.latest})}</p>
   {update&&<p role="status">{offline?t('后台暂时离线，正在等待升级完成并重连…'):active(update.phase)||['succeeded','failed'].includes(update.phase)?t(!remote&&update.phase==='succeeded'?'软件升级已完成':!remote&&update.phase==='failed'?'软件升级失败':phases[update.phase]):update.available?t('有可用的软件新版本'):t('软件已是最新版本')}</p>}
@@ -78,7 +79,7 @@ export function BackendUpdate({backend=null,capable,software,onReady,target=null
   {appNotice(update?.app_restart)&&<p role="status">{t(restartPhases[update.app_restart])}</p>}
   {update?.app_restart_error&&<p role="alert">{message(update.app_restart_error)}</p>}
   {update?.check_error&&<p role="alert">{t('检查更新失败')}：{message(update.check_error)}</p>}{update?.automation_error&&<p role="alert">{t('自动更新失败')}：{message(update.automation_error)}</p>}{update?.next_retry_at&&!String(update.next_retry_at).startsWith('0001-')&&<p>{t('将在 {time} 后重试',{time:new Date(update.next_retry_at).toLocaleString()})}</p>}{update?.skipped_version&&expanded&&<p>{t('已跳过版本 {version}，不会自动安装',{version:update.skipped_version})}<button type="button" disabled={busy} onClick={async()=>{setBusy(true);try{setUpdate(await request('updates/skip','POST',{version:''}));setError('')}catch(e){setError(message(e.message))}finally{setBusy(false)}}}>{t('取消跳过')}</button></p>}{update?.reason&&<p>{message(update.reason)}</p>}{update?.error&&<p role="alert">{message(update.error)}</p>}{error&&<p role="alert">{error}</p>}
-  <div className="toolbar"><button type="button" disabled={!capable||busy||active(update?.phase)} onClick={()=>check()}>{t(busy?'处理中…':'立即检查更新')}</button>{update?.supported&&update.available&&<button type="button" className="primary" disabled={!authentication||busy||active(update.phase)} onClick={()=>setConfirmation({version:update.latest,notes:update.release_notes})}>{t(remote?'升级远程应用':'升级应用')}</button>}</div>
+  {checkTarget&&createPortal(checkButton,checkTarget)}{(!checkTarget||update?.supported&&update.available)&&<div className="toolbar">{!checkTarget&&checkButton}{update?.supported&&update.available&&<button type="button" className="primary" disabled={!authentication||busy||active(update.phase)} onClick={()=>setConfirmation({version:update.latest,notes:update.release_notes})}>{t(remote?'升级远程应用':'升级应用')}</button>}</div>}
   {!authentication&&<p>{t('请先在“设置 → 安全”启用管理认证，再进行在线升级。')}</p>}
   {!capable&&<p>{t('当前后台尚未支持在线升级，请先在该 Mac 手动更新并安装后台服务。')}</p>}
   {!remote&&<p>{t('更新当前连接的后台所在 Mac 的完整应用，不会更新打开浏览器的设备。管理窗口正在使用时，需要在该 Mac 确认重启。')}</p>}

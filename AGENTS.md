@@ -118,14 +118,15 @@
 - 下一步与依赖：
 ```
 
-## 最近已核验发布（2026-10-11）
+## 最近已核验发布（2026-10-12）
 
-- 最新已发布正式版为 `v1.0.3`，标签指向 `5ca0fd97496776d9949dbe3218d57f982dc0e04f`；最新测试版为 `v1.0.3-beta.13`（`e40f067`）。
-- GitHub 回归 #17（run `38140875252`，正式版提交）和 #18（run `38141208396`，发布工作流修复提交）均成功；GitHub Release 首次 tag run #7（`38140882243`）因稳定版空 `prerelease` 数组触发 `set -u` 失败。通过 workflow_dispatch 对实际标签 `v1.0.3` 重跑后，Release run #8（`38141218351`）成功。发布工作流修复在 `main` 的提交为 `967b1a2265d24e5aa7dbbb3bc4083f9fb482fbfb`，标签保持不变。
-- Gitea Release #102（run `2071`）成功复用 GitHub 构建的制品；等待阶段先遇到多次 HTTP 404，随后成功获取并校验附件，macOS 回退任务未运行。Gitea Release 页面确认稳定版状态及 `RoutePilot-macos-arm64.dmg`、`RoutePilot-macos-arm64.zip`、`SHA256SUMS` 三个附件；本地 `make verify-release` 的包检查和 SHA256 校验通过。
-- 本次覆盖审计新增/扩展 API 分区备份恢复、安全代理客户端 IP、BGP 通告能力排序及邻居详情凭证脱敏、缓存可靠性持久化和逐请求统计、DNS 响应语义比较、更新源与 GitHub token 设置、ReleaseUpdater 请求构造、自动化偏好迁移/目标校验等测试。详情与边界见 [验收记录](docs/acceptance.md) 和 `.gitea/release-notes/v1.0.3.md`。
-- 自动化设置偏好迁移和参数校验已有原生测试；桌面 helper 实际文件冲突、备份/恢复和回滚事务仍缺端到端自动化覆盖。token bridge 与请求隔离有测试，未在当前用户钥匙串上执行写入验收。
-- 此节仅为带日期的快照。接手时以 `git status`、`internal/buildinfo/release.json`、远端标签与实际 Release/Actions 为准，不凭本文猜测最新版本。
+- 最新已发布正式版仍为 `v1.0.3`（`5ca0fd97496776d9949dbe3218d57f982dc0e04f`）；最新已核验测试版为 `v1.0.4-beta.6`，标签指向 `80d509b70f8d9886e4c237bb8406c74d9d8bf0a6`。
+- beta.6 GitHub 回归 #25（run `38211972553`）、GitHub Release #14（`38211972337`）成功；Gitea Release run `2079` 成功复用 GitHub 制品。双仓库 main 与标签已核对一致。
+- 两个发布页均为 `prerelease=true`、`draft=false`，只有 DMG、ZIP、SHA256SUMS 三项附件，下载非空且两边 SHA256 完全相同。实际包内 App 与后台均为 `1.0.4-beta.6 / build 14`；签名、ZIP 资源和 DMG 校验通过。证据位于 `artifacts/releases/v1.0.4-beta.6/publication-verification.json`。
+- 本轮测试版新增大屏实时 / 七天历史统计、按源流向及占比、独立来源占比卡片，隐藏启用前未知来源并排除其分母；修复历史统计维度共享导致保存失败，区分普通与乐观响应缓存，检查更新不预下载并提供安装下载进度。
+- beta.6 新增持久化客户端备注与强制 DIRECT / SURGE / REJECT 策略，以及与 DNS 请求流向并列的「客户端策略流向」。图表使用实际来源与策略请求对，支持实时、历史及单源筛选；不以边际占比推算关联。
+- 验证范围包括前端、相关 Go race / vet、原生检查、响应式 UI、GitHub 完整回归与发布包。未安装或升级现用环境，未验收真实 LAN / NAT / IPv6 客户端流量；历史缺失的来源 / 缓存类型不会倒填。详见 `docs/acceptance.md`。
+- 此节仅为带日期的快照。接手时以 `git status`、`internal/buildinfo/release.json`、远端标签与实际 Release/Actions 为准。
 
 ## 任务交接（2026-10-11）
 
@@ -136,6 +137,16 @@
 - 已发布：`v1.0.3`，tag 指向 `5ca0fd97496776d9949dbe3218d57f982dc0e04f`。GitHub: https://github.com/KnotDing/routepilot/releases/tag/v1.0.3；Gitea: https://gitea.knotding.com/knot/routepilot/releases/tag/v1.0.3。两边各有 DMG、ZIP、SHA256SUMS 三个发布附件；GitHub Release run #8（`38141218351`），Gitea Release run #102（`2071`）。
 - 保留的无关改动：无。
 - 下一步与依赖：无。后续提交仍须同时推送 Gitea 与 GitHub。
+
+## 任务交接（2026-10-12）
+
+- 目标与验收条件：完成客户端设置及并列策略流向图；去掉软件更新页指定提示，将「立即检查更新」移到「保存设置」旁；发布测试版并更新交接。
+- 当前状态：进行中。beta.6 已核验发布；最新更新页布局已通过本地验证，候选版本为 `v1.0.4-beta.7`，尚未发布。
+- 已完成与修改文件：客户端及监控见 `docs/client-settings.md`、`docs/monitoring.md` 和 beta.6 功能提交；更新按钮使用 `web/src/main.jsx`、`app-preferences.jsx`、`backend-update.jsx` 的现有更新状态和 portal，保留本机 / 浏览器 / 远程目标，新增布局断言与 UI 截图。
+- 验证：beta.6 本地前端 28 文件 / 132 测试、相关 Go race / vet、响应式页面与完整包校验通过；实际发布证据见上节。beta.7 本地前端 28 文件 / 132 测试、生产构建、17 页响应式 UI 和完整 App 包校验通过（源码 build 89）；CI 与发布核验待补齐。未执行真实安装升级。
+- 已发布：beta.6 双仓库及三附件已核验；beta.7 尚未发布，不复用或移动旧标签。
+- 保留的无关改动：无。
+- 下一步与依赖：完成 beta.7 编译、UI 和包校验，提交并双推 main / 标签，等待 GitHub 回归和两边发布成功，下载核验附件，再将本节更新为实际完成状态。
 
 ## 代码地图：按任务定位
 

@@ -441,3 +441,19 @@ when grouping smaller nodes, and never multiplies marginal percentages.
 Additional race tests cover pair grouping and global/source-filtered persisted
 history. Frontend regressions assert real pair identities and shared history
 scope; browser checks include both charts in light/dark 4K and responsive views.
+
+## v1.0.4-beta.7 update settings layout — 2026-10-12
+
+Removed the requested update-target explanation and moved the manual check
+button beside Save settings. The existing updater remains mounted: only its
+check button is rendered into the settings action row. Native actions, direct
+browser requests and remote relay requests keep their existing ownership,
+progress and confirmation behavior. Existing functional tests assert the shared
+action row, removed text and correct target for all three connection modes.
+Responsive browser checks cover the action row at 1440/1120/390; no installed
+App or production service is upgraded as part of this verification.
+
+Local beta.7 gates passed: 28 frontend files / 132 tests, production frontend
+build, 17-page responsive browser checks and full App/package validation for
+source version 1.0.4-beta.7 / build 89. Backend DNS code is unchanged from the
+validated beta.6 release.

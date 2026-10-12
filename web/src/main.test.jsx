@@ -162,6 +162,8 @@ it('combines local update controls and policy into one form, saving prompts with
  expect(screen.queryByRole('heading',{name:'软件更新设置'})).not.toBeInTheDocument();
  expect(screen.queryByRole('button',{name:'启用更新助手'})).not.toBeInTheDocument();
  expect(screen.queryByRole('button',{name:'保存应用偏好'})).not.toBeInTheDocument();
+ expect(screen.queryByText('检查与升级针对当前连接的后端所在 Mac。')).not.toBeInTheDocument();
+ expect(screen.getByRole('button',{name:'立即检查更新'}).parentElement).toBe(screen.getByRole('button',{name:'保存设置'}).parentElement);
  fireEvent.click(screen.getByRole('button',{name:'立即检查更新'}));
  expect(postAction).toHaveBeenCalledWith('check');expect(fetch).not.toHaveBeenCalled();
  fireEvent.click(screen.getByLabelText('发现新版本时提示'));
@@ -186,6 +188,8 @@ it('checks and upgrades the remote connection without invoking the local App',as
  expect(screen.queryByLabelText('发现新版本时提示')).not.toBeInTheDocument();
  expect(screen.queryByRole('button',{name:'停用更新助手'})).not.toBeInTheDocument();
  expect(screen.getAllByRole('heading',{level:2})).toHaveLength(1);
+ expect(screen.queryByText('检查与升级针对当前连接的后端所在 Mac。')).not.toBeInTheDocument();
+ expect(screen.getByRole('button',{name:'立即检查更新'}).parentElement).toBe(screen.getByRole('button',{name:'保存设置'}).parentElement);
  fireEvent.click(screen.getByRole('button',{name:'立即检查更新'}));
  await screen.findByRole('dialog');
  fireEvent.click(screen.getByRole('button',{name:'立即升级'}));
@@ -200,6 +204,8 @@ it('checks the connected local Mac from a browser through the backend API',async
  render(<Settings settings={updateSettings} status={{online_update:true}} refresh={()=>{}} notify={()=>{}}/>);
  fireEvent.click(screen.getByRole('button',{name:'软件更新',exact:true}));
  await screen.findByText('软件已是最新版本');
+ expect(screen.queryByText('检查与升级针对当前连接的后端所在 Mac。')).not.toBeInTheDocument();
+ expect(screen.getByRole('button',{name:'立即检查更新'}).parentElement).toBe(screen.getByRole('button',{name:'保存设置'}).parentElement);
  fireEvent.click(screen.getByRole('button',{name:'立即检查更新'}));
  await waitFor(()=>expect(fetch.mock.calls.filter(([url])=>url==='/api/v1/updates/check')).toHaveLength(2));
 });

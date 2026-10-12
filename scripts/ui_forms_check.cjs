@@ -56,6 +56,7 @@ const fixture=Function(source.slice(source.indexOf('const settings='),source.ind
     await mode.selectOption('bgp');
     await page.getByRole('heading',{name:'BGP',exact:true}).waitFor();
    }
+   if(label==='软件更新'){const save=page.getByRole('button',{name:'保存设置',exact:true}),checkButton=page.getByRole('button',{name:'立即检查更新',exact:true});await checkButton.waitFor();if(!(await checkButton.evaluate((el)=>el.parentElement.querySelector('button.primary')?.textContent==='保存设置')))throw Error('Update check button is not beside Save');if(await page.getByText('检查与升级针对当前连接的后端所在 Mac。',{exact:true}).count())throw Error('Removed update hint remains');await page.screenshot({path:out+'/update-settings-'+width+'.png',fullPage:true});}
    await check(width+' '+label);
   }
   await go('客户端');await page.getByRole('heading',{name:'客户端设置',exact:true}).waitFor();await page.getByRole('button',{name:'添加客户端',exact:true}).click();
