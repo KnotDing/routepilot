@@ -145,14 +145,14 @@
 ## 任务交接（2026-10-12）
 
 - 目标与验收条件：完成监控与客户端持久化、列表内编辑、更新按钮位置、完整备注 / IP 切换、三层客户端策略流向、请求来源占比排行，以及侧边栏展开 / 图标 / 隐藏 / 悬浮；发布测试版并更新交接。
-- 当前状态：进行中。`v1.0.4-beta.12` 已核验发布；用户追加从客户端策略图及其分母中排除未记录最终策略的请求，候选版本为 `v1.0.4-beta.13`。
+- 当前状态：进行中。`v1.0.4-beta.12` 已核验发布；用户追加从客户端策略图及其分母中排除未记录最终策略的请求，beta.13 已推送；进一步保留容量合并中的未记录类型，候选版本为 `v1.0.4-beta.14`。
 - 已完成与修改文件：客户端配置与列表内编辑见 `internal/config/clients.go`、`internal/dnsserver/client_policy.go`、`web/src/clients.jsx`、`client-settings.jsx`、`docs/client-settings.md`；累计客户端持久化见 `internal/app/statistics.go`、`internal/dnsserver/dispatcher.go`。监控真实三元组在 `internal/dnsserver/source_policy_flows.go`，历史在 `internal/database/monitoring.go`，图形 / 完整名称 / 比例条在 `web/src/monitoring*`；说明见 `docs/monitoring.md`。更新操作在 `main.jsx`、`app-preferences.jsx`、`backend-update.jsx` 使用现有状态与 portal；导航及持久化偏好在 `navigation.jsx`、`style.css`。双语、自动化检查与发行说明已同步。 大屏卡片 / 展示脱敏在 `web/src/monitoring-preferences.jsx`，App 持久化在 `native/monitoring_preferences.swift` 与 `notifications.swift`；未知最终策略的图表范围过滤在 `monitoring-data.js`。
 - 验证：beta.12 前端 146 测试、原生偏好 / UI、完整打包与双仓库附件核验通过，GitHub 回归 #33、Release #20、Gitea #114 成功。beta.13 本地前端 30 文件 / 147 测试、生产构建、17 页 / 14 分类响应式检查、未知最终策略排除及三层比例尺 / 中间节点验证、`make package package-check` 通过（源码 build 95）。未安装升级现用环境，未验收真实 LAN / NAT / IPv6 流量。
-- 已发布：`v1.0.4-beta.12`，tag 指向 `6c6724b6e0f111f21c48a915163ba63e9af1c6a8`，实际 App 与捆绑后台 `1.0.4-beta.12 / build 20`。GitHub: https://github.com/KnotDing/routepilot/releases/tag/v1.0.4-beta.12；Gitea: https://gitea.knotding.com/knot/routepilot/releases/tag/v1.0.4-beta.12。两边均为非草稿测试版，各有 DMG、ZIP、SHA256SUMS 三附件且哈希相同；证据见上节与 `artifacts/releases/v1.0.4-beta.12/`。beta.13 尚未发布。
+- 已发布：`v1.0.4-beta.12`，tag 指向 `6c6724b6e0f111f21c48a915163ba63e9af1c6a8`，实际 App 与捆绑后台 `1.0.4-beta.12 / build 20`。GitHub: https://github.com/KnotDing/routepilot/releases/tag/v1.0.4-beta.12；Gitea: https://gitea.knotding.com/knot/routepilot/releases/tag/v1.0.4-beta.12。两边均为非草稿测试版，各有 DMG、ZIP、SHA256SUMS 三附件且哈希相同；证据见上节与 `artifacts/releases/v1.0.4-beta.12/`。beta.13 已推送，未作为最终核验版本。
 - DNS 三层图评估：用户允许不合适时不做。本轮保留「来源 → 实际处理去向」两层；现有持久化数据可添加直接请求 / 透明拦截的接入方式，但会减弱来源到去向的直观关联。更有价值的具体上游地址尚未纳入累计 / 历史计数，不能用有限查询历史或配置补造；缓存命中未访问上游，未来扩展需明确此边界。
 - 发布故障记录：beta.7 GitHub 回归 #26 / Release #15 成功，Gitea run 2080 的 Ubuntu runner 拉取 Docker 镜像时遇到 unexpected EOF，备用任务成功但总体门禁失败，因此不记为完整核验发布。beta.8 新运行的 Ubuntu 镜像拉取恢复，成功镜像 GitHub 制品；未移动标签或删除旧附件。
 - 保留的无关改动：无。
-- 下一步与依赖：完成 beta.13 本地包检查、双仓库发布与附件核验后更新交接。未授权安装升级现用环境；具体上游三层图尚未实现。
+- 下一步与依赖：完成 beta.14 本地包检查、双仓库发布与附件核验后更新交接。未授权安装升级现用环境；具体上游三层图尚未实现。
 
 
 ## 代码地图：按任务定位

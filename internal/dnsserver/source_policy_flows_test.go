@@ -82,3 +82,28 @@ func TestSourcePolicyFlowsBoundsAllThreeColumnsWithoutDroppingCounts(t *testing.
 		t.Fatal(len(rows), total)
 	}
 }
+
+func TestSourcePolicyFlowsNeverMergesUnrecordedFinalPoliciesIntoKnownRemainder(t *testing.T) {
+	policies := []dnsserver.DNSPolicyCount{{Policy: "Missing", Queries: 1}, {Other: true, Queries: 1}}
+	for i := 0; i < 12; i++ {
+		policies = append(policies, dnsserver.DNSPolicyCount{Policy: "Proxy", FinalPolicy: fmt.Sprintf("Final%02d", i), Queries: 100})
+	}
+	rows := dnsserver.SourcePolicyFlows([]dnsserver.DNSSourceCount{{Source: "192.0.2.1", Counts: dnsserver.DNSMonitoringSnapshot{Completed: 1202, Policies: policies}}})
+	var total, unnamed, overflow, remainder uint64
+	finals := map[string]bool{}
+	for _, row := range rows {
+		total += row.Queries
+		finals[row.FinalKind+":"+row.FinalPolicy] = true
+		switch row.FinalKind {
+		case "unnamed":
+			unnamed += row.Queries
+		case "overflow":
+			overflow += row.Queries
+		case "rest":
+			remainder += row.Queries
+		}
+	}
+	if total != 1202 || unnamed != 1 || overflow != 1 || remainder != 400 || len(finals) != 11 {
+		t.Fatal(total, unnamed, overflow, remainder, len(finals), rows)
+	}
+}

@@ -1236,5 +1236,6 @@
   "当前后端": "Current backend",
   "更新 App 后可保存大屏监控设置。": "Update the App to save monitoring settings.",
   "仅展示已记录最终策略的请求；客户端、命中策略与最终策略共用同一比例尺，占比以这些请求为分母。": "Only requests with a recorded final policy are shown. Clients, matched policies and final policies share one scale, and percentages use these requests as the denominator.",
-  "暂无已记录最终策略的请求": "No requests with a recorded final policy"
+  "暂无已记录最终策略的请求": "No requests with a recorded final policy",
+  "客户端、命中策略与最终策略共用同一比例尺；未记录最终策略的请求不展示，占比以展示请求为分母。": "Clients, matched policies and final policies share one scale. Requests without a recorded final policy are hidden, and percentages use the displayed requests as the denominator."
 }

@@ -39,9 +39,20 @@ func topMonitoringPolicies(counts map[monitoringPolicyID]uint64) map[monitoringP
 		return a.name < b.name
 	})
 	top := map[monitoringPolicyID]bool{}
-	for i, key := range keys {
-		if i >= 10 {
+	// Missing and capacity-limited observations must keep their identity even
+	// when small, so views can exclude them without treating them as known
+	// policies. Reserve these slots inside the ten-node budget.
+	for _, key := range keys {
+		if key.kind != "named" {
+			top[key] = true
+		}
+	}
+	for _, key := range keys {
+		if len(top) >= 10 {
 			break
+		}
+		if top[key] {
+			continue
 		}
 		top[key] = true
 	}
