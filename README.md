@@ -15,7 +15,7 @@ RoutePilot 是一款 macOS 状态栏应用：向 Surge 查询分流策略，为 
 - **缩短直连路径：** DIRECT 查询返回真实地址，客户端后续流量由网关直接送往 WAN，不必绕经 Surge；Fake-IP 和下一跳配置为 Surge 的受管理前缀仍按路由经过 Surge。
 - **Surge 故障时保留新连接的直连路径：** RoutePilot 停止发放新的 Fake-IP，后续查询改用独立真实 DNS 解析，让网关可将新连接直连出网（真实 DNS 与 WAN 可用时）。已发放 Fake-IP 在 TTL / 宽限期内仍可能依赖 Surge。
 
-[📦 下载最新版本](https://github.com/KnotDing/routepilot/releases) · [🧪 Surge 乐观缓存与通知菜单测试版 v1.0.4-beta.18](https://github.com/KnotDing/routepilot/releases/tag/v1.0.4-beta.18) · [Gitea 备用下载](https://gitea.knotding.com/knot/routepilot/releases) · [🚀 快速开始](#quick-start) · [🤖 安装 skill](#agent-skill) · [📚 文档导航](#documentation)
+[📦 下载最新版本](https://github.com/KnotDing/routepilot/releases) · [🧪 Surge 乐观缓存与通知菜单测试版 v1.0.4-beta.19](https://github.com/KnotDing/routepilot/releases/tag/v1.0.4-beta.19) · [Gitea 备用下载](https://gitea.knotding.com/knot/routepilot/releases) · [🚀 快速开始](#quick-start) · [🤖 安装 skill](#agent-skill) · [📚 文档导航](#documentation)
 
 <p align="center">
   <img src="docs/images/management-4k.png" width="100%" alt="RoutePilot App 管理界面 4K 截图">
@@ -165,6 +165,8 @@ DNS 查询不会生成单 IP BGP 路由。Surge 不可用时停止新 Fake-IP、
 
 在 **设置 → 通知** 选择需要提醒的异常，例如 Surge API / DNS、BGP 邻居、DNS 监听器或指定策略组 / 节点。连续失败阈值用于容忍短暂抖动，可开启恢复通知和重复提醒。
 
+还可选择缓存不一致率过高、突发大量请求和持续大量请求告警，并调整采样窗口、最小核对样本量、请求速率及持续时间。默认分别为 60 秒内至少核对 100 次且不一致率达到 5%、10 秒平均达到 500 请求/秒、连续 300 秒达到 100 请求/秒。缓存只使用已核对请求作为分母；告警只提醒，不改变路由或自动重启。详见[缓存与请求量告警](docs/notification-anomalies.md)。
+
 | 通知方式 | 使用方式 |
 | --- | --- |
 | App 系统通知 | 状态栏菜单「应用偏好 → 本机通知设置」启用并允许 macOS 通知权限，监控本机及当前已登录的远程连接；关闭管理窗口后仍可监控 |
@@ -187,7 +189,7 @@ App 菜单的 **应用偏好 → 登录凭证保存方式** 可选 macOS 钥匙�
 
 升级后重新打开管理窗口，会恢复此前选择的连接，并使用已保存凭证自动登录；未保存或凭证失效时才需要手动输入。两种存储独立，切换不会迁移凭证，需在所选方式下登录一次。普通浏览器使用自己的密码管理器。
 
-侧边栏可完整显示、仅保留菜单图标或完全隐藏；隐藏后将鼠标移到左侧边缘悬浮展开，也可通过按钮固定回来。偏好保存在当前管理界面，不写入连接后端。
+侧边栏可完整显示、仅保留菜单图标或完全隐藏；收起 / 展开按钮位于侧栏左下角的退出按钮旁。隐藏后将鼠标移到左侧边缘悬浮展开，也可通过按钮固定回来。偏好保存在当前管理界面，不写入连接后端。
 
 ### 客户端设置
 
@@ -289,7 +291,7 @@ bin/surge-controller serve --database /ABSOLUTE/PRIVATE/DIRECTORY/controller.sql
 
 默认仅开放本机管理，BGP 与透明拦截关闭。未配置出口接口和源地址时，Fake-IP 门禁保持关闭。
 
-常驻服务可用 [安装脚本](scripts/install_macos.sh) 安装、[移除脚本](scripts/uninstall_macos.sh) 移除；移除保留数据库、密钥和日志。推送版本标签后，[GitHub Release 工作流](.github/workflows/release.yaml) 在 Apple Silicon macOS runner 构建并发布 **DMG、ZIP、SHA256SUMS**；[Gitea Release 工作流](.gitea/workflows/release.yaml) 先由 Ubuntu runner 等待并下载、校验 GitHub 制品，再发布到 Gitea。若 Ubuntu 获取任务失败、GitHub 制品等待超时或下载校验失败，才由 Gitea 的 macOS runner 本地构建回退。回归测试仅由 GitHub Actions 在推送 `main` 或创建 Pull Request 时执行。
+常驻服务可用 [安装脚本](scripts/install_macos.sh) 安装、[移除脚本](scripts/uninstall_macos.sh) 移除；移除保留数据库、密钥和日志。推送版本标签后，[GitHub Release 工作流](.github/workflows/release.yaml) 在 Apple Silicon macOS runner 构建并发布 **DMG、ZIP、SHA256SUMS**；[Gitea Release 工作流](.gitea/workflows/release.yaml) 先由 Ubuntu runner 等待并下载、校验 GitHub 制品，再发布到 Gitea。若 Ubuntu 获取任务失败、GitHub 制品等待超时或下载校验失败，才由 Gitea 的 macOS runner 本地构建回退。GitHub 制品镜像发布或回退构建发布任一路径成功即为 Gitea 工作流成功，两条路径均失败时仍失败。回归测试仅由 GitHub Actions 在推送 `main` 或创建 Pull Request 时执行。
 
 ## 🧰 遇到问题，从这里查起
 
@@ -311,6 +313,7 @@ bin/surge-controller serve --database /ABSOLUTE/PRIVATE/DIRECTORY/controller.sql
 | 文档 | 内容 |
 | --- | --- |
 | [架构说明](docs/architecture.md) | DNS、Surge、路由与管理层如何配合 |
+| [CPU 与内存检查](docs/performance-2026-10-13.md) | 局域网负载资源测量、原生热点与优化前后证据 |
 | [路由配置](docs/routing-backends.md) · [FRR 导出](docs/frr-export.md) | 后端模式、下一跳和邻居配置 |
 | [远程管理](docs/remote-management.md) | 认证、连接、完整应用升级与通知 |
 | [CLI 与 skill](docs/cli.md) | 命令、agent 安装目录与自动化示例 |

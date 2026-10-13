@@ -35,13 +35,13 @@ export function CachePolicySettings({settings,dns,surge,status={},onChange}){
  });
  const groups=[
  {master:'optimistic',idle:'optimistic_idle_refresh',field:'decisions',title:'decisionMaster',heading:'decisionPolicies',rows:decisions.filter(key=>key!=='UNKNOWN').map(key=>({key,name:key}))},
- {master:'optimistic_responses',idle:'optimistic_response_idle_refresh',field:'upstreams',title:'responseMaster',heading:'upstreamPolicies',rows:cacheUpstreamRows(dns,settings.upstreams,status.cache?.response?.groups,surge)}
+ {master:'optimistic_responses',idle:'optimistic_response_idle_refresh',field:'upstreams',title:'responseMaster',heading:'upstreamPolicies',rows:cacheUpstreamRows(dns,settings.upstreams,status.cache?.response?.groups,status.surge_response_cache===true?surge:undefined)}
  ];
  return <section className="cache-policy-settings"><div className="cache-policy-groups">{groups.map(group=>{
  const enabled=Boolean(settings[group.master]);
  return <fieldset className="cache-policy-group" aria-label={t(group.heading)} key={group.master}><legend><label className="check" title={t(group.master+'_tooltip')}><input type="checkbox" aria-label={t(group.title)} checked={enabled} onChange={e=>onChange({...settings,[group.master]:e.target.checked})}/>{t(group.title)}</label></legend>{enabled&&<>
  {Object.hasOwn(settings,group.idle)&&<label className="check cache-policy-idle" title={t(group.idle+'_tooltip')}><input type="checkbox" checked={settings[group.idle]!==false} onChange={e=>onChange({...settings,[group.idle]:e.target.checked})}/>{t(group.idle)}</label>}
- {supported?<><h3>{t(group.heading)}</h3>{switches(group.field,group.rows)}{group.field==='upstreams'&&<p>{t('originalUpstreamHelp')}</p>}</>:<p role="status">{t('selectiveUnsupported')}</p>}
+ {supported?<><h3>{t(group.heading)}</h3>{switches(group.field,group.rows)}{group.field==='upstreams'&&<><p>{t('originalUpstreamHelp')}</p>{surge?.dns&&status.surge_response_cache!==true&&<p role="status">{t('surgeUnsupported')}</p>}</>}</>:<p role="status">{t('selectiveUnsupported')}</p>}
  </>}</fieldset>;
  })}</div>{supported&&(settings.optimistic||settings.optimistic_responses)&&<p>{t('selectiveHelp')}</p>}</section>;
 }

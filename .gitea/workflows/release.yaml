@@ -10,9 +10,11 @@ permissions:
 
 jobs:
   fetch-github-assets:
+    # This is the preferred path; fallback-build is the required recovery path.
+    continue-on-error: true
     runs-on: ubuntu-latest
     outputs:
-      available: ${{ steps.fetch.outputs.available }}
+      published: ${{ steps.publish.outputs.published }}
     steps:
       - name: Check out source
         uses: actions/checkout@v4
@@ -64,6 +66,7 @@ jobs:
           echo "available=$available" >> "$GITHUB_OUTPUT"
 
       - name: Publish GitHub-built assets to Gitea
+        id: publish
         if: ${{ steps.fetch.outputs.available == 'true' }}
         env:
           GITEA_TOKEN: ${{ secrets.GITEA_TOKEN }}
@@ -94,10 +97,11 @@ jobs:
               -F "attachment=@${asset}" \
               "${GITHUB_API_URL}/repos/${GITHUB_REPOSITORY}/releases/${release_id}/assets?name=${name}"
           done
+          echo "published=true" >> "$GITHUB_OUTPUT"
 
   fallback-build:
     needs: fetch-github-assets
-    if: ${{ always() && needs.fetch-github-assets.outputs.available != 'true' }}
+    if: ${{ always() && needs.fetch-github-assets.outputs.published != 'true' }}
     runs-on: macos-arm64
     steps:
       - name: Check out source

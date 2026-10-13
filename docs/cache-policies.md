@@ -33,6 +33,6 @@ Surge 使用 `surge://DNS地址:端口` 独立身份，覆盖 SURGE 决策、强
 - 总计及分项可靠性计数跨配置应用、缓存重建、上游配置变化和进程重启保留，直到手动清理缓存。升级前没有分项身份的累计计数只保留在总计，不倒填。
 - 每个缓存以及跨解析池累计最多保留 1024 个具体统计身份，额外上游合并为「其他上游」，避免原始目标不断变化导致统计内存无界增长；该合并项不能当作具体上游设置开关。
 
-状态 API 的 `cache.decision.groups`、`cache.response.groups` 和决策缓存 API 的 `stats.groups` / `response_stats.groups` 提供相同数据。`status.selective_cache_policies=true` 表示支持分项控制。远程管理沿用现有接口允许列表。
+状态 API 的 `cache.decision.groups`、`cache.response.groups` 和决策缓存 API 的 `stats.groups` / `response_stats.groups` 提供相同数据。`status.selective_cache_policies=true` 表示支持分项控制，`status.surge_response_cache=true` 表示支持 Surge 来源。旧后端未声明 Surge 能力时局部显示升级提示，其他缓存项仍可设置。远程管理沿用现有接口允许列表。
 
 `/metrics` 添加 `decision_cache_by_decision_*{decision="DIRECT"}` 与 `response_cache_by_upstream_*{upstream="udp://192.0.2.53:53"}` 系列，包括 `entries`、`stale_entries`、`hits_total`、`misses_total`、`evictions_total`、`optimistic_hits_total`、`optimistic_compared_total`、`optimistic_mismatches_total`。总计指标继续保留。告警高频采样只读取总可靠性计数，不遍历缓存或复制分项表。

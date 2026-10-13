@@ -110,5 +110,8 @@
     "prefix": false,
     "group": "surge",
     "title": "Surge DNS 无响应或返回错误"
-  }
+  },
+  {"id":"cache_mismatch","name":"DNS cache mismatch ","prefix":true,"group":"dns","title":"缓存不一致率过高","anomaly":true},
+  {"id":"dns_request_burst","name":"DNS request burst","prefix":false,"group":"dns","title":"突发大量 DNS 请求","anomaly":true},
+  {"id":"dns_request_sustained","name":"DNS sustained requests","prefix":false,"group":"dns","title":"长时间大量 DNS 请求","anomaly":true}
 ]

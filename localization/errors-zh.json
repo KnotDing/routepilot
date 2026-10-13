@@ -443,5 +443,10 @@
   "duplicate or invalid client setting": "客户端 IP 或设置 ID 重复或无效",
   "client name must contain at most 80 characters without control characters": "客户端备注名称最多 80 个字符，不能含控制字符",
   "client policy must be automatic, DIRECT, SURGE or REJECT": "客户端策略必须为自动、DIRECT、SURGE 或 REJECT",
-  "too many client settings": "客户端设置最多 4096 项"
+  "too many client settings": "客户端设置最多 4096 项",
+  "cache mismatch alert percentage must be above 0 and at most 100": "缓存不一致率告警阈值必须大于 0 且不超过 100%",
+  "notification sampling windows must be between 1 and 3600 seconds": "通知统计窗口必须在 1 到 3600 秒之间",
+  "cache mismatch alert minimum samples must be between 1 and 1000000": "缓存告警的最少核对请求数必须在 1 到 1000000 之间",
+  "DNS request alert thresholds must be between 1 and 1000000 requests per second": "DNS 请求量告警阈值必须在每秒 1 到 1000000 次之间",
+  "sustained DNS request alert duration must be between 1 and 86400 seconds": "持续大量 DNS 请求告警的时长必须在 1 到 86400 秒之间"
 }

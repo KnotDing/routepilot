@@ -113,17 +113,18 @@ type Logging struct {
 	EventRetention  int    `json:"event_retention"`
 }
 type Notifications struct {
-	Enabled           bool     `json:"enabled"`
-	Errors            []string `json:"errors"`
-	Surge             bool     `json:"surge"`
-	BGP               bool     `json:"bgp"`
-	DNS               bool     `json:"dns"`
-	Controller        bool     `json:"controller"`
-	Recovery          bool     `json:"recovery"`
-	CooldownSeconds   int      `json:"cooldown_seconds"`
-	WebhookURL        string   `json:"webhook_url,omitempty"`
-	WebhookConfigured bool     `json:"webhook_configured"`
-	ClearWebhook      bool     `json:"clear_webhook,omitempty"`
+	Anomalies         NotificationAnomalies `json:"anomalies"`
+	Enabled           bool                  `json:"enabled"`
+	Errors            []string              `json:"errors"`
+	Surge             bool                  `json:"surge"`
+	BGP               bool                  `json:"bgp"`
+	DNS               bool                  `json:"dns"`
+	Controller        bool                  `json:"controller"`
+	Recovery          bool                  `json:"recovery"`
+	CooldownSeconds   int                   `json:"cooldown_seconds"`
+	WebhookURL        string                `json:"webhook_url,omitempty"`
+	WebhookConfigured bool                  `json:"webhook_configured"`
+	ClearWebhook      bool                  `json:"clear_webhook,omitempty"`
 }
 type Security struct {
 	Authentication      bool     `json:"authentication"`
@@ -338,7 +339,7 @@ func Default() Document {
 		BGP:     BGP{LocalASN: 64512, ListenPort: 179, RouteLimit: 128, HoldSeconds: 30, KeepaliveSeconds: 10},
 		Cache:   Cache{OptimisticIdleRefresh: true, OptimisticResponseIdleRefresh: true, Capacity: 10000, ResponseCapacity: 10000, Workers: 8, Queue: 256, TimeoutMS: 500, DirectTTLSeconds: 300, SurgeTTLSeconds: 300, UnknownTTLSeconds: 10, ErrorTTLSeconds: 1, InvalidateDirectOnSelectionChange: true, InvalidateRejectOnSelectionChange: true},
 		Health:  Health{1000, 3, 3, 60, 3, "example.com"}, Logging: Logging{"info", true, 1000, true, 2000},
-		Notifications: Notifications{Surge: true, BGP: true, DNS: true, Controller: true, CooldownSeconds: 300},
+		Notifications: Notifications{Anomalies: (NotificationAnomalies{}).Effective(), Surge: true, BGP: true, DNS: true, Controller: true, CooldownSeconds: 300},
 		Security:      Security{Username: "admin", SessionMinutes: 60, AllowedNetworks: []string{"127.0.0.0/8", "::1/128"}, AuthBypassNetworks: []string{}, TrustedProxies: []string{}, ProxyOrigins: []string{}, ProxyClientIPHeader: "X-Forwarded-For"},
 		Updates:       Updates{AutomaticCheck: true, CheckIntervalHours: 12, UpdateTime: "03:00", UpdateSource: "github"},
 	}, Peers: []Peer{}, Routes: []Route{}, RouteFeeds: []RouteFeed{}, Interception: []Interception{}, Overrides: []Override{}}
@@ -406,6 +407,9 @@ func (d Document) Validate() error {
 	}
 	if !validNotificationErrors(s.Notifications.Errors) {
 		return errors.New("notification errors must be unique supported event IDs")
+	}
+	if err := s.Notifications.Anomalies.Validate(); err != nil {
+		return err
 	}
 	if s.Notifications.CooldownSeconds < 0 || s.Notifications.CooldownSeconds > 86400 {
 		return errors.New("notification cooldown must be between 0 and 86400 seconds")
@@ -775,6 +779,7 @@ func isLoopback(s string) bool {
 	return s == "localhost" || e == nil && a.IsLoopback()
 }
 func (d Document) Redacted() Document {
+	d.Settings.Notifications.Anomalies = d.Settings.Notifications.Anomalies.Effective()
 	d.Settings.Notifications.WebhookConfigured = d.Settings.Notifications.WebhookURL != ""
 	d.Settings.Notifications.WebhookURL = ""
 	d.Settings.Notifications.ClearWebhook = false

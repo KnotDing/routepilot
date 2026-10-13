@@ -23,7 +23,7 @@ const out='artifacts/cache-policies';fs.mkdirSync(out,{recursive:true});
     if(path==='settings'){
      if(route.request().method()==='PUT'){settings=route.request().postDataJSON();value={settings}}else value=settings;
     }
-    if(path==='status')value={...value,selective_cache_policies:true,cache:{decision:{...sample,groups:{DIRECT:sample}},response:{...sample,groups:{[identity]:sample,[surgeIdentity]:sample}}}};
+    if(path==='status')value={...value,selective_cache_policies:true,surge_response_cache:true,cache:{decision:{...sample,groups:{DIRECT:sample}},response:{...sample,groups:{[identity]:sample,[surgeIdentity]:sample}}}};
     if(path.startsWith('dns/cache?'))value={...value,entries:[],stats:{...sample,groups:{DIRECT:sample}},ttl:settings.cache};
     return route.fulfill({contentType:'application/json',body:JSON.stringify(value)});
    }

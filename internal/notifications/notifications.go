@@ -17,11 +17,12 @@ import (
 )
 
 type Payload struct {
-	Title      string    `json:"title"`
-	Body       string    `json:"body"`
-	State      string    `json:"state"`
-	Components []string  `json:"components"`
-	At         time.Time `json:"at"`
+	Title      string            `json:"title"`
+	Body       string            `json:"body"`
+	State      string            `json:"state"`
+	Components []string          `json:"components"`
+	Details    map[string]string `json:"details,omitempty"`
+	At         time.Time         `json:"at"`
 }
 type job struct {
 	url     string
@@ -63,12 +64,16 @@ func (m *Manager) Observe(s config.Notifications, values []state.Component) {
 	}
 	now := time.Now()
 	seen := map[string]bool{}
+	details := map[string]string{}
 	var down, recovered []string
 	for _, c := range values {
 		if !s.Selected(c.Name) || c.State == "DISABLED" {
 			continue
 		}
 		seen[c.Name] = true
+		if IsAnomaly(c.Name) && c.LastError != "" {
+			details[c.Name] = c.LastError
+		}
 		previous := m.states[c.Name]
 		switch c.State {
 		case "DOWN":
@@ -99,6 +104,13 @@ func (m *Manager) Observe(s config.Notifications, values []state.Component) {
 			title = "服务已恢复"
 		}
 		payload := Payload{Title: "RoutePilot · " + title, Body: strings.Join(batch.names, "、"), State: batch.state, Components: batch.names, At: now}
+		payload.Details = map[string]string{}
+		for _, name := range batch.names {
+			if detail := details[name]; detail != "" {
+				payload.Details[name] = detail
+			}
+		}
+		payload.Body = notificationBody(payload.Components, payload.Details)
 		select {
 		case m.queue <- job{s.WebhookURL, payload}:
 			for _, key := range batch.names {
@@ -142,7 +154,13 @@ func (m *Manager) Run(ctx context.Context) {
 				if len(payload.Components) == 0 {
 					break
 				}
-				payload.Body = strings.Join(payload.Components, "、")
+				payload.Details = map[string]string{}
+				for _, name := range payload.Components {
+					if detail := item.payload.Details[name]; detail != "" {
+						payload.Details[name] = detail
+					}
+				}
+				payload.Body = notificationBody(payload.Components, payload.Details)
 				data, err := json.Marshal(payload)
 				if err != nil {
 					break
@@ -181,4 +199,16 @@ func (m *Manager) Run(ctx context.Context) {
 			}
 		}
 	}
+}
+
+func notificationBody(names []string, details map[string]string) string {
+	items := make([]string, 0, len(names))
+	for _, name := range names {
+		if detail := details[name]; detail != "" {
+			items = append(items, name+": "+detail)
+		} else {
+			items = append(items, name)
+		}
+	}
+	return strings.Join(items, "、")
 }

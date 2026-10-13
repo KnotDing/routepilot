@@ -1,5 +1,23 @@
 # Acceptance evidence — 2026-10-08
 
+## LAN resource profiling — 2026-10-13
+
+See [CPU and memory evidence](performance-2026-10-13.md) for reproducible
+benchmarks, opt-in UDP stress, paced LAN-rate resource samples and read-only
+observation of the installed App/backend. The isolated 30-second full cached
+UDP run completed 3,191,767 requests with no failures or server drops.
+
+Implemented optimizations skip disabled history formatting, format history
+answers once while preserving independent public slices, use cumulative-only
+cache counters for anomaly sampling, avoid client-list snapshots for unrelated
+views, and skip redundant native Chinese translation work / regex compilation.
+Focused history and cumulative-counter checks, the four-package Go race run
+(`dnsserver`, `notifications`, `app`, `tests/integration`), Go vet/build,
+`make native-test` and complete production Swift type checking passed. Existing
+WebKit concurrency warnings remain. Native translation and allocation benchmarks
+show component savings; they do not establish a reduction in the installed
+App's overall CPU. That earlier profiling session did not perform a release, installation or service restart.
+
 ## DNS monitoring addition — 2026-10-12
 
 The management UI now includes **大屏监控 / Monitoring** for the selected backend.
@@ -674,7 +692,6 @@ permission, changed backend mode, and confirmed/invalidated button states.
 No actual installation, upgrade, backend restart, or gateway/LAN/IPv6 path
 acceptance was performed. Configuration runtime application is unchanged.
 
-
 ## 2026-10-13：v1.0.4-beta.17 乐观缓存分项设置
 
 - 实现：按 DIRECT / SURGE / REJECT 决策与实际 DNS 上游设置乐观缓存；总开关勾选后展开分项，取消后收起并保留配置。普通缓存保持原有行为，UNKNOWN 沿用短期普通缓存。
@@ -687,5 +704,12 @@ acceptance was performed. Configuration runtime application is unchanged.
 
 - Surge 解析结果作为独立乐观响应来源；覆盖过期响应、刷新不一致、客户端隔离、健康 / 路由 generation 失效拒绝写回、Fake-IP 网段校验和 TTL 发行上限。可靠性计数参与状态 API、缓存 API、metrics 与持久化；Fake-IP 内容不跨运行实例恢复。
 - 本机通知设置迁移到 App 状态栏菜单，保持本机偏好保存、通知权限请求和声音选项；移除管理卡片，后端通知表单仍可编辑。
-- 定向测试及隔离目录的 `env GOCACHE=/tmp/routepilot-go-build make verify-release` 通过：前端 32 文件 / 160 测试、Go 全包 race / vet、原生核心与真实 WKWebView、17 页 / 14 分类响应式检查、九项分组缓存检查（含 Surge 开关保存及通知卡片移除）、完整 App 打包与版本 / 资源 / 签名 / DMG / ZIP / SHA256 校验（源码 1.0.4-beta.18 / build 100）。双仓库 CI 和制品在发布后另行核验。
+- 定向测试及隔离目录的 `env GOCACHE=/tmp/routepilot-go-build make verify-release` 通过：前端 32 文件 / 160 测试、Go 全包 race / vet、原生核心与真实 WKWebView、17 页 / 14 分类响应式检查、九项分组缓存检查（含 Surge 开关保存及通知卡片移除）、完整 App 打包与版本 / 资源 / 签名 / DMG / ZIP / SHA256 校验（源码 1.0.4-beta.18 / build 100）。GitHub 回归 `38355720774` 与发布 `38355781983` 成功；Gitea `2093` 再次在 runner 拉取 Docker Hub 镜像时 TLS 握手超时，回退任务成功但整体工作流失败，不记为完整核验发布。两仓库 main 与注释标签均指向 `917a8919dc92b30728f12c1e5acc4ae63175f256`；发布页均为非草稿测试版、各有 DMG / ZIP / SHA256SUMS 三附件。下载哈希、DMG 完整性及 App / 后台版本已核对，GitHub 为 `1.0.4-beta.18 / build 26`、Gitea 回退为 `1.0.4-beta.18 / build 120`，两边分别校验且哈希不同。证据见 `artifacts/releases/v1.0.4-beta.18/publication-verification.json`；runner 缓存说明见 [Gitea runner 镜像缓存](gitea-runner-cache.md)。
 - 不安装或升级现用环境，未在真实 Surge / 网关环境验收缓存或实际 macOS 通知授权。
+
+## 2026-10-13：beta.19 发布重试
+
+- 功能包含 beta.18 的 Surge 缓存与通知菜单，并补上旧远端缺少 Surge 能力时的局部降级提示。用户已修改 Gitea runner 设置；使用新的递增标签复核镜像缓存与双仓库发布，不修改已发布标签。本轮按用户授权纳入此前全部未提交的告警、低资源优化、页面细节与基准 / 文档；审查修复告警采样遗漏 Surge 响应池，并增加该池计数回归。
+- Gitea 获取作业设为可恢复失败，三附件发布完成才输出成功；否则执行必须成功的回退作业。覆盖获取成功、获取失败且回退成功、两条均失败的结果语义。
+- 完整候选的 `env GOCACHE=/tmp/routepilot-go-build make verify-release` 通过：前端 33 文件 / 165 测试、Go 全包 race / vet（含五种发布分支夹具）、原生核心与真实 WKWebView、17 页 / 14 分类响应式页面、九项缓存界面检查、完整包身份 / 资源 / 签名 / DMG / ZIP / SHA256 校验（源码 `1.0.4-beta.19 / build 101`）。`make fuzz` 通过。最终 CI 与附件核验在发布后记录。
+- 仍未安装或升级现用环境，未进行真实 Surge / 网关或 macOS 通知授权验收。

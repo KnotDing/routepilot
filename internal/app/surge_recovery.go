@@ -73,6 +73,7 @@ func (a *App) sampleQueryRate(ctx context.Context) {
 			now := time.Now()
 			current := a.dnsCounters.Snapshot().Queries
 			a.queryRateBits.Store(math.Float64bits(queryRate(current, previous, now.Sub(at))))
+			a.observeNotificationAnomalies()
 			previous, at = current, now
 		}
 	}

@@ -285,6 +285,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
             notificationHealth = activeHealth
             if previousHealthNames != notificationHealth.compactMap({ $0["name"] as? String }) { publishStatusBarHealth() }
             activeHealth.append(["name": "Management connection", "state": "UP"])
+            activeHealth.append(contentsOf: status["notification_alerts"] as? [[String: Any]] ?? [])
             serviceNotifications.observe(scope: client.base.absoluteString, health: activeHealth, settings: notificationSettings)
             lastError = ""
             await checkBackendVersion()
@@ -499,7 +500,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
             serviceNotifications.observe(scope: scope, health: health, settings: settings)
             if let id = values["backendID"] as? String, !id.isEmpty, id.count <= 64, id.allSatisfy({ $0.isASCII && ($0.isLetter || $0.isNumber || $0 == "_" || $0 == "-") }), let webView {
                 if let watch = remoteNotificationWatch, watch.id == id && watch.scope == scope {
-                    watch.settings = settings; watch.health = health.filter { $0["name"] as? String != "Management connection" }
+                    watch.settings = settings; watch.health = health.filter { component in
+                        let name = component["name"] as? String ?? ""
+                        return name != "Management connection" && !name.hasPrefix("DNS cache mismatch ") && name != "DNS request burst" && name != "DNS sustained requests"
+                    }
                 } else {
                     let base = client.base
                     remoteNotificationGeneration += 1
@@ -613,6 +617,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
         let path = "management/relay/" + watch.id + "/"
         do {
             let health = try await watch.client.call(path + "health") as? [[String: Any]] ?? []
+            let notificationStatus = try await watch.client.call(path + "status") as? [String: Any] ?? [:]
             let settings = try await watch.client.call(path + "settings") as? [String: Any] ?? [:]
             let peers = try await watch.client.call(path + "bgp/peers") as? [[String: Any]] ?? []
             guard remoteNotificationWatch === watch else { return }
@@ -624,7 +629,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
             watch.health = health.filter { !($0["name"] as? String ?? "").hasPrefix("BGP peer ") || active.contains($0["name"] as? String ?? "") }
             watch.settings = settings["notifications"] as? [String: Any] ?? [:]
             watch.failures = 0
-            serviceNotifications.observe(scope: watch.scope, health: watch.health + [["name": "Management connection", "state": "UP"]], settings: watch.settings)
+            serviceNotifications.observe(scope: watch.scope, health: watch.health + (notificationStatus["notification_alerts"] as? [[String: Any]] ?? []) + [["name": "Management connection", "state": "UP"]], settings: watch.settings)
         } catch let failure as AppFailure where failure.statusCode == 401 || failure.statusCode == 403 || failure.statusCode == 404 {
             if remoteNotificationWatch === watch { remoteNotificationWatch = nil }
         } catch {

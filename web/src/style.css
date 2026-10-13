@@ -198,7 +198,7 @@ tbody tr:last-child td { border-bottom: 0; }
 .filters > input { flex-basis: 170px; }
 .notice { display: block; padding: 14px 18px; margin-bottom: 20px; border: 1px solid var(--warning-border); border-radius: 10px; background: var(--warning-bg); color: var(--warning-text); font-size: 13px; line-height: 22px; overflow-wrap: anywhere; }
 .notice p { margin: 4px 0; color: inherit; font-size: inherit; }
-.dns-interception-confirmation button:disabled { background:var(--neutral-bg); color:var(--muted); border-color:var(--border); box-shadow:none; transition:none; }
+.dns-interception-confirmation:disabled { background:var(--neutral-bg); color:var(--muted); border-color:var(--border); box-shadow:none; transition:none; }
 .version-channel-notice { background: var(--panel); border-color: var(--border); color: var(--muted); }
 .version-channel-notice strong { font-weight: 500; }
 .error { color: var(--danger-text); background: var(--danger-bg); border-color: color-mix(in srgb, var(--danger-text), transparent 80%); }
@@ -531,7 +531,8 @@ label[data-missing=true] > :is(input,textarea,select):not(:disabled),.form-grid 
 @media (max-width: 600px) { .settings-update-actions > button { flex: 1 1 auto; padding-inline: 10px; } }
 
 .sidebar-controls { display: flex; gap: 8px; margin: -14px 8px 16px; }
-.sidebar-controls button { padding: 0; width: 36px; height: 32px; color: #b3bfd1; background: transparent; border-color: #ffffff20; }
+.sidebar-controls button,.sidebar-collapse { padding: 0; width: 36px; height: 32px; color: #b3bfd1; background: transparent; border-color: #ffffff20; }
+.sidebar-footer-actions { display:flex; align-items:center; gap:8px; }
 .desktop-sidebar[hidden] { display: none; }
 .desktop-sidebar.sidebar-icons { width: 72px; padding-inline: 12px; }
 .sidebar-icons .brand { justify-content: center; margin-inline: 0; }
@@ -540,6 +541,8 @@ label[data-missing=true] > :is(input,textarea,select):not(:disabled),.form-grid 
 .sidebar-icons .sidebar-controls { flex-direction: column; align-items: center; margin-inline: 0; }
 .sidebar-icons .aside-foot { padding-inline: 0; }
 .sidebar-icons .sidebar-connection, .sidebar-icons .sidebar-signout { justify-content: center; }
+.sidebar-icons .sidebar-footer-actions { margin-inline:-8px; gap:0; justify-content:center; }
+.sidebar-icons .sidebar-footer-actions button { width:32px; padding:0; flex:none; }
 .sidebar-signout { gap: 8px; }
 .sidebar-floating { z-index: 60; box-shadow: 12px 0 32px #0003; }
 .sidebar-reveal { display: none; }

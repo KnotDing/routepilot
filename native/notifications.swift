@@ -17,6 +17,9 @@ private enum NotificationSelection {
         let category = name.hasPrefix("Surge") ? "surge" : name.hasPrefix("BGP") || name.contains("routing") ? "bgp" : name.contains("DNS") ? "dns" : "controller"
         return settings[category] as? Bool == true
     }
+    static func anomaly(_ name: String) -> Bool {
+        name.hasPrefix("DNS cache mismatch ") || name == "DNS request burst" || name == "DNS sustained requests"
+    }
 }
 
 struct AppPreferences: Codable {
@@ -92,7 +95,8 @@ final class ServiceNotifications {
             seen.insert(key)
             var alarm = previous[key] ?? Alarm()
             if state == "DOWN", (!alarm.down || cooldown > 0), now.timeIntervalSince(alarm.lastAlert) >= Double(cooldown) {
-                failures.append(L(key)); alarm.down = true; alarm.lastAlert = now
+                let detail = NotificationSelection.anomaly(key) ? component["last_error"] as? String ?? "" : ""
+                failures.append(L(key) + (detail.isEmpty ? "" : ": " + detail)); alarm.down = true; alarm.lastAlert = now
             } else if state == "UP" {
                 if alarm.down && recovery { recovered.append(L(key)) }
                 alarm.down = false

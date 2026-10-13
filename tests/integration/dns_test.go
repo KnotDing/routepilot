@@ -76,6 +76,13 @@ func TestQueryHistoryRecordsResponseSectionsAndFailureCause(t *testing.T) {
 	if r.Response.ID != 2216 || r.Response.Status != "NOERROR" || len(r.Response.Answers) != 1 || len(r.Response.Authority) != 1 || len(r.Response.Additional) != 1 {
 		t.Fatal("response sections not recorded", r.Response)
 	}
+	if len(r.Answers) != 1 || r.Answers[0] != r.Response.Answers[0] {
+		t.Fatal("history answers differ from response detail", r)
+	}
+	r.Answers[0] = "redacted"
+	if r.Response.Answers[0] == "redacted" {
+		t.Fatal("editing history answers changed response detail")
+	}
 	surge.Fake = func(_ context.Context, q *dns.Msg) (*dns.Msg, error) {
 		return mocks.AddressReply(q, "203.0.113.7"), nil
 	}

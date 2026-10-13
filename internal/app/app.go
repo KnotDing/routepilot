@@ -179,46 +179,48 @@ type Runtime struct {
 	latencySum                                       atomic.Uint64
 }
 type App struct {
-	surgeRecovery       surge.Recovery
-	queryRateBits       atomic.Uint64
-	notifications       *notifications.Manager
-	notificationCancel  context.CancelFunc
-	notificationDone    chan struct{}
-	cachePersistMu      sync.Mutex
-	savedCacheDigest    [32]byte
-	responsePersistMu   sync.Mutex
-	savedResponseDigest [32]byte
-	dnsCounters         dnsserver.Counters
-	clientStatistics    *dnsserver.ClientStatistics
-	clientPersistError  atomic.Pointer[string]
-	dnsMonitoring       *dnsserver.Monitoring
-	monitorPersistError atomic.Pointer[string]
-	statsCancel         context.CancelFunc
-	statsDone           chan struct{}
-	queryRateDone       chan struct{}
-	ruleTests           chan struct{}
-	lockFile            *os.File
-	eventRetention      atomic.Int64
-	logLevel            slog.LevelVar
-	mu                  sync.RWMutex
-	transition          sync.Mutex
-	saveMu              sync.Mutex
-	applied             config.Document
-	application         ApplicationStatus
-	applyWake           chan struct{}
-	applyCancel         context.CancelFunc
-	applyDone           chan struct{}
-	config              config.Document
-	runtime             *Runtime
-	store               *database.Store
-	bus                 *events.Bus
-	security            *security.Manager
-	remote              *remote.Manager
-	control             *api.API
-	ctx                 context.Context
-	dir                 string
-	webChanged          chan struct{}
-	closing             atomic.Bool
+	notificationAnomalies notifications.AnomalyMonitor
+	notificationSampleMu  sync.Mutex
+	surgeRecovery         surge.Recovery
+	queryRateBits         atomic.Uint64
+	notifications         *notifications.Manager
+	notificationCancel    context.CancelFunc
+	notificationDone      chan struct{}
+	cachePersistMu        sync.Mutex
+	savedCacheDigest      [32]byte
+	responsePersistMu     sync.Mutex
+	savedResponseDigest   [32]byte
+	dnsCounters           dnsserver.Counters
+	clientStatistics      *dnsserver.ClientStatistics
+	clientPersistError    atomic.Pointer[string]
+	dnsMonitoring         *dnsserver.Monitoring
+	monitorPersistError   atomic.Pointer[string]
+	statsCancel           context.CancelFunc
+	statsDone             chan struct{}
+	queryRateDone         chan struct{}
+	ruleTests             chan struct{}
+	lockFile              *os.File
+	eventRetention        atomic.Int64
+	logLevel              slog.LevelVar
+	mu                    sync.RWMutex
+	transition            sync.Mutex
+	saveMu                sync.Mutex
+	applied               config.Document
+	application           ApplicationStatus
+	applyWake             chan struct{}
+	applyCancel           context.CancelFunc
+	applyDone             chan struct{}
+	config                config.Document
+	runtime               *Runtime
+	store                 *database.Store
+	bus                   *events.Bus
+	security              *security.Manager
+	remote                *remote.Manager
+	control               *api.API
+	ctx                   context.Context
+	dir                   string
+	webChanged            chan struct{}
+	closing               atomic.Bool
 }
 
 const managementRecoveryAddress = "127.0.0.1:1055"
@@ -865,7 +867,7 @@ func (a *App) monitor(ctx context.Context, rt *Runtime) {
 				}
 				filtered = append(filtered, value)
 			}
-			a.notifications.Observe(document.Settings.Notifications, filtered)
+			a.notifications.Observe(document.Settings.Notifications, append(filtered, a.notificationAnomalies.Snapshot()...))
 		}
 		select {
 		case <-ctx.Done():
@@ -1143,7 +1145,7 @@ func (a *App) View(ctx context.Context, key string) (any, error) {
 		return nil, errors.New("runtime unavailable")
 	}
 	clientStatistics := dnsserver.ClientStatsSnapshot{Clients: []dnsserver.ClientStats{}}
-	if rt.dispatcher != nil && rt.dispatcher.ClientStatistics != nil {
+	if (key == "status" || key == "dns/clients") && rt.dispatcher != nil && rt.dispatcher.ClientStatistics != nil {
 		clientStatistics = rt.dispatcher.ClientStatistics.Snapshot()
 	}
 	if e := a.clientPersistError.Load(); e != nil {
@@ -1154,7 +1156,7 @@ func (a *App) View(ctx context.Context, key string) (any, error) {
 		return application, nil
 	case "status":
 		p := rt.machine.Plan()
-		return map[string]any{"software": buildinfo.Current(), "go_runtime": currentGoRuntimeStatus(), "online_update": true, "remote_credential_origin_binding": true, "fast_configuration_save": true, "selective_cache_policies": true, "configuration_application": application, "mode": mode, "state": p.State, "fake_ip_enabled": p.AllowFakeIP, "queries_per_minute": rt.queryRate.Load(), "queries_per_second": math.Float64frombits(a.queryRateBits.Load()), "surge_restart": a.surgeRecovery.Status(), "counters": rt.dispatcher.Statistics().Snapshot(), "client_statistics": clientStatistics, "dns_monitoring": a.dnsMonitoring.View(), "dns_monitoring_history": a.monitoringHistoryStatus(), "cache": map[string]any{"decision": rt.engine.Cache.Stats(), "response": responseCacheStats(rt)}, "warning": rt.Fault(), "uptime_seconds": int(time.Since(rt.started).Seconds())}, nil
+		return map[string]any{"software": buildinfo.Current(), "go_runtime": currentGoRuntimeStatus(), "online_update": true, "remote_credential_origin_binding": true, "fast_configuration_save": true, "notification_anomaly_alerts": true, "selective_cache_policies": true, "surge_response_cache": true, "notification_alerts": a.notificationAnomalies.Snapshot(), "configuration_application": application, "mode": mode, "state": p.State, "fake_ip_enabled": p.AllowFakeIP, "queries_per_minute": rt.queryRate.Load(), "queries_per_second": math.Float64frombits(a.queryRateBits.Load()), "surge_restart": a.surgeRecovery.Status(), "counters": rt.dispatcher.Statistics().Snapshot(), "client_statistics": clientStatistics, "dns_monitoring": a.dnsMonitoring.View(), "dns_monitoring_history": a.monitoringHistoryStatus(), "cache": map[string]any{"decision": rt.engine.Cache.Stats(), "response": responseCacheStats(rt)}, "warning": rt.Fault(), "uptime_seconds": int(time.Since(rt.started).Seconds())}, nil
 	case "health":
 		values := rt.health.Values()
 		sort.Slice(values, func(i, j int) bool { return values[i].Name < values[j].Name })
@@ -1254,6 +1256,8 @@ func (a *App) Flush(ctx context.Context, domain string) error {
 			return err
 		}
 	}
+	a.notificationSampleMu.Lock()
+	defer a.notificationSampleMu.Unlock()
 	a.mu.RLock()
 	rt := a.runtime
 	rt.decisionMu.Lock()
@@ -1283,6 +1287,7 @@ func (a *App) Flush(ctx context.Context, domain string) error {
 		upstream.Cache.ResetOptimisticStats()
 	}
 	rt.engine.Cache.ResetOptimisticStats()
+	a.notificationAnomalies.ResetCaches()
 	a.mu.RUnlock()
 	if err := a.saveDecisionCache(); err != nil {
 		return err

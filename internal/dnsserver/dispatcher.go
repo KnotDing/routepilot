@@ -341,12 +341,11 @@ func (d *Dispatcher) Dispatch(ctx context.Context, q model.DNSQueryContext, m *d
 		if d.ClientStatistics != nil {
 			d.ClientStatistics.Record(q.ClientIP, result.Decision, reply.Rcode == dns.RcodeServerFailure, q.ReceivedAt)
 		}
-		if d.History != nil {
-			answers := make([]string, 0, len(reply.Answer))
-			for _, rr := range reply.Answer {
-				answers = append(answers, rr.String())
-			}
-			d.History.add(QueryRecord{Context: q, Result: result, Latency: time.Since(started), Answers: answers, Rcode: reply.Rcode, ClassificationMS: float64(classificationDuration) / float64(time.Millisecond), ResolverMS: float64(trace.Duration) / float64(time.Millisecond), Resolver: trace.Endpoint, ResponseCacheHit: trace.CacheHit, Response: summarizeResponse(reply), ResolutionError: trace.Error})
+		if d.History != nil && d.History.Enabled {
+			response := summarizeResponse(reply)
+			// Keep the two public slices independent while formatting each RR once.
+			answers := append([]string{}, response.Answers...)
+			d.History.add(QueryRecord{Context: q, Result: result, Latency: time.Since(started), Answers: answers, Rcode: reply.Rcode, ClassificationMS: float64(classificationDuration) / float64(time.Millisecond), ResolverMS: float64(trace.Duration) / float64(time.Millisecond), Resolver: trace.Endpoint, ResponseCacheHit: trace.CacheHit, Response: response, ResolutionError: trace.Error})
 		}
 	}()
 	if m.Response || m.Opcode != dns.OpcodeQuery || len(m.Question) != 1 || m.Question[0].Qclass != dns.ClassINET {

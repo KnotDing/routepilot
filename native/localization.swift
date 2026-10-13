@@ -16,9 +16,10 @@ enum NativeText {
     }
     static let english = catalog("ui-en")
     static let chineseErrors = catalog("errors-zh")
+    private static let parameterMarker = try! NSRegularExpression(pattern: "\\{(\\w+)\\}")
     static func matchedParameters(_ template: String, _ text: String) -> [String: Any]? {
-        let marker = try! NSRegularExpression(pattern: "\\{(\\w+)\\}")
-        let matches = marker.matches(in: template, range: NSRange(template.startIndex..., in: template))
+        guard template.contains("{") else { return nil }
+        let matches = parameterMarker.matches(in: template, range: NSRange(template.startIndex..., in: template))
         guard !matches.isEmpty else { return nil }
         var pattern = "^", keys: [String] = [], previous = template.startIndex
         for match in matches {
@@ -38,17 +39,18 @@ enum NativeText {
     static func translate(_ text: String, locale: String, english: [String: String], errors: [String: String], params: [String: Any] = [:]) -> String {
         var result = locale == "en" ? english[text] ?? text : errors[text] ?? text
         var parameters = params
-        if result == text && params.isEmpty {
+        let knownChineseSource = locale != "en" && errors[text] == nil && english[text] != nil
+        if result == text && params.isEmpty && !knownChineseSource {
             let pairs = locale == "en" ? english : errors.merging(Dictionary(english.map { ($0.value, $0.key) }, uniquingKeysWith: { first, _ in first }), uniquingKeysWith: { first, _ in first })
             for (source, target) in pairs {
                 if source == text { result = target; break }
                 if let matched = matchedParameters(source, text) { result = target; parameters = matched; break }
             }
         }
-        let expression = try! NSRegularExpression(pattern: "\\{(\\w+)\\}")
+        guard result.contains("{") else { return result }
         let range = NSRange(result.startIndex..., in: result)
         var output = result
-        for match in expression.matches(in: result, range: range).reversed() {
+        for match in parameterMarker.matches(in: result, range: range).reversed() {
             guard let keyRange = Range(match.range(at: 1), in: result), let outputRange = Range(match.range, in: output), let value = parameters[String(result[keyRange])] else { continue }
             output.replaceSubrange(outputRange, with: String(describing: value))
         }

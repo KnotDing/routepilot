@@ -1,5 +1,6 @@
 const messages={
  'zh-CN':{
+  surgeUnsupported:'当前后端未声明支持 Surge 响应缓存，请升级后端后再设置 Surge。',
   optimistic_idle_refresh:'乐观决策缓存空闲自动刷新',
   optimistic_response_idle_refresh:'乐观查询缓存空闲自动刷新',
   optimistic_idle_refresh_hint:'关闭后仍会在缓存命中时按需刷新，只停止空闲时自动刷新。',
@@ -13,6 +14,7 @@ const messages={
   search:'搜索缓存域名',searchPlaceholder:'搜索全部有效缓存的域名',decisionFilter:'缓存决策',all:'全部决策',flushDomain:'清理此域名缓存',flushAll:'清理全部缓存',domainFlushed:'该域名缓存已清理',allFlushed:'全部决策缓存已清理',domain:'域名',type:'类型',decision:'决策',confidence:'依据',client:'客户端',remaining:'剩余时间',reason:'原因',certain:'已确认',configured:'按配置采用',uncertain:'尚未确认',untilUpdate:'直到配置更新',noExpiry:'不按时间过期',empty:'没有符合条件的有效缓存',loading:'正在加载缓存…',total:'共',items:'条',page:'页',pageSize:'每页',previous:'上一页',next:'下一页'
  },
  en:{
+  surgeUnsupported:'This backend has not declared Surge response cache support. Upgrade the backend to configure Surge.',
   optimistic:'Optimistic decision cache',
   optimistic_tooltip:'Retain the previous decision after a confirmed configuration or resource update; refresh on cache hits or while idle.',
   optimistic_responses:'Optimistic query cache',

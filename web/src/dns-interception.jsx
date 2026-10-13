@@ -24,5 +24,5 @@ export function DNSInterceptionConfirmation({settings,refresh,notify}){
    await refresh();
   }catch(e){if(e.name!=='AbortError')notify(e.message,true)}finally{setSaving(false)}
  };
- return <div className="notice dns-interception-confirmation"><button type="button" className="primary" disabled={saving||Boolean(settings.routing.static_dns_configured)} onClick={save}>{t(settings.routing.static_dns_configured?'dnsConfirmed':'dnsConfirmAction')}</button><p className="muted">{t('dnsConfirmationHint')}{' '}{t('staticRisk')}</p>{saving&&<span role="status">{ui('正在保存…')}</span>}</div>;
+ return <button type="button" className="dns-interception-confirmation" title={t('dnsConfirmationHint')} aria-busy={saving} disabled={saving||Boolean(settings.routing.static_dns_configured)} onClick={save}>{saving?ui('正在保存…'):t(settings.routing.static_dns_configured?'dnsConfirmed':'dnsConfirmAction')}</button>;
 }

@@ -64,7 +64,7 @@ func TestCacheGroupStatsExposeConsistentStatusCacheAPIAndMetrics(t *testing.T) {
 		t.Fatal(err)
 	}
 	view := status.(map[string]any)
-	if view["selective_cache_policies"] != true {
+	if view["selective_cache_policies"] != true || view["surge_response_cache"] != true {
 		t.Fatal("selective capability missing")
 	}
 	parts := view["cache"].(map[string]any)

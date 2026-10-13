@@ -2,7 +2,7 @@ import {FieldLabel,FormHint} from './form-fields';
 import React,{useEffect,useRef,useState} from 'react';
 import {createPortal} from 'react-dom';
 import {useT,translate,valueLabel,message} from './i18n';
-import {notificationSelected} from './notification-errors';
+import {notificationSelected,anomalyNotification} from './notification-errors';
 import {DownloadProgress} from './download-progress';
 
 const defaults={assistantReady:false,updatePrompts:true,updateAvailable:false,updateVersion:'',updateDownloading:false,updateDownloadError:'',updateAutomationError:'',githubAccessTokenConfigured:false,desktopNotifications:false,notificationSound:true};
@@ -104,11 +104,11 @@ export function observeServices({scope,health,settings,remote,backendID}){
   const key=component.name,state=component.state;
   if(!notificationSelected(key,settings)||state==='DISABLED')continue;
   seen.add(key);const alarm=previous.get(key)||{down:false,last:0};
-  if(state==='DOWN'&&(!alarm.down||cooldown>0)&&now-alarm.last>=cooldown){down.push(key);alarm.down=true;alarm.last=now}
+  if(state==='DOWN'&&(!alarm.down||cooldown>0)&&now-alarm.last>=cooldown){down.push(message(valueLabel(key))+(anomalyNotification(key)&&component.last_error?': '+component.last_error:''));alarm.down=true;alarm.last=now}
   else if(state==='UP'){if(alarm.down&&settings.recovery)up.push(key);alarm.down=false}
   previous.set(key,alarm);
  }
  for(const key of previous.keys())if(!seen.has(key))previous.delete(key);
  alarms.set(scope,previous);
- if('Notification' in window&&Notification.permission==='granted')for(const [items,title,suffix] of [[down,'服务异常','down'],[up,'服务已恢复','up']])if(items.length)new Notification(`RoutePilot · ${translate(title)}`,{body:items.sort().map(valueLabel).join('、'),tag:`${scope}:${suffix}`,silent:!appPreferences().notificationSound});
+ if('Notification' in window&&Notification.permission==='granted')for(const [items,title,suffix] of [[down,'服务异常','down'],[up,'服务已恢复','up']])if(items.length)new Notification(`RoutePilot · ${translate(title)}`,{body:items.sort().map(item=>message(valueLabel(item))).join('、'),tag:`${scope}:${suffix}`,silent:!appPreferences().notificationSound});
 }

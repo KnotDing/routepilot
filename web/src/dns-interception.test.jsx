@@ -57,7 +57,7 @@ it('hides static confirmation for BGP or without persistent interception permiss
  localStorage.setItem('routepilot.locale','en');
  render(<Resource {...props} settings={{routing:{...routing,mode:'hybrid',fake_ip_backend:'bgp'}}}/>);
  expect(screen.getByRole('button',{name:'Confirm gateway routes are configured'})).toBeEnabled();
- expect(screen.getByText(/This is a user declaration/)).toBeInTheDocument();
+ expect(screen.getByRole('button',{name:'Confirm gateway routes are configured'})).toHaveAttribute('title',expect.stringContaining('This is a user declaration'));
 });
 
 it('does not write a stale declaration when the backend has switched to BGP',async()=>{

@@ -15,7 +15,7 @@
 - 每次提交后的分支和标签推送都必须同时到达两个仓库。配置 `origin` 的多个 `pushurl`（保留 Gitea 为 fetch URL），这样 `git push origin <分支>` 会推送到两个地址；推送后核对两个远端的提交或标签一致。不要只推其中一个。
 - 新克隆或远端配置未完成时，先检查并配置两个推送地址，再继续推送。任一仓库推送失败时明确报告部分成功，并在恢复后补齐；不要强推或改写远端历史。
 - 对外 README 链接优先使用 GitHub（Release 与 `raw.githubusercontent.com/KnotDing/routepilot/main`）；Gitea 链接作为清楚标注的备用入口。
-- `.github/workflows/test.yaml` 是唯一回归测试门禁；Gitea 不运行本地测试。`.gitea/workflows/release.yaml` 的 Ubuntu runner 先等待 2 分钟，再每分钟轮询 GitHub Release，最多 15 次；可从 Gitea Actions Secret `RELEASE_SOURCE_TOKEN` 读取 GitHub 只读 token，以认证 GitHub API 与附件下载。下载 DMG、ZIP 与 SHA256SUMS 并校验成功后发布到 Gitea。获取任务失败或制品不可用时，再由 macOS runner 本地打包回退，不在 Gitea 执行测试。GitHub Release 仍由 `.github/workflows/release.yaml` 构建并发布。
+- `.github/workflows/test.yaml` 是唯一回归测试门禁；Gitea 不运行本地测试。`.gitea/workflows/release.yaml` 的 Ubuntu runner 先等待 2 分钟，再每分钟轮询 GitHub Release，最多 15 次；可从 Gitea Actions Secret `RELEASE_SOURCE_TOKEN` 读取 GitHub 只读 token，以认证 GitHub API 与附件下载。下载 DMG、ZIP 与 SHA256SUMS 并校验成功后发布到 Gitea。获取任务失败或制品不可用时，再由 macOS runner 本地打包回退，不在 Gitea 执行测试。获取作业允许失败，只有三附件上传完成才输出 `published=true`；否则执行必须成功的回退作业。任一路径完整发布成功即为整体成功，两条路径均失败仍失败。GitHub Release 仍由 `.github/workflows/release.yaml` 构建并发布。
 
 ## 修改与验证
 
@@ -28,6 +28,16 @@
 - `web/dist` 与 `web/dist-native` 是构建产物，不手工编辑或提交。Go 嵌入管理页面前先执行 `npm --prefix web run build`。
 - `make build`、`make verify`、`make verify-release` 和 `make package` 会通过 `clean-artifacts` 清理旧安装包。执行前检查 `artifacts/`、`bin/` 和构建缓存；需要保留的产物先备份。仅需源码编译时使用前端构建与 `go build ./...`。
 - 不提交、不推送、不安装或重启实际部署，除非用户已授权相应动作。发布授权包含必要的版本文件、提交、标签和推送，不等于授权升级用户正在使用的环境。
+
+## 性能与资源占用
+
+- RoutePilot 面向局域网应用，核心要求是空闲和日常负载下的低 CPU、低内存占用，同时保持响应及时、运行稳定。峰值 QPS 和极高并发主要用于定位瓶颈，不作为默认优化目标；不要为了提高压测数字增加默认 worker、队列或缓存容量，也不要直接把某台机器的测量值设为通用硬门槛。
+- 优先消除重复计算、字符串格式化、正则编译、临时对象分配、无关数据复制与排序。高频采样只读取所需计数，避免为累计指标遍历全部缓存；功能关闭时跳过其记录和格式化工作。参数标记、静态翻译等可复用资源不要反复构造。
+- 关注原生 App、Go 后台和 WebKit / 管理页面各自的成本。定时器、状态栏动画、菜单重建、状态轮询、统计快照和持久化检查点都需避免无变化时的重复工作；优化刷新或持久化时保留健康状态、通知及时性和已有恢复保证。
+- 优化不得牺牲 DNS 语义、客户端 / 上游隔离、缓存 generation 与 TTL、统计精确性、告警核对分母及路由安全门禁。先用剖析确认热点，再做小范围改动；分片、对象池、复杂淘汰结构等需有常见负载下的实际收益支撑。
+- 性能验证优先覆盖空闲、局域网常见请求量及管理窗口打开 / 关闭场景，并记录缓存规模和命中状态。对照测量使用非 race 构建，保持测试条件一致，记录机器、工具链、请求率、持续时间与背景负载；race 用于正确性检查，不用于容量或资源结论。
+- 报告明确区分单核 CPU 时间占比、整机 CPU、进程 RSS、Go 存活堆和累计分配速率，分别说明 App / 后台 / WebKit 的覆盖范围。短测或微基准不能证明长期无泄漏，也不能直接换算为完整 App 的资源降幅；实现、编译、测试和现用环境验证分别报告。
+- 压测使用隔离实例、临时数据库和测试上游，不向现用后台施加压力。现用进程可做只读资源观察；安装、替换 App 或重启服务仍遵循已有授权要求。原始日志与剖析放在 `artifacts/`，不提交构建产物；基准入口和测量边界见 [CPU 与内存检查](docs/performance-2026-10-13.md)，其中数值仅为带日期的样本。
 
 ## 产品与安全边界
 
@@ -182,12 +192,12 @@
 | DNS 分流、AAAA 回落、Fake-IP 门禁 | `internal/dnsserver/dispatcher.go`（`Dispatch` / `resolveSurge`）；`internal/model/model.go` 定义查询上下文与结果 | `internal/localdns/local.go`；`internal/app/app.go` 的 `policy.Classify`；`internal/state/machine.go` |
 | Surge 策略求值、always-real-ip、Host/IPv6 同步 | `internal/surge/adapter.go`；`api.go` / `cli.go`；`real_ip.go` / `hosts.go` / `ipv6.go` | `internal/classifier/classifier.go`（`Classify` / `evaluate`）；`internal/app/decision_revision.go` |
 | 决策缓存、失效与空闲刷新 | `internal/classifier/classifier.go`、`idle_refresh.go`；`internal/cache/cache.go` / `policy.go`（分项开关、按旧值归属的有界统计） | `internal/app/decision_cache.go`、`decision_revision.go`；`web/src/cache.jsx`、`cache-i18n.js`、`cache-policies.jsx`（决策 / 上游独立开关与统计）；`internal/config/cache_policies.go`；`docs/cache-policies.md` |
-| 响应缓存、TTL、持久化与可靠性比较 | `internal/resolver/real.go`（`Resolve` / `exchange` / `refresh`）；`response_cache.go`、`response_comparison.go`、`idle_refresh.go` | `internal/app/response_cache.go`、`app.go` 的 `responseCacheStats` / `Metrics`；`web/src/main.jsx` 的 Queries 页 |
+| 响应缓存、TTL、持久化与可靠性比较 | `internal/resolver/real.go`（`Resolve` / `exchange` / `refresh`）；`internal/app/surge_response_cache.go`（Surge 分项缓存、发行门禁、响应范围验证）；`response_cache.go`、`response_comparison.go`、`idle_refresh.go` | `internal/app/response_cache.go`、`app.go` 的 `responseCacheStats` / `Metrics`；`web/src/main.jsx` 的 Queries 页 |
 | 上游、出口绑定、策略专用 DNS | `internal/resolver/upstream_transport.go`、`egress*.go`；`internal/dnsserver/policy_dns.go` | `web/src/policy-dns.jsx`、`dns-settings.jsx`；`internal/config/config.go` |
 | 透明 DNS / PF | `internal/dnsserver/transparent.go`、`pf_rules.go`、`pf_control.go`、`pf_darwin.go`；普通 UDP/TCP 监听在 `server.go` | `web/src/dns-interception.jsx`（DNS 拦截页的静态网关配置确认，复用 settings 保存）；`docs/routing-backends.md`、`phase-2-acceptance.md`、`phase-2-docker-evidence.md`；`scripts/*phase2*` |
 | BGP 邻居、详情与路由发布 | `internal/bgp/gobgp.go`（`peerConfig` / `SyncPeers` / `Peers` / `Exported`）；`manager.go`（`Reconcile` / `Refresh`） | `internal/routing/manager.go`；`web/src/bgp-peer-details.jsx`、`routing.jsx`、`main.jsx` 的 `Resource`；`docs/routing-backends.md` |
 | URL 路由导入与定时同步 | `internal/routeimport/import.go`；`internal/api/api.go` 的 `RunRouteFeedScheduler` | `web/src/route-import.jsx`；配置中的 route feeds；导入与后台任务状态 |
-| 健康检查、异常通知、Surge 重启 | `internal/app/app.go` 的 `monitor`；`surge_recovery.go`；`internal/state/machine.go` | `internal/surge/recovery.go`；`internal/notifications/notifications.go`；`native/notifications.swift`；`web/src/surge-restart.jsx`、`notification-errors.jsx` |
+| 健康检查、异常通知、Surge 重启 | `internal/app/app.go` 的 `monitor`；`surge_recovery.go`；`notification_anomalies.go`（每秒统计告警采样）；`internal/state/machine.go` | `internal/surge/recovery.go`；`internal/notifications/notifications.go`、`anomalies.go`（有界核对窗口与持续计时，不驱动路由门禁）；`internal/config/notification_anomalies.go`；`native/notifications.swift`；`web/src/surge-restart.jsx`、`notification-errors.jsx`、`notification-anomalies.jsx`；`docs/notification-anomalies.md` |
 | 大屏监控、策略命中与 DNS 流向 | `internal/dnsserver/monitoring.go`（`Begin` / `Finish` / `Snapshot`）；`source_policy_flows.go`（有界真实来源 / 命中策略 / 最终策略三元组）；`dispatcher.go` 的实际解析路径标记；`internal/app/statistics.go`；`internal/database/monitoring.go`（事务检查点与分钟增量桶） | `internal/api/monitoring.go`（实时源详情 / 历史 GET）、`internal/remote/remote.go`；`app.go` 的 `status.dns_monitoring` / `Metrics`；`web/src/monitoring.jsx`、`monitoring-source-label.jsx`（完整备注换行 / 点击 IP 切换）、`monitoring-history.jsx`、`monitoring-data.js`（三层共享比例尺）、`monitoring.css`；`docs/monitoring.md` |
 | DNS 累计统计、客户端与查询历史 | `internal/dnsserver/dispatcher.go` 的 `Counters` / `ClientStatistics` / `History`；`internal/app/statistics.go`（客户端共享累计实例与五秒检查点）；`internal/dnsserver/client_statistics.go`（恢复校验） | `web/src/dns-overview.jsx`、`clients.jsx`、`client-settings.jsx`（列表编辑窗口）、`dns-result.jsx`；客户端配置校验在 `internal/config/clients.go`，分流在 `internal/dnsserver/client_policy.go`；查询历史不要误当成持久化累计统计 |
 | 登录、管理 IP 白名单、反向代理 | `internal/security/security.go`（`Wrap`）；`client_ip.go`；`internal/config/management_security.go` | `internal/controlclient/access.go`；`web/src/credentials.js`、`backends.jsx`；`native/credentials.swift`、`remote_credentials.swift`；`docs/remote-management.md` |

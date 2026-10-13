@@ -11,6 +11,10 @@ struct LocalizationTests {
         }
         precondition(translated("本机通知设置", "en") == "Local notification settings")
         precondition(translated("检查更新", "en") == "Check for updates")
+        precondition(translated("设置", "zh-CN") == "设置")
+        precondition(translated("Check for updates", "zh-CN") == "检查更新")
+        precondition(translated("查询：{count} / 分钟", "zh-CN", ["count": 12]) == "查询：12 / 分钟")
+        precondition(translated("Queries: 12 / minute", "zh-CN") == "查询：12 / 分钟")
         precondition(translated("检查Beta版本更新", "en") == "Check for beta updates")
         precondition(translated("检查 Beta 版本更新", "en") == "Check for beta updates")
         precondition(translated("自动检查 Beta 版本", "en") == "Check for beta updates automatically")
