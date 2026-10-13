@@ -15,7 +15,7 @@ RoutePilot 是一款 macOS 状态栏应用：向 Surge 查询分流策略，为 
 - **缩短直连路径：** DIRECT 查询返回真实地址，客户端后续流量由网关直接送往 WAN，不必绕经 Surge；Fake-IP 和下一跳配置为 Surge 的受管理前缀仍按路由经过 Surge。
 - **Surge 故障时保留新连接的直连路径：** RoutePilot 停止发放新的 Fake-IP，后续查询改用独立真实 DNS 解析，让网关可将新连接直连出网（真实 DNS 与 WAN 可用时）。已发放 Fake-IP 在 TTL / 宽限期内仍可能依赖 Surge。
 
-[📦 下载最新版本](https://github.com/KnotDing/routepilot/releases) · [🧪 大屏监控测试版 v1.0.4-beta.15](https://github.com/KnotDing/routepilot/releases/tag/v1.0.4-beta.15) · [Gitea 备用下载](https://gitea.knotding.com/knot/routepilot/releases) · [🚀 快速开始](#quick-start) · [🤖 安装 skill](#agent-skill) · [📚 文档导航](#documentation)
+[📦 下载最新版本](https://github.com/KnotDing/routepilot/releases) · [🧪 DNS 拦截确认测试版 v1.0.4-beta.16](https://github.com/KnotDing/routepilot/releases/tag/v1.0.4-beta.16) · [Gitea 备用下载](https://gitea.knotding.com/knot/routepilot/releases) · [🚀 快速开始](#quick-start) · [🤖 安装 skill](#agent-skill) · [📚 文档导航](#documentation)
 
 <p align="center">
   <img src="docs/images/management-4k.png" width="100%" alt="RoutePilot App 管理界面 4K 截图">
@@ -89,7 +89,7 @@ RoutePilot 处理被送到它的 DNS 请求并发布受管理路由；普通应�
 | ④ 路由 | 在「设置 → 路由」选择后端和分流模式。BGP 邻居可复用全局 ASN、Router ID；Fake-IP 下一跳指向 Surge，DNS 拦截下一跳指向 Controller。 |
 | ⑤ 透明拦截 | 添加解析器前缀、实际接收接口和具体监听地址（建议端口 1054）。需要 PF 权限，根规则须可到达 `com.apple/*`；应用仅管理自己的锚点。 |
 | ⑥ 切换流量 | 关闭 Surge 的全量 `hijack-dns = *:53`，保留原有 `dns-server`。客户端请求应先经过正常网关；仅更改上游 DNS 无法改变被 Surge 抢先接收的路径。 |
-| ⑦ 核对结果 | 检查 BGP 邻居、Adj-RIB-Out、稳定等待，以及网关 RIB / FIB 和实际包路径；Static 模式需在网关手动安装并确认。 |
+| ⑦ 核对结果 | 检查 BGP 邻居、Adj-RIB-Out、稳定等待，以及网关 RIB / FIB 和实际包路径；Static 模式需在网关手动安装；DNS 拦截路由在「DNS 拦截」页点击按钮确认，立即保存，已确认时按钮置灰。 |
 
 ### 路由模式怎么选？
 

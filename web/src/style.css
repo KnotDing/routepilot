@@ -198,6 +198,7 @@ tbody tr:last-child td { border-bottom: 0; }
 .filters > input { flex-basis: 170px; }
 .notice { display: block; padding: 14px 18px; margin-bottom: 20px; border: 1px solid var(--warning-border); border-radius: 10px; background: var(--warning-bg); color: var(--warning-text); font-size: 13px; line-height: 22px; overflow-wrap: anywhere; }
 .notice p { margin: 4px 0; color: inherit; font-size: inherit; }
+.dns-interception-confirmation button:disabled { background:var(--neutral-bg); color:var(--muted); border-color:var(--border); box-shadow:none; transition:none; }
 .version-channel-notice { background: var(--panel); border-color: var(--border); color: var(--muted); }
 .version-channel-notice strong { font-weight: 500; }
 .error { color: var(--danger-text); background: var(--danger-bg); border-color: color-mix(in srgb, var(--danger-text), transparent 80%); }

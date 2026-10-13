@@ -31,7 +31,7 @@ it('exposes static confirmations and independent hybrid backends',()=>{
  render(<Settings settings={settings} refresh={()=>{}} notify={()=>{}}/>);fireEvent.click(screen.getByRole('button',{name:'路由',exact:true}));
  expect(screen.getByLabelText('Fake-IP 路由已在网关配置')).not.toBeChecked();
  fireEvent.click(screen.getByLabelText('启用静态 DNS 拦截'));
- expect(screen.getByLabelText('DNS 拦截路由已在网关配置')).not.toBeChecked();
+ expect(screen.queryByRole('button',{name:'确认网关路由已配置'})).not.toBeInTheDocument();
  fireEvent.change(screen.getByLabelText('路由模式'),{target:{value:'hybrid'}});
  expect(screen.getByLabelText('Fake-IP 路由方式')).toHaveValue('static');
  fireEvent.change(screen.getByLabelText('DNS 拦截路由方式'),{target:{value:'bgp'}});

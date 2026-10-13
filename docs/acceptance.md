@@ -653,3 +653,23 @@ exactly three downloadable nonempty attachments; downloaded hashes match
 across providers and the actual App and bundled backend are
 `1.0.4-beta.15 / build 23`. Evidence:
 `artifacts/releases/v1.0.4-beta.15/publication-verification.json`.
+
+## v1.0.4-beta.16 DNS interception gateway confirmation — 2026-10-13
+
+The static DNS gateway declaration moves from routing settings to the DNS
+interception page. Clicking “Confirm gateway routes are configured” saves
+immediately through the connected backend's existing settings API. An existing
+declaration displays a gray, disabled “✓ Gateway routes confirmed” button;
+backend invalidation after relevant configuration changes enables confirmation
+again. Persistent static interception permission remains in routing settings.
+The declaration does not install or verify external gateway routes.
+
+Local checks passed: `npm --prefix web test` (31 files / 154 tests),
+`make native-test ui-test` (isolated native checks and 17 pages / 14 settings
+categories at 1440/1120/390), and
+`env GOCACHE=/tmp/routepilot-go-build-beta16 make package package-check`
+(1.0.4-beta.16 / source build 98). Confirmation cases cover connected remote
+requests, preservation of freshly read settings, failure reporting, static
+permission, changed backend mode, and confirmed/invalidated button states.
+No actual installation, upgrade, backend restart, or gateway/LAN/IPv6 path
+acceptance was performed. Configuration runtime application is unchanged.
