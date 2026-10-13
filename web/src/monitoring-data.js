@@ -7,15 +7,19 @@ export function visibleSources(sources){return sources?.filter(s=>s.source!=='le
 // the client-policy chart. Older two-stage rows have no final-policy kind.
 export function visibleClientPolicyFlows(rows){return Array.isArray(rows)?rows.filter(row=>row.final_kind!=='unnamed'):rows}
 
+export const flowLabelWidth=140;
+export function flowLabelExtents(lines=1,valueLines=1){return {above:(lines-1)*9+17,below:(lines-1)*9+14+(valueLines-1)*16}}
+
 // A common scale on both sides preserves every ingress/destination edge.
 // No minimum ribbon width: a small request share must remain a small share.
 export function flowLayout(flows,total,sourceKeys=['addressed','intercepted'],targetKeys=destinations,labelLines=1,geometry={}){
  const sources=sourceKeys.map(key=>({key,count:flows.filter(f=>f.ingress===key).reduce((s,f)=>s+f.queries,0)})).filter(n=>n.count);
  const targets=targetKeys.map(key=>({key,count:flows.filter(f=>f.destination===key).reduce((s,f)=>s+f.queries,0)})).filter(n=>n.count);
- // Reserve enough space for both label lines even when a node is a tiny share.
- // Only gaps grow; node and ribbon thickness remain proportional to requests.
- const gap=Math.max(52,labelLines*22+30),top=labelLines>1?labelLines*11+50:50,nodeCount=Math.max(sources.length,targets.length,geometry.nodeCount||0),height=Math.max(350,nodeCount*(gap+18)),scale=total?(height-gap*Math.max(0,nodeCount-1))/total:0;
- function place(nodes){let y=top+(height-(total*scale+gap*Math.max(0,nodes.length-1)))/2;return nodes.map(n=>{const node={...n,y,height:n.count*scale,used:0};y+=node.height+gap;return node})}
+ // Only labels next to each other determine their gap. A long name in one
+ // column must not stretch every row in all columns.
+ const nodeCount=Math.max(sources.length,targets.length,geometry.nodeCount||0),extent=key=>geometry.labelExtents?.get(key)||flowLabelExtents(labelLines),columns=geometry.columns||[sources.map(n=>n.key),targets.map(n=>n.key)];
+ const gap=(a,b)=>extent(a).below+extent(b).above+4,gaps=keys=>keys.slice(1).reduce((sum,key,i)=>sum+gap(keys[i],key),0),padding=Math.max(0,...columns.map(gaps),geometry.columns?0:Math.max(0,nodeCount-1)*(flowLabelExtents(labelLines).above+flowLabelExtents(labelLines).below+4)),top=32+Math.max(17,...columns.filter(keys=>keys.length).map(keys=>extent(keys[0]).above)),bottom=8+Math.max(14,...columns.filter(keys=>keys.length).map(keys=>extent(keys.at(-1)).below)),flowHeight=Math.min(100,Math.max(60,nodeCount*8)),height=flowHeight+padding,scale=total?flowHeight/total:0;
+ function place(nodes){const keys=nodes.map(n=>n.key);let y=top+(padding-gaps(keys))/2;return nodes.map((n,i)=>{const node={...n,y,height:n.count*scale,used:0};y+=node.height+(nodes[i+1]?gap(n.key,nodes[i+1].key):0);return node})}
  const left=place(sources),right=place(targets),edges=[];
  for(const source of left)for(const target of right){
   const count=flows.filter(f=>f.ingress===source.key&&f.destination===target.key).reduce((s,f)=>s+f.queries,0);
@@ -25,7 +29,7 @@ export function flowLayout(flows,total,sourceKeys=['addressed','intercepted'],ta
   edges.push({source:source.key,target:target.key,count,path:`M ${x1} ${y1} C ${c1} ${y1}, ${c2} ${y2}, ${x2} ${y2} L ${x2} ${y2+thickness} C ${c2} ${y2+thickness}, ${c1} ${y1+thickness}, ${x1} ${y1+thickness} Z`});
   source.used+=thickness;target.used+=thickness;
  }
- return {left,right,edges,scale,height,svgHeight:height+top+Math.max(45,labelLines*11+25)};
+ return {left,right,edges,scale,height,svgHeight:height+top+bottom};
 }
 
 // Group small sources without inventing their destination shares. Each ribbon

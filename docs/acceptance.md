@@ -711,5 +711,12 @@ acceptance was performed. Configuration runtime application is unchanged.
 
 - 功能包含 beta.18 的 Surge 缓存与通知菜单，并补上旧远端缺少 Surge 能力时的局部降级提示。用户已修改 Gitea runner 设置；使用新的递增标签复核镜像缓存与双仓库发布，不修改已发布标签。本轮按用户授权纳入此前全部未提交的告警、低资源优化、页面细节与基准 / 文档；审查修复告警采样遗漏 Surge 响应池，并增加该池计数回归。
 - Gitea 获取作业设为可恢复失败，三附件发布完成才输出成功；否则执行必须成功的回退作业。覆盖获取成功、获取失败且回退成功、两条均失败的结果语义。
-- 完整候选的 `env GOCACHE=/tmp/routepilot-go-build make verify-release` 通过：前端 33 文件 / 165 测试、Go 全包 race / vet（含五种发布分支夹具）、原生核心与真实 WKWebView、17 页 / 14 分类响应式页面、九项缓存界面检查、完整包身份 / 资源 / 签名 / DMG / ZIP / SHA256 校验（源码 `1.0.4-beta.19 / build 101`）。`make fuzz` 通过。最终 CI 与附件核验在发布后记录。
+- 完整候选的 `env GOCACHE=/tmp/routepilot-go-build make verify-release` 通过：前端 33 文件 / 165 测试、Go 全包 race / vet（含五种发布分支夹具）、原生核心与真实 WKWebView、17 页 / 14 分类响应式页面、九项缓存界面检查、完整包身份 / 资源 / 签名 / DMG / ZIP / SHA256 校验（源码 `1.0.4-beta.19 / build 101`）。`make fuzz` 通过。GitHub Release `38358819638` 成功，但回归 `38358861961` 在发布脚本夹具失败：macOS runner 没有 GNU `sha256sum`，因此该版本不能记为完整门禁通过。Gitea `2094` 整体成功，Ubuntu 镜像日志确认 `forcePull=false` / `Image exists? true`，随后 checkout 网络超时，macOS 回退发布成功。
 - 仍未安装或升级现用环境，未进行真实 Surge / 网关或 macOS 通知授权验收。
+
+## 2026-10-13：beta.20 流向图固定字号与纵向尺寸
+
+- 两张图使用与实际像素尺寸一致的 SVG viewBox；ResizeObserver 仅调整横向几何。标签固定 14px、数值 12px，固定换行宽度，按相邻标签所需高度留间距；节点更多时自然扩展，不设图内纵向滚动。三列共享请求比例与中间节点坐标，卡片不随邻卡高度拉伸。
+- 浏览器固定夹具覆盖 1440 / 3840 宽度：同一数据的图高、节点 y / height、文字 font-size / y / screenCTM 不变，仅宽度变化；十个短标签节点图高小于 600px，拥挤标签无重叠，长备注切换仍完整。新增长标签仅影响相邻间距的回归。
+- 发布脚本夹具显式提供测试用 SHA256 适配命令，不要求 macOS runner 安装 GNU coreutils；以仅系统 PATH 运行五种获取 / 发布 / 回退分支通过。生产 Gitea 获取脚本保持 Ubuntu 原有命令。
+- `env GOCACHE=/tmp/routepilot-go-build make verify-release` 通过：前端 33 文件 / 167 测试、Go 全包 race / vet、原生核心与 WKWebView、17 页 / 14 分类响应式检查、缓存界面九项检查、源码 `1.0.4-beta.20 / build 102` 完整打包与包核验。CI / 下载包结果在发布后记录；未安装或升级现用环境。

@@ -2,7 +2,7 @@ import React from 'react';
 import {it,expect,afterEach,vi} from 'vitest';
 import {render,screen,fireEvent,cleanup,act,within} from '@testing-library/react';
 import {MonitoringPanel} from './monitoring';
-import {appendSample,flowLayout,sourceFlows,policyDistribution,visibleClientPolicyFlows} from './monitoring-data';
+import {appendSample,flowLayout,flowLabelExtents,sourceFlows,policyDistribution,visibleClientPolicyFlows} from './monitoring-data';
 
 const snapshot={started_at:'2026-10-12T00:00:00Z',session_started_at:'session-a',observed_at:'2026-10-12T00:00:03Z',received:12,completed:10,in_flight:2,unconfirmed:0,latency_ms_sum:20,
  flows:[{ingress:'addressed',destination:'real',queries:3},{ingress:'addressed',destination:'cache',queries:2},{ingress:'intercepted',destination:'real',queries:1},{ingress:'intercepted',destination:'surge',queries:4}],
@@ -39,7 +39,7 @@ it('separates two-line labels for tiny clients and policies without inflating th
  const clients=['large','tiny-a','tiny-b','tiny-c'],policies=['main',...Array.from({length:10},(_,i)=>`small-${i}`)];
  const flows=[{ingress:'large',destination:'main',queries:100000},...policies.slice(1).map((destination,i)=>({ingress:clients[1+i%3],destination,queries:1}))];
  const {left,right,scale}=flowLayout(flows,100010,clients,policies);
- for(const side of [left,right])for(let i=1;i<side.length;i++)expect(side[i].y+side[i].height/2-side[i-1].y-side[i-1].height/2).toBeGreaterThanOrEqual(52);
+ for(const side of [left,right])for(let i=1;i<side.length;i++)expect(side[i].y+side[i].height/2-side[i-1].y-side[i-1].height/2).toBeGreaterThanOrEqual(32);
  expect(right[1].height).toBe(scale);expect(right[1].height/right[0].height).toBeCloseTo(1/100000,10);
 });
 
@@ -162,4 +162,18 @@ it('selects client-policy ribbons per stage with their exact request counts',()=
  fireEvent.click(within(chart).getByRole('button',{name:'Proxy → Node A: 6 · 60.0%'}));
  expect(within(chart).queryByText(/已选中 192\.0\.2\.10/)).toBeNull();
  expect(within(chart).getByText('已选中 Proxy → Node A：6 次请求（60.0%），再次点击可取消选中。')).toBeInTheDocument();
+});
+
+it('keeps a single-flow chart compact while preserving the request scale',()=>{
+ const layout=flowLayout([{ingress:'addressed',destination:'real',queries:1000}],1000);
+ expect(layout.svgHeight).toBeLessThanOrEqual(200);
+ expect(layout.left[0].height).toBe(layout.right[0].height);
+ expect(layout.edges[0].count).toBe(1000);
+});
+
+it('adds height only around long labels and keeps vertical geometry independent of width',()=>{
+ const keys=Array.from({length:10},(_,i)=>`client-${i}`),flows=keys.map(ingress=>({ingress,destination:'real',queries:1})),labelExtents=new Map([[keys[4],flowLabelExtents(5)]]);
+ const narrow=flowLayout(flows,10,keys,undefined,1,{sourceX:180,targetX:380,labelExtents}),wide=flowLayout(flows,10,keys,undefined,1,{sourceX:180,targetX:1500,labelExtents});
+ expect(narrow.svgHeight).toBe(wide.svgHeight);expect(narrow.left).toEqual(wide.left);expect(narrow.right).toEqual(wide.right);expect(narrow.edges[0].path).not.toBe(wide.edges[0].path);
+ const plain=flowLayout(flows,10,keys);expect(narrow.svgHeight-plain.svgHeight).toBe(72);expect(narrow.svgHeight).toBeLessThan(600);
 });

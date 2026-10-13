@@ -109,9 +109,21 @@ const fixture=Function(source.slice(source.indexOf('const settings='),source.ind
   await page.keyboard.press('Escape');
   if(!(await page.locator('.desktop-sidebar').isVisible()))throw Error('Escape did not exit monitoring focus mode');
  }
+ async function flowMetrics(){
+  await page.evaluate(()=>new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve))));
+  return page.locator('.monitor-flow-grid svg').evaluateAll(svgs=>svgs.map(svg=>({width:svg.getBoundingClientRect().width,height:svg.getBoundingClientRect().height,nodes:[...svg.querySelectorAll('rect')].map(el=>[Number(el.getAttribute('y')),Number(el.getAttribute('height'))]),labels:[...svg.querySelectorAll('text')].map(el=>({font:getComputedStyle(el).fontSize,y:el.getAttribute('y'),scale:[el.getScreenCTM().a,el.getScreenCTM().d]})),verticalScroll:svg.parentElement.scrollHeight>svg.parentElement.clientHeight+1})));
+ }
+ function checkFlowResize(before,after){
+  for(let i=0;i<before.length;i++){
+   const a=before[i],b=after[i];if(a.width===b.width)throw Error('Flow width did not respond to viewport resize');
+   if(a.height!==b.height||JSON.stringify(a.nodes)!==JSON.stringify(b.nodes)||JSON.stringify(a.labels)!==JSON.stringify(b.labels))throw Error('Flow height, vertical layout or text size changed with viewport width');
+   if(a.verticalScroll||b.verticalScroll||b.labels.some(label=>label.scale.some(scale=>Math.abs(scale-1)>1e-8)))throw Error('Flow uses internal vertical scrolling or scales SVG text');
+  }
+ }
+ let crowdedMetrics;
  crowdedPolicyFlows=true;await page.reload();await page.getByRole('heading',{level:1,name:'仪表盘',exact:true}).waitFor();await go('大屏监控');
  for(const width of [1440,3840]){
-  await page.setViewportSize({width,height:2160});await page.locator('.monitor-client-policy svg text[x="635"]').filter({hasText:'Hidding'}).waitFor();
+  await page.setViewportSize({width,height:2160});await page.locator('.monitor-client-policy svg .monitor-node-label').filter({hasText:'Hidding'}).waitFor();
   const overlap=await page.locator('.monitor-client-policy svg').evaluate(svg=>{
    const sides={};for(const group of svg.querySelectorAll(':scope > g')){const rect=group.querySelector('rect'),texts=[...group.querySelectorAll(':scope > text')].map(el=>el.getBBox());if(!rect||!texts.length)continue;const key=rect.getAttribute('x');(sides[key]??=[]).push({top:Math.min(...texts.map(b=>b.y)),bottom:Math.max(...texts.map(b=>b.y+b.height))})}
    return Object.values(sides).some(side=>side.sort((a,b)=>a.top-b.top).some((box,i)=>i>0&&box.top<side[i-1].bottom));
@@ -119,14 +131,16 @@ const fixture=Function(source.slice(source.indexOf('const settings='),source.ind
   await page.locator('.monitor-client-policy svg').evaluate(svg=>{
    const bands=[...svg.querySelectorAll(':scope > path')].map(path=>{const n=path.getAttribute('d').match(/[-+]?\d*\.?\d+(?:e[-+]?\d+)?/gi).map(Number),count=Number(path.querySelector('title').textContent.match(/: ([\d,.]+) ·/)[1].replaceAll(',',''));return {n,scale:(n[15]-n[1])/count}});
    if(bands.some(b=>Math.abs(b.scale-bands[0].scale)>1e-8))throw Error('Three-stage ribbons do not use the same scale');
-   for(const rect of svg.querySelectorAll('g > rect[x="600"]')){const y=Number(rect.getAttribute('y')),end=y+Number(rect.getAttribute('height')),incoming=bands.filter(b=>b.n[6]===600&&b.n[7]>=y-1e-8&&b.n[9]<=end+1e-8),outgoing=bands.filter(b=>b.n[0]===614&&b.n[1]>=y-1e-8&&b.n[15]<=end+1e-8);for(const [rows,top,bottom] of [[incoming,7,9],[outgoing,1,15]])if(!rows.length||Math.abs(Math.min(...rows.map(b=>b.n[top]))-y)>1e-8||Math.abs(Math.max(...rows.map(b=>b.n[bottom]))-end)>1e-8)throw Error('Ribbons do not align with the middle node');}
+   for(const rect of svg.querySelectorAll('g > rect[data-column="policy"]')){const x=Number(rect.getAttribute('x')),y=Number(rect.getAttribute('y')),end=y+Number(rect.getAttribute('height')),incoming=bands.filter(b=>b.n[6]===x&&b.n[7]>=y-1e-8&&b.n[9]<=end+1e-8),outgoing=bands.filter(b=>b.n[0]===x+14&&b.n[1]>=y-1e-8&&b.n[15]<=end+1e-8);for(const [rows,top,bottom] of [[incoming,7,9],[outgoing,1,15]])if(!rows.length||Math.abs(Math.min(...rows.map(b=>b.n[top]))-y)>1e-8||Math.abs(Math.max(...rows.map(b=>b.n[bottom]))-end)>1e-8)throw Error('Ribbons do not align with the middle node');}
   });
   const exact=await page.locator('.monitor-client-policy').evaluate(card=>{
    const table=card.querySelector('tbody'),rows=[...table.rows],count=rows.reduce((sum,row)=>sum+Number(row.cells[3].textContent.replaceAll(',','')),0),percent=rows.reduce((sum,row)=>sum+Number(row.cells[4].textContent.replace('%','')),0);
    return {count,percent,unknown:[...card.querySelectorAll('text,td,title')].some(el=>el.textContent.trim()==='未记录最终策略')};
   });if(exact.count!==3068||Math.abs(exact.percent-100)>.1||exact.unknown)throw Error('Unrecorded final-policy requests remain in client flow totals: '+JSON.stringify(exact));
+  const metrics=await flowMetrics();if(metrics.some(chart=>chart.height>600))throw Error('Short crowded labels create an oversized flow chart');if(crowdedMetrics)checkFlowResize(crowdedMetrics,metrics);else crowdedMetrics=metrics;
   await page.locator('.monitor-client-policy').screenshot({path:out+'/monitoring-crowded-policies-'+width+'.png'});
  }
+ let namedMetrics;
  crowdedPolicyFlows=false;sourceNames=true;await page.reload();await page.getByRole('heading',{level:1,name:'仪表盘',exact:true}).waitFor();await go('大屏监控');
  for(const width of [1440,3840]){
   await page.setViewportSize({width,height:2160});
@@ -136,6 +150,7 @@ const fixture=Function(source.slice(source.indexOf('const settings='),source.ind
    if(await text()!==sourceRemark)throw Error('Remark label is truncated or includes IP');
    await label.click();if(await text()!=='192.0.2.10')throw Error('Remark did not toggle to IP');await label.press('Enter');if(await text()!==sourceRemark)throw Error('IP did not toggle back to name');
   }
+  const metrics=await flowMetrics();if(namedMetrics)checkFlowResize(namedMetrics,metrics);else namedMetrics=metrics;
   await page.screenshot({path:out+'/monitoring-named-'+width+'.png',fullPage:true});
  }
  await page.setViewportSize({width:1440,height:1000});await go('设置');await page.locator('.tabs').getByRole('button',{name:'大屏监控',exact:true}).click();

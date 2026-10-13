@@ -73,17 +73,19 @@ if any('/releases/tags/' in a for a in args):
 if os.environ['PUBLISH_RESULT']=='failure':sys.exit(22)
 print(json.dumps({'id':42}))
 `
-			for name, body := range map[string]string{"curl": curl, "sleep": "#!/bin/sh\nexit 0\n", "make": "#!/bin/sh\nmkdir -p artifacts\nprintf 'fixture dmg' > artifacts/RoutePilot-macos-arm64.dmg\nprintf 'fixture zip' > artifacts/RoutePilot-macos-arm64.zip\n"} {
+			for name, body := range map[string]string{"curl": curl, "sha256sum": "#!/bin/sh\nexec shasum -a 256 \"$@\"\n", "sleep": "#!/bin/sh\nexit 0\n", "make": "#!/bin/sh\nmkdir -p artifacts\nprintf 'fixture dmg' > artifacts/RoutePilot-macos-arm64.dmg\nprintf 'fixture zip' > artifacts/RoutePilot-macos-arm64.zip\n"} {
 				if err := os.WriteFile(filepath.Join(bin, name), []byte(body), 0700); err != nil {
 					t.Fatal(err)
 				}
 			}
 			output := filepath.Join(root, "outputs")
+			var trace strings.Builder
 			execute := func(script, publish string) error {
 				command := exec.Command("bash", "-c", script)
 				command.Dir = root
 				command.Env = append(os.Environ(), "PATH="+bin+":"+os.Getenv("PATH"), "GITHUB_REF_NAME=v1.0.4-beta.19", "GITHUB_RUN_NUMBER=1", "GITHUB_REPOSITORY=knot/routepilot", "GITHUB_API_URL=https://fixture.test/api/v1", "GITHUB_OUTPUT="+output, "GITEA_TOKEN=fixture-value-not-a-credential", "RELEASE_SOURCE_TOKEN=", "FETCH_RESULT="+tc.fetch, "PUBLISH_RESULT="+publish, "FIXTURE_SUMS="+sums)
 				data, err := command.CombinedOutput()
+				trace.Write(data)
 				if err != nil {
 					t.Logf("expected candidate-path failure: %s", data)
 				}
@@ -101,7 +103,7 @@ print(json.dumps({'id':42}))
 			}
 			fallback := !mirrored
 			if fallback != tc.wantFallback {
-				t.Fatal("incorrect fallback selection", string(data))
+				t.Fatal("incorrect fallback selection", string(data), trace.String())
 			}
 			success := mirrored
 			if fallback {

@@ -80,24 +80,22 @@
  .monitor-focus > main { padding: 16px; }
 }
 
-.monitor-flow-grid { display: grid; grid-template-columns: repeat(auto-fit,minmax(min(100%,780px),1fr)); gap: 22px; }
-.monitor-flow-grid .monitor-sankey { min-width: 480px; }
-@media (max-width: 2199px) {
- .monitor-flow .monitor-sankey { max-width:900px; margin-inline:auto; }
-}
+.monitor-flow-grid { align-items:start; display: grid; grid-template-columns: repeat(auto-fit,minmax(min(100%,780px),1fr)); gap: 22px; }
+.monitor-flow-grid .monitor-sankey { min-width: 0; }
 .monitor-ribbon { cursor: pointer; transition: fill-opacity .15s ease; }
 .monitor-ribbon.picked, .monitor-ribbon:focus { stroke: var(--accent); stroke-width: 2; outline: none; }
 .monitor-flow-picked { margin: 10px 0 0; font-size: 13px; }
-.monitor-flow-grid svg text { font-size: 20px; }
-.monitor-flow-grid svg .monitor-svg-heading { font-size: 18px; }
-.monitor-flow-grid svg .monitor-svg-value { font-size: 17px; }
+.monitor-flow-scroll { overflow-x:auto; }
+.monitor-flow-grid svg text { font-size: 14px; }
+.monitor-flow-grid svg .monitor-svg-heading { font-size: 12px; }
+.monitor-flow-grid svg .monitor-svg-value { font-size: 12px; }
 
 
 .monitor-source-label[role="button"] { cursor: pointer; }
 .monitor-source-label[role="button"]:hover, .monitor-source-label[role="button"]:focus { fill: var(--accent); text-decoration: underline; outline: none; }
 
-.monitor-flow-grid .monitor-three-stage { min-width: 680px; }
-.monitor-node-label { paint-order: stroke; stroke: var(--panel); stroke-width: 4px; stroke-linejoin: round; }
+
+.monitor-node-label { paint-order: stroke; stroke: var(--panel); stroke-width: 2px; stroke-linejoin: round; }
 .monitor-source-bars { max-height: 420px; overflow-y: auto; }
 .monitor-source-bars .monitor-source-link { text-align: left; max-width: none; }
 .monitor-primary-grid:has(> :only-child), .monitor-secondary-grid:has(> :only-child) { grid-template-columns: minmax(0,1fr); }
