@@ -1,0 +1,14 @@
+.cache-policy-name { overflow-wrap: anywhere; }
+.cache-policy-settings { margin-block: 24px; }
+.cache-policy-groups { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); align-items: start; gap: 24px; }
+.cache-policy-group { grid-column: auto; min-width: 0; border: 1px solid var(--border, #dce2ea); border-radius: 12px; padding: 16px; }
+.cache-policy-group legend { padding-inline: 8px; }
+.cache-policy-group .check { display: flex; align-items: center; gap: 10px; font-size: 13px; line-height: 22px; cursor: pointer; }
+.cache-policy-group legend .check { min-height: var(--control-height); padding: 9px 12px; border: 1px solid var(--border, #dce2ea); border-radius: 9px; background: var(--hover); font-weight: 600; }
+.cache-policy-group h3 { margin-block: 12px; }
+.cache-policy-row { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; margin-block: 12px; padding: 12px; border: 1px solid var(--border, #dce2ea); border-radius: 10px; background: var(--hover); }
+.cache-policy-item { flex: 1 1 100%; min-width: 0; font-weight: 500; }
+.cache-policy-item .cache-policy-name { min-width: 0; }
+.cache-policy-name small { display: block; margin-top: 4px; color: var(--muted); font-weight: 400; }
+.cache-policy-idle { display: flex; margin-block: 12px; }
+@media (max-width: 900px) { .cache-policy-groups { grid-template-columns: minmax(0, 1fr); } }

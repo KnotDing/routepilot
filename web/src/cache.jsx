@@ -1,3 +1,4 @@
+import {CacheGroupStatistics} from './cache-policies';
 import {message} from './i18n';
 import React,{useEffect,useState} from 'react';
 import {request} from './client';
@@ -11,7 +12,7 @@ export function OptimisticReliability({stats,kind='decision',enabled=false}) {
  if(!stats||!Object.hasOwn(stats,'optimistic_hits')||(!enabled&&!stats.optimistic_hits))return null;
  const hits=stats.optimistic_hits??0,compared=stats.optimistic_compared??0,mismatches=stats.optimistic_mismatches??0;
  const rate=compared?`${(mismatches/compared*100).toLocaleString(locale,{maximumFractionDigits:2})}%`:'—';
- return <section className="panel inline-help-panel"><h2 className="inline-help-heading">{t(kind==='response'?'responseReliability':'decisionReliability')}<span className="inline-help-control"><button type="button" className="inline-help-button" aria-label={t('reliabilityHelpLabel')} aria-expanded={helpOpen} aria-controls={`reliability-help-${kind}`} onClick={()=>setHelpOpen(open=>!open)}>?</button>{helpOpen&&<div className="inline-help-popover" id={`reliability-help-${kind}`} role="tooltip" aria-label={t('reliabilityHelpLabel')}><p>{t(kind==='response'?'responseComparisonHelp':'decisionComparisonHelp')}</p><p>{t('optimisticStatisticsHelp')}</p></div>}</span></h2><div className="metrics">{[['optimisticHits',hits],['optimisticCompared',compared],['optimisticMismatches',mismatches],['optimisticMismatchRate',rate],['optimisticUnverified',Math.max(0,hits-compared)]].map(([label,value])=><div className="metric" key={label}><span>{t(label)}</span><strong>{value}</strong></div>)}</div></section>;
+ return <section className="panel inline-help-panel"><h2 className="inline-help-heading">{t(kind==='response'?'responseReliability':'decisionReliability')}<span className="inline-help-control"><button type="button" className="inline-help-button" aria-label={t('reliabilityHelpLabel')} aria-expanded={helpOpen} aria-controls={`reliability-help-${kind}`} onClick={()=>setHelpOpen(open=>!open)}>?</button>{helpOpen&&<div className="inline-help-popover" id={`reliability-help-${kind}`} role="tooltip" aria-label={t('reliabilityHelpLabel')}><p>{t(kind==='response'?'responseComparisonHelp':'decisionComparisonHelp')}</p><p>{t('optimisticStatisticsHelp')}</p></div>}</span></h2><div className="metrics">{[['optimisticHits',hits],['optimisticCompared',compared],['optimisticMismatches',mismatches],['optimisticMismatchRate',rate],['optimisticUnverified',Math.max(0,hits-compared)]].map(([label,value])=><div className="metric" key={label}><span>{t(label)}</span><strong>{value}</strong></div>)}</div><CacheGroupStatistics groups={stats.groups} kind={kind}/></section>;
 }
 export function CachePanel({notify}) {
  const [locale]=useLocale(),t=cacheText(locale);

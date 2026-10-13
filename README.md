@@ -15,7 +15,7 @@ RoutePilot 是一款 macOS 状态栏应用：向 Surge 查询分流策略，为 
 - **缩短直连路径：** DIRECT 查询返回真实地址，客户端后续流量由网关直接送往 WAN，不必绕经 Surge；Fake-IP 和下一跳配置为 Surge 的受管理前缀仍按路由经过 Surge。
 - **Surge 故障时保留新连接的直连路径：** RoutePilot 停止发放新的 Fake-IP，后续查询改用独立真实 DNS 解析，让网关可将新连接直连出网（真实 DNS 与 WAN 可用时）。已发放 Fake-IP 在 TTL / 宽限期内仍可能依赖 Surge。
 
-[📦 下载最新版本](https://github.com/KnotDing/routepilot/releases) · [🧪 DNS 拦截确认测试版 v1.0.4-beta.16](https://github.com/KnotDing/routepilot/releases/tag/v1.0.4-beta.16) · [Gitea 备用下载](https://gitea.knotding.com/knot/routepilot/releases) · [🚀 快速开始](#quick-start) · [🤖 安装 skill](#agent-skill) · [📚 文档导航](#documentation)
+[📦 下载最新版本](https://github.com/KnotDing/routepilot/releases) · [🧪 乐观缓存分项设置测试版 v1.0.4-beta.17](https://github.com/KnotDing/routepilot/releases/tag/v1.0.4-beta.17) · [Gitea 备用下载](https://gitea.knotding.com/knot/routepilot/releases) · [🚀 快速开始](#quick-start) · [🤖 安装 skill](#agent-skill) · [📚 文档导航](#documentation)
 
 <p align="center">
   <img src="docs/images/management-4k.png" width="100%" alt="RoutePilot App 管理界面 4K 截图">
@@ -139,13 +139,15 @@ DNS 查询不会生成单 IP BGP 路由。Surge 不可用时停止新 Fake-IP、
 | 乐观决策缓存 | 确认 Surge 配置或外部资源变化后，先使用旧决策；命中时可按需刷新，也可在空闲时自动刷新。空闲自动刷新可单独关闭；刷新失败或 UNKNOWN 时保留旧值并重试 |
 | 乐观响应缓存 | TTL 到期后仍保留上游响应，先返回旧响应；命中时可按需查询上游，也可在空闲时自动刷新。空闲自动刷新可单独关闭。定期持久化，重启也恢复过期响应 |
 
+开启相应乐观缓存后，可按 DIRECT / SURGE / REJECT 决策和各真实 DNS 上游分别开关乐观缓存。每项仅一个乐观开关，普通缓存沿用原行为；UNKNOWN 使用短期普通缓存。关闭某上游的乐观缓存时仍保留 TTL 内的普通响应。决策缓存页和 DNS 查询页显示分项命中与可靠性统计，详见[分项缓存设置与统计](docs/cache-policies.md)。
+
 `optimistic_idle_refresh` 与 `optimistic_response_idle_refresh` 分别控制乐观决策缓存和乐观响应缓存的空闲自动刷新，默认开启以兼容现有行为。关闭空闲自动刷新不影响命中时的按需刷新，也不影响旧缓存的保留与立即响应。稳定的 DIRECT / SURGE / REJECT 决策会持久化；UNKNOWN 与求值错误不跨重启保留。响应缓存保留原始过期时间，过期响应向客户端返回 30 秒 TTL；手动清理、容量限制和不适用配置仍会使缓存失效。乐观缓存不改变 Fake-IP 的路由与健康门禁。关闭乐观响应缓存并应用成功时，只清理已过期响应，保留 TTL 内的响应及其原始过期时间；关闭状态下不做响应缓存持久化。
 
 开启 `optimistic_idle_refresh` 时，待刷新决策会在至少 1 秒没有 DNS 请求、且求值队列空闲时自动刷新，每次一条、每秒最多启动 4 条；新请求到来时取消空闲刷新，实时查询优先。刷新沿用原客户端 IP 与查询类型，并轮流处理条目，避免失败域名阻塞其他决策。乐观响应缓存的空闲刷新也会等待 1 秒无 DNS 请求，每次仅刷新一条，且被新请求取消。
 
 配置校验并保存成功后，页面立即反馈；服务重启、路由调整和安全等待在后台执行。页面另行显示应用进度与失败原因，支持重新应用。**“已保存”与“已生效”分别展示，避免把等待误认为保存失败。**
 
-📊 **乐观缓存可靠性**：决策缓存页与 DNS 查询页分别显示旧缓存命中请求数、已核对请求数、不一致请求数和不一致率。一次后台刷新会核对刷新前使用同一个旧结果的全部命中请求；刷新失败或尚未核对的请求不作为“一致”样本。响应比较忽略 TTL、请求 ID、记录顺序、域名大小写和 EDNS 传输信息，保留返回码与记录内容的实际变化。统计随当前缓存实例累计，服务重启或重建缓存实例后重新开始，手动清理条目不重置计数。
+📊 **乐观缓存可靠性**：决策缓存页与 DNS 查询页分别显示旧缓存命中请求数、已核对请求数、不一致请求数和不一致率。一次后台刷新会核对刷新前使用同一个旧结果的全部命中请求；刷新失败或尚未核对的请求不作为“一致”样本。响应比较忽略 TTL、请求 ID、记录顺序、域名大小写和 EDNS 传输信息，保留返回码与记录内容的实际变化。总计与分项可靠性计数跨服务重启和缓存实例重建保留，直到手动清理缓存；普通命中等实例计数仍随缓存实例重新开始。
 
 ## 📊 把运行状态放在眼前
 

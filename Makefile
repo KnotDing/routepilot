@@ -32,6 +32,7 @@ native-test:
 	sh scripts/test_native.sh
 ui-test:
 	node scripts/ui_forms_check.cjs
+	node scripts/ui_cache_policies_check.cjs
 coverage: web-assets
 	mkdir -p .cache
 	$(GO) test -race -count=1 -coverprofile=.cache/release-coverage.out ./...

@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"surge-controller/internal/cache"
 	"surge-controller/internal/model"
 	"surge-controller/internal/resolver"
 	"time"
@@ -76,23 +77,25 @@ type BGP struct {
 	KeepaliveSeconds uint64 `json:"keepalive_seconds"`
 }
 type Cache struct {
-	Optimistic                        bool `json:"optimistic"`
-	OptimisticIdleRefresh             bool `json:"optimistic_idle_refresh"`
-	OptimisticResponses               bool `json:"optimistic_responses"`
-	OptimisticResponseIdleRefresh     bool `json:"optimistic_response_idle_refresh"`
-	ExpireDecisions                   bool `json:"expire_decisions"`
-	InvalidateOnReadFailure           bool `json:"invalidate_on_read_failure"`
-	InvalidateDirectOnSelectionChange bool `json:"invalidate_direct_on_selection_change"`
-	InvalidateRejectOnSelectionChange bool `json:"invalidate_reject_on_selection_change"`
-	Capacity                          int  `json:"capacity"`
-	ResponseCapacity                  int  `json:"response_capacity"`
-	Workers                           int  `json:"workers"`
-	Queue                             int  `json:"queue"`
-	TimeoutMS                         int  `json:"timeout_ms"`
-	DirectTTLSeconds                  int  `json:"direct_ttl_seconds"`
-	SurgeTTLSeconds                   int  `json:"surge_ttl_seconds"`
-	UnknownTTLSeconds                 int  `json:"unknown_ttl_seconds"`
-	ErrorTTLSeconds                   int  `json:"error_ttl_seconds"`
+	Decisions                         map[string]cache.Policy `json:"decisions,omitempty"`
+	Upstreams                         map[string]cache.Policy `json:"upstreams,omitempty"`
+	Optimistic                        bool                    `json:"optimistic"`
+	OptimisticIdleRefresh             bool                    `json:"optimistic_idle_refresh"`
+	OptimisticResponses               bool                    `json:"optimistic_responses"`
+	OptimisticResponseIdleRefresh     bool                    `json:"optimistic_response_idle_refresh"`
+	ExpireDecisions                   bool                    `json:"expire_decisions"`
+	InvalidateOnReadFailure           bool                    `json:"invalidate_on_read_failure"`
+	InvalidateDirectOnSelectionChange bool                    `json:"invalidate_direct_on_selection_change"`
+	InvalidateRejectOnSelectionChange bool                    `json:"invalidate_reject_on_selection_change"`
+	Capacity                          int                     `json:"capacity"`
+	ResponseCapacity                  int                     `json:"response_capacity"`
+	Workers                           int                     `json:"workers"`
+	Queue                             int                     `json:"queue"`
+	TimeoutMS                         int                     `json:"timeout_ms"`
+	DirectTTLSeconds                  int                     `json:"direct_ttl_seconds"`
+	SurgeTTLSeconds                   int                     `json:"surge_ttl_seconds"`
+	UnknownTTLSeconds                 int                     `json:"unknown_ttl_seconds"`
+	ErrorTTLSeconds                   int                     `json:"error_ttl_seconds"`
 }
 type Health struct {
 	IntervalMS       int    `json:"interval_ms"`
@@ -286,6 +289,7 @@ func HostPattern(domain, match string) (string, error) {
 // Clone prevents an unvalidated management edit from mutating live slices.
 func (d Document) Clone() Document {
 	c := d
+	c.Settings.Cache = cloneCachePolicies(d.Settings.Cache)
 	if d.Settings.Notifications.Errors != nil {
 		c.Settings.Notifications.Errors = append([]string{}, d.Settings.Notifications.Errors...)
 	}
@@ -390,6 +394,9 @@ func ParseUpdateTime(value string) (int, int, bool) {
 }
 
 func (d Document) Validate() error {
+	if err := d.Settings.Cache.validatePolicies(); err != nil {
+		return err
+	}
 	if err := validateClients(d.Settings.DNS.Clients); err != nil {
 		return err
 	}

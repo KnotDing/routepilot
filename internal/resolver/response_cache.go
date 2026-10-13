@@ -23,11 +23,11 @@ type ResponseCacheRecord struct {
 	Original  bool               `json:"original,omitempty"`
 }
 
-func (r *Real) ResponseSnapshot() []ResponseCacheRecord {
+func (r *Real) ResponseSnapshot(persistent ...bool) []ResponseCacheRecord {
 	records := r.Cache.Snapshot()
 	out := make([]ResponseCacheRecord, 0, len(records))
 	for _, record := range records {
-		if record.Value.Msg == nil {
+		if record.Value.Msg == nil || len(persistent) > 0 && persistent[0] && !r.allowsOptimistic(record.Value.Endpoint) {
 			continue
 		}
 		msg := record.Value.Msg.Copy()
@@ -58,6 +58,11 @@ func (r *Real) RestoreResponses(records []ResponseCacheRecord) int {
 	now := r.now()
 	values := make([]cache.Record[string, response], 0, len(records))
 	for _, record := range records {
+		endpoint := r.storedEndpoint(record)
+		if endpoint == "" {
+			continue
+		}
+		optimistic := r.allowsOptimistic(endpoint)
 		if record.Stored.IsZero() || record.Stored.After(now) || !record.ExpiresAt.After(record.Stored) {
 			continue
 		}
@@ -84,7 +89,7 @@ func (r *Real) RestoreResponses(records []ResponseCacheRecord) int {
 		if deadline := record.Stored.Add(ttl); expiry.After(deadline) {
 			expiry = deadline
 		}
-		if !r.optimistic && !now.Before(expiry) {
+		if !optimistic && !now.Before(expiry) {
 			continue
 		}
 		refreshQuery := query
@@ -116,8 +121,8 @@ func (r *Real) RestoreResponses(records []ResponseCacheRecord) int {
 			refreshEndpoints = append([]ResolverEndpoint(nil), r.endpoints...)
 		}
 		values = append(values, cache.Record[string, response]{Key: key,
-			Value: response{Fingerprint: responseFingerprint(msg), Msg: msg, Stored: record.Stored, Endpoint: record.Endpoint, RefreshQuery: refreshQuery,
-				RefreshEndpoints: refreshEndpoints, RefreshOriginal: refreshOriginal}, ExpiresAt: expiry, Stale: r.optimistic})
+			Value: response{Fingerprint: responseFingerprint(msg), Msg: msg, Stored: record.Stored, Endpoint: endpoint, RefreshQuery: refreshQuery,
+				RefreshEndpoints: refreshEndpoints, RefreshOriginal: refreshOriginal}, ExpiresAt: expiry, Stale: optimistic})
 	}
 	return r.Cache.Restore(values)
 }

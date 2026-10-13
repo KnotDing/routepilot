@@ -105,11 +105,11 @@ func (rt *Runtime) observeDecisionRevision(snapshot surge.Snapshot, err error) (
 		// Optimistic updates restore saved decisions as stale. Otherwise a full
 		// update rejects them; selection updates follow the configured policy.
 		if reason == "" || selection || optimistic {
-			records := retainedDecisions(pending.Entries, c.ExpireDecisions)
+			records := rt.allowedDecisions(retainedDecisions(pending.Entries, c.ExpireDecisions))
 			if selection || !c.Optimistic {
 				kept := records[:0]
 				for _, record := range records {
-					if (!selection || !selected(record.Key, record.Value)) && (c.Optimistic || !record.Stale) {
+					if (!selection || !selected(record.Key, record.Value)) && (rt.engine.AllowsOptimistic(record.Value.Decision) || !record.Stale) {
 						kept = append(kept, record)
 					}
 				}
@@ -124,7 +124,7 @@ func (rt *Runtime) observeDecisionRevision(snapshot surge.Snapshot, err error) (
 	}
 	if optimistic {
 		rt.engine.Cache.MarkStale(func(value model.DecisionResult) bool {
-			return value.Decision == model.Direct || value.Decision == model.Surge || value.Decision == model.Reject
+			return rt.engine.AllowsOptimistic(value.Decision)
 		})
 		reason += "；乐观缓存保留旧决策，按需后台刷新"
 	}
@@ -142,7 +142,7 @@ func (rt *Runtime) decisionSnapshot() decisionCacheSnapshot {
 		// Keep the saved snapshot while Surge is unavailable; never serve these rows
 		// until a current revision is confirmed, nor overwrite them with an empty cache.
 		snapshot := *pending
-		snapshot.Entries = retainedDecisions(pending.Entries, c.ExpireDecisions)
+		snapshot.Entries = rt.allowedDecisions(retainedDecisions(pending.Entries, c.ExpireDecisions))
 		snapshot.OptimisticStats = rt.engine.Cache.OptimisticStats()
 		return snapshot
 	}
@@ -150,7 +150,7 @@ func (rt *Runtime) decisionSnapshot() decisionCacheSnapshot {
 		Digest: rt.decisionRevision.digest, Selection: rt.decisionRevision.selection,
 		OptimisticStats: rt.engine.Cache.OptimisticStats()}
 	if snapshot.Digest != "" {
-		snapshot.Entries = retainedDecisions(rt.engine.Cache.Snapshot(), c.ExpireDecisions)
+		snapshot.Entries = rt.allowedDecisions(retainedDecisions(rt.engine.Cache.Snapshot(), c.ExpireDecisions))
 	}
 	return snapshot
 }
@@ -183,4 +183,14 @@ func (a *App) saveDecisionCache() error {
 	}
 	a.savedCacheDigest = digest
 	return nil
+}
+
+func (rt *Runtime) allowedDecisions(records []decisionRecord) []decisionRecord {
+	out := records[:0]
+	for _, record := range records {
+		if !record.Stale || rt.engine.AllowsOptimistic(record.Value.Decision) {
+			out = append(out, record)
+		}
+	}
+	return out
 }

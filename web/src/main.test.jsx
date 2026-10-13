@@ -101,9 +101,11 @@ it('exposes independent long-lived cache invalidation settings',()=>{
 it('keeps cache option labels concise and shows explanations on hover',()=>{
  render(<Settings settings={{cache:{optimistic:false,optimistic_responses:false,optimistic_idle_refresh:true,optimistic_response_idle_refresh:true,expire_decisions:false,invalidate_on_read_failure:false,invalidate_direct_on_selection_change:true,invalidate_reject_on_selection_change:false}}} refresh={()=>{}} notify={()=>{}}/>);
  fireEvent.click(screen.getByRole('button',{name:'缓存'}));
- const decision=screen.getByLabelText('乐观决策缓存'),query=screen.getByLabelText('乐观查询缓存');
+ const decision=screen.getByLabelText('乐观决策缓存'),query=screen.getByLabelText('乐观响应缓存');
  expect(decision.closest('label')).toHaveAttribute('title','确认配置或资源更新后保留旧决策，并在命中或空闲时刷新。');
  expect(query.closest('label')).toHaveAttribute('title','乐观查询缓存已开启：过期响应仍可立即返回，后台刷新成功后替换；响应会持久化并在重启后恢复。');
+ expect(screen.queryByLabelText('决策缓存空闲刷新')).not.toBeInTheDocument();
+ fireEvent.click(decision);
  expect(screen.getByLabelText('决策缓存空闲刷新').closest('label')).toHaveAttribute('title',expect.stringContaining('关闭不影响命中时的按需刷新'));
  expect(screen.queryByText(/先响应旧决策|再在后台刷新|关闭后仍会在缓存命中时按需刷新/)).not.toBeInTheDocument();
 });

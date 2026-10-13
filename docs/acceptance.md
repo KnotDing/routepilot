@@ -673,3 +673,12 @@ requests, preservation of freshly read settings, failure reporting, static
 permission, changed backend mode, and confirmed/invalidated button states.
 No actual installation, upgrade, backend restart, or gateway/LAN/IPv6 path
 acceptance was performed. Configuration runtime application is unchanged.
+
+
+## 2026-10-13：v1.0.4-beta.17 乐观缓存分项设置
+
+- 实现：按 DIRECT / SURGE / REJECT 决策与实际 DNS 上游设置乐观缓存；总开关勾选后展开分项，取消后收起并保留配置。普通缓存保持原有行为，UNKNOWN 沿用短期普通缓存。
+- 分项统计包含条目、命中、未命中、淘汰、待刷新、旧值命中、已核对、不一致及不一致率；同步页面、API 与 /metrics。核对按实际返回的旧决策 / 旧上游归属，跨配置重建和进程重启持久化，手动清理重置。
+- 验证：隔离发布目录的 `env GOCACHE=/tmp/routepilot-go-build make verify-release` 通过：前端 32 文件 / 159 测试、Go 全包 race / vet、原生核心与真实 WKWebView、17 页 / 14 分类响应式检查、九项分组缓存检查、完整 App 打包与版本 / 资源 / 签名 / DMG / ZIP / SHA256 校验（源码 1.0.4-beta.17 / build 99）。`make fuzz` 通过。GitHub 回归与两个发布 workflow 的最终结果另行核验。
+- 未授权安装或升级现用环境，未验收真实 LAN / NAT / IPv6 流量。前序告警、性能、导航与偏好等未提交改动留在原工作区，不纳入此版本。
+- 说明：[分项缓存说明](cache-policies.md)。

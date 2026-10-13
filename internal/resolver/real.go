@@ -34,6 +34,7 @@ type EndpointStats struct {
 	LastFailure time.Time        `json:"last_failure"`
 }
 type OptimisticOptions struct {
+	Policies    map[string]cache.Policy
 	Context     context.Context
 	Enabled     bool
 	IdleRefresh bool
@@ -41,6 +42,7 @@ type OptimisticOptions struct {
 	Workers     int
 }
 type Real struct {
+	policies         map[string]cache.Policy
 	optimistic       bool
 	idleRefresh      bool
 	refreshTimeout   time.Duration
@@ -96,8 +98,10 @@ func NewReal(t UpstreamTransport, endpoints []ResolverEndpoint, preserve bool, c
 	}
 	r.ctx, r.cancel = context.WithCancel(option.Context)
 	r.optimistic, r.idleRefresh = option.Enabled, option.IdleRefresh
+	r.policies = cache.ClonePolicies(option.Policies)
 	r.refreshTimeout, r.refreshLimit = option.Timeout, min(option.Workers, 256)
 	r.Cache = cache.New[string, response](capacity, cache.Options{RetainExpired: r.optimistic})
+	r.configureCacheGroups()
 	r.refreshing = make(map[string]bool)
 	if r.optimistic && r.idleRefresh {
 		r.refreshWorkers.Add(1)
@@ -150,13 +154,9 @@ func (r *Real) Resolve(ctx context.Context, req model.ResolveRequest) (*dns.Msg,
 		}
 		b.Write(raw)
 		key = b.String()
-		lookup := r.Cache.GetState
-		if r.optimistic {
-			lookup = r.Cache.GetOptimisticState
-		}
-		v, ok, stale, generation := lookup(key)
+		v, ok, stale, generation := r.Cache.GetAllowedState(key, r.optimistic, r.policyForResponse)
 		gen = generation
-		if ok && (!stale || r.optimistic) {
+		if ok {
 			if stale {
 				r.refresh(req, endpoints, original, key, gen, false)
 			}
@@ -194,10 +194,10 @@ func (r *Real) Resolve(ctx context.Context, req model.ResolveRequest) (*dns.Msg,
 			return m, nil
 		}
 	}
-	return r.exchange(ctx, req, endpoints, original, key, cacheable, gen)
+	return r.exchange(ctx, req, endpoints, original, key, cacheable, gen, false)
 }
 
-func (r *Real) exchange(ctx context.Context, req model.ResolveRequest, endpoints []ResolverEndpoint, original bool, key string, cacheable bool, gen uint64) (*dns.Msg, error) {
+func (r *Real) exchange(ctx context.Context, req model.ResolveRequest, endpoints []ResolverEndpoint, original bool, key string, cacheable bool, gen uint64, refresh bool) (*dns.Msg, error) {
 	q := req.Message
 	start := int(r.next.Add(1) % uint64(len(endpoints)))
 	var last error
@@ -205,7 +205,7 @@ func (r *Real) exchange(ctx context.Context, req model.ResolveRequest, endpoints
 		ix := (start + i) % len(endpoints)
 		ep := endpoints[ix]
 		if req.Trace != nil {
-			req.Trace.Endpoint = ep.Protocol + "://" + ep.Address
+			req.Trace.Endpoint = ep.CacheIdentity()
 		}
 		began := r.now()
 		reply, err := r.transport.Exchange(ctx, ep, q)
@@ -237,6 +237,9 @@ func (r *Real) exchange(ctx context.Context, req model.ResolveRequest, endpoints
 			continue
 		}
 		if cacheable {
+			if !refresh {
+				r.Cache.RecordMissGroup(key, response{Endpoint: ep.CacheIdentity()}, gen)
+			}
 			var fingerprint [32]byte
 			if r.optimistic {
 				fingerprint = responseFingerprint(reply)
@@ -245,7 +248,7 @@ func (r *Real) exchange(ctx context.Context, req model.ResolveRequest, endpoints
 				refreshQuery := req.Message.Copy()
 				refreshQuery.Id = 0
 				refreshQuery.Question[0].Name = dns.CanonicalName(refreshQuery.Question[0].Name)
-				r.Cache.PutCompared(key, response{Fingerprint: fingerprint, Msg: reply.Copy(), Stored: r.now(), Endpoint: ep.Protocol + "://" + ep.Address,
+				r.Cache.PutCompared(key, response{Fingerprint: fingerprint, Msg: reply.Copy(), Stored: r.now(), Endpoint: ep.CacheIdentity(),
 					RefreshQuery: refreshQuery, RefreshEndpoints: append([]ResolverEndpoint(nil), endpoints...), RefreshOriginal: original}, gen, ttl, sameResponse)
 			} else {
 				// Successful NODATA / zero-TTL answers still verify the stale
@@ -254,7 +257,7 @@ func (r *Real) exchange(ctx context.Context, req model.ResolveRequest, endpoints
 			}
 		}
 		if req.Trace != nil {
-			req.Trace.Endpoint = ep.Protocol + "://" + ep.Address
+			req.Trace.Endpoint = ep.CacheIdentity()
 		}
 		return reply, nil
 	}
@@ -266,7 +269,7 @@ func (r *Real) exchange(ctx context.Context, req model.ResolveRequest, endpoints
 // Response TTLs and query/resolver partitions remain unchanged.
 func (r *Real) ConfigurationChanged(reason string, optimistic bool) {
 	if optimistic {
-		r.Cache.MarkStale(func(response) bool { return true })
+		r.Cache.MarkStale(func(v response) bool { return r.allowsOptimistic(v.Endpoint) })
 	} else {
 		r.Cache.FlushReason(reason)
 	}
@@ -285,7 +288,7 @@ func (r *Real) refresh(req model.ResolveRequest, endpoints []ResolverEndpoint, o
 		r.refreshMu.Unlock()
 		return false
 	}
-	if _, ok, stale, current := r.Cache.PeekState(key); !ok || !stale || current != gen {
+	if v, ok, stale, current := r.Cache.PeekState(key); !ok || !stale || current != gen || !r.allowsOptimistic(v.Endpoint) {
 		r.refreshMu.Unlock()
 		return false
 	}
@@ -312,7 +315,7 @@ func (r *Real) refresh(req model.ResolveRequest, endpoints []ResolverEndpoint, o
 			r.refreshMu.Unlock()
 		}()
 		ctx, cancel := context.WithTimeout(refreshCtx, r.refreshTimeout)
-		_, err := r.exchange(ctx, req, endpoints, original, key, true, gen)
+		_, err := r.exchange(ctx, req, endpoints, original, key, true, gen, true)
 		cancel()
 		if err == nil {
 			return

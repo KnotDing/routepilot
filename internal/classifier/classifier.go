@@ -18,6 +18,7 @@ var ErrBusy = errors.New("rule evaluation capacity exhausted")
 
 type Key struct{ Domain, ClientGroup, QueryClass string }
 type Config struct {
+	Decisions                                          map[string]cache.Policy
 	Capacity, Workers, QueueSize                       int
 	Timeout, DirectTTL, SurgeTTL, UnknownTTL, ErrorTTL time.Duration
 	TrustDirect                                        bool
@@ -69,8 +70,10 @@ func New(parent context.Context, a model.SurgeAdapter, c Config) (*Engine, error
 			return nil, errors.New("negative decision TTL")
 		}
 	}
+	c.Decisions = cache.ClonePolicies(c.Decisions)
 	ctx, cancel := context.WithCancel(parent)
 	e := &Engine{adapter: a, config: c, Cache: cache.New[Key, model.DecisionResult](c.Capacity), jobs: make(chan job, c.QueueSize), idleJobs: make(chan job, 1), ctx: ctx, cancel: cancel, refreshing: make(map[Key]uint64)}
+	e.Cache.ConfigureGroups(func(_ Key, d model.DecisionResult) string { return string(d.Decision) }, nil)
 	for i := 0; i < c.Workers; i++ {
 		e.workers.Add(1)
 		go e.worker()
@@ -173,12 +176,10 @@ func (e *Engine) Classify(ctx context.Context, q model.DNSQueryContext) (model.D
 	q.Question.Name = domain
 	// Per-client isolation is the safe default for Surge source-address rules.
 	key := Key{domain, q.ClientIP.String(), fmt.Sprint(q.Question.Qtype, "/", q.Question.Qclass)}
-	lookup := e.Cache.GetState
-	if e.config.Optimistic {
-		lookup = e.Cache.GetOptimisticState
-	}
-	d, ok, stale, gen := lookup(key)
-	if ok && (!stale || e.config.Optimistic) {
+	d, ok, stale, gen := e.Cache.GetAllowedState(key, e.config.Optimistic, func(d model.DecisionResult, stale bool) bool {
+		return !stale || e.AllowsOptimistic(d.Decision)
+	})
+	if ok {
 		if stale {
 			e.refresh(q, key, gen, false)
 		}
@@ -197,6 +198,7 @@ func (e *Engine) Classify(ctx context.Context, q model.DNSQueryContext) (model.D
 		if gen != e.Cache.Generation() {
 			return e.unknown(q, "Surge generation changed during evaluation"), nil
 		}
+		e.Cache.RecordMissGroup(key, out.decision, gen)
 		return out.decision, out.err
 	}
 }
@@ -213,7 +215,7 @@ func (e *Engine) refresh(q model.DNSQueryContext, key Key, gen uint64, idle bool
 		e.refreshMu.Unlock()
 		return false
 	}
-	if _, ok, stale, current := e.Cache.PeekState(key); !ok || !stale || current != gen {
+	if d, ok, stale, current := e.Cache.PeekState(key); !ok || !stale || current != gen || !e.AllowsOptimistic(d.Decision) {
 		e.refreshMu.Unlock()
 		return false
 	}
@@ -297,9 +299,10 @@ func (e *Engine) evaluate(parent context.Context, q model.DNSQueryContext, key K
 		}
 		if !refresh || out.err == nil && out.decision.Decision != model.Unknown {
 			if out.err == nil && out.decision.Decision != model.Unknown {
-				e.Cache.PutCompared(key, out.decision, gen, ttl, func(old, next model.DecisionResult) bool {
+				same := func(old, next model.DecisionResult) bool {
 					return old.Decision == next.Decision && old.FinalPolicy == next.FinalPolicy
-				})
+				}
+				e.Cache.PutCompared(key, out.decision, gen, ttl, same)
 			} else {
 				e.Cache.Put(key, out.decision, gen, ttl)
 			}
@@ -315,4 +318,8 @@ func (e *Engine) FlushDomain(domain string) error {
 	}
 	e.Cache.FlushWhere(func(k Key) bool { return k.Domain == d })
 	return nil
+}
+
+func (e *Engine) AllowsOptimistic(decision model.Decision) bool {
+	return e.config.Optimistic && decision != model.Unknown && e.config.Decisions[string(decision)].OptimisticEnabled()
 }

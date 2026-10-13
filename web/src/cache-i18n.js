@@ -68,6 +68,24 @@ Object.assign(messages.en,{
  invalidate_direct_on_selection_change:'Invalidate DIRECT on selection change',
  invalidate_reject_on_selection_change:'Invalidate REJECT on selection change'
 });
+Object.assign(messages['zh-CN'],{
+ groupStatisticsHelp:'条目为当前缓存快照，普通命中、未命中与淘汰随当前缓存实例计数；分项未命中只统计已获得结果的前台查询，不能归属的失败仅保留在总计。乐观可靠性按实际返回的旧值归属，跨重启保留；升级前缺失的分项不会倒填。超过 1024 个上游统计身份后合并为其他上游。',
+ decisionMaster:'乐观决策缓存',responseMaster:'乐观响应缓存',
+ decisionPolicies:'按决策设置缓存',upstreamPolicies:'按上游设置缓存',optimisticEnabled:'允许乐观缓存',
+ selectiveHelp:'每项开关只控制乐观缓存，保存并应用后生效。关闭后仍保留有效的普通缓存，配置失效或 TTL 到期后等待重新查询。UNKNOWN 沿用短期普通缓存，不提供乐观缓存开关。',
+ selectiveUnsupported:'当前后端不支持按决策和上游设置缓存，请先升级该后端。',
+ originalUpstreamHelp:'上游按协议、地址及 DoH URL / TLS 名称识别；全局、策略主上游和备用中相同的上游共用开关。保留原始目标时，已观察到的上游也可单独设置；未设置的上游沿用总开关。',
+ decisionBreakdown:'各决策缓存统计',upstreamBreakdown:'各上游缓存统计',upstream:'上游',noGroupSamples:'暂无分项统计',otherUpstreams:'其他上游（统计容量分组）'
+});
+Object.assign(messages.en,{
+ groupStatisticsHelp:'Entries are a current snapshot; ordinary hits, misses and evictions belong to the current cache instance. Per-item misses cover completed foreground lookups with an identifiable result; unattributed failures remain aggregate-only. Optimistic reliability is attributed to the old value served and persists across restarts. Earlier totals without item identities are not backfilled. Beyond 1024 upstream identities, statistics are grouped as other upstreams.',
+ decisionMaster:'Optimistic decision cache',responseMaster:'Optimistic response cache',
+ decisionPolicies:'Cache by decision',upstreamPolicies:'Cache by upstream',optimisticEnabled:'Allow optimistic caching',
+ selectiveHelp:'Each item switch controls only optimistic caching and takes effect after saving and applying. Disabling it preserves valid ordinary cache entries and waits for a new lookup after invalidation or TTL expiry. UNKNOWN keeps short-lived ordinary caching and has no optimistic switch.',
+ selectiveUnsupported:'This backend does not support cache policies by decision and upstream. Upgrade this backend first.',
+ originalUpstreamHelp:'Upstreams are identified by protocol, address and DoH URL / TLS name. The same upstream shares its switches across global, policy and backup pools. Observed original-destination upstreams can also be configured; unconfigured upstreams inherit the global switch.',
+ decisionBreakdown:'Cache statistics by decision',upstreamBreakdown:'Cache statistics by upstream',upstream:'Upstream',noGroupSamples:'No per-item samples yet',otherUpstreams:'Other upstreams (statistics capacity group)'
+});
 export const cacheText=locale=>key=>messages[locale]?.[key==='optimisticHelp'?'optimisticHelpSummary':key]||messages['zh-CN'][key==='optimisticHelp'?'optimisticHelpSummary':key]||key;
 
 export function cacheInvalidationReason(locale,reason){

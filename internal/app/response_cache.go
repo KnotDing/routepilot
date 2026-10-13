@@ -49,16 +49,14 @@ func (rt *Runtime) responsePools() []*resolver.Real {
 func (rt *Runtime) responseSnapshot(persistent bool) responseCacheSnapshot {
 	rt.decisionMu.Lock()
 	defer rt.decisionMu.Unlock()
-	snapshot := responseCacheSnapshot{Version: 1, Scope: rt.responseScope, inMemory: !persistent, OptimisticStats: rt.responseOptimisticStats}
+	snapshot := responseCacheSnapshot{Version: 1, Scope: rt.responseScope, inMemory: !persistent, OptimisticStats: rt.responseOptimisticStats.Clone()}
 	for _, pool := range rt.responsePools() {
 		stats := pool.Cache.OptimisticStats()
-		snapshot.OptimisticStats.Hits += stats.Hits
-		snapshot.OptimisticStats.Compared += stats.Compared
-		snapshot.OptimisticStats.Mismatches += stats.Mismatches
+		snapshot.OptimisticStats.Add(stats)
 	}
 	if !persistent || rt.settings.Settings.Cache.OptimisticResponses {
 		for _, pool := range rt.responsePools() {
-			snapshot.Pools = append(snapshot.Pools, pool.ResponseSnapshot())
+			snapshot.Pools = append(snapshot.Pools, pool.ResponseSnapshot(persistent))
 		}
 	}
 	return snapshot
@@ -71,7 +69,7 @@ func (rt *Runtime) restoreResponses(snapshot *responseCacheSnapshot) {
 	pools := rt.responsePools()
 	// Keep the aggregate independent of resolver pools so it survives endpoint
 	// changes, disabled DNS, and runtime recreation without being double-counted.
-	rt.responseOptimisticStats = snapshot.OptimisticStats
+	rt.responseOptimisticStats = snapshot.OptimisticStats.Clone()
 	if snapshot.Scope != rt.responseScope || (!rt.settings.Settings.Cache.OptimisticResponses && !snapshot.inMemory) {
 		return
 	}

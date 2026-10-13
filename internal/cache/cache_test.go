@@ -1,6 +1,7 @@
 package cache
 
 import (
+	"reflect"
 	"testing"
 	"time"
 )
@@ -182,7 +183,7 @@ func TestOptimisticReliabilityCountsRequestsUntilAComparison(t *testing.T) {
 	}
 	c.StaleRecords(0, 10) // Background inspection is not a user request.
 	c.PutCompared("answer", "old", generation, time.Minute, func(old, next string) bool { return old == next })
-	if got, want := c.OptimisticStats(), (OptimisticStats{Hits: 3, Compared: 3}); got != want {
+	if got, want := c.OptimisticStats(), (OptimisticStats{Hits: 3, Compared: 3}); !reflect.DeepEqual(got, want) {
 		t.Fatalf("matching refresh stats=%+v want=%+v", got, want)
 	}
 
@@ -191,11 +192,11 @@ func TestOptimisticReliabilityCountsRequestsUntilAComparison(t *testing.T) {
 		c.GetOptimisticState("answer")
 	}
 	c.PutCompared("answer", "changed", generation, time.Minute, func(old, next string) bool { return old == next })
-	if got, want := c.OptimisticStats(), (OptimisticStats{Hits: 5, Compared: 5, Mismatches: 2}); got != want {
+	if got, want := c.OptimisticStats(), (OptimisticStats{Hits: 5, Compared: 5, Mismatches: 2}); !reflect.DeepEqual(got, want) {
 		t.Fatalf("changed refresh stats=%+v want=%+v", got, want)
 	}
 	c.ResetOptimisticStats()
-	if got := c.OptimisticStats(); got != (OptimisticStats{}) {
+	if got := c.OptimisticStats(); !reflect.DeepEqual(got, OptimisticStats{}) {
 		t.Fatalf("manual reset retained reliability stats: %+v", got)
 	}
 }

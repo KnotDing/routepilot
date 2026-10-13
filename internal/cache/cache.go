@@ -30,27 +30,29 @@ type Record[K comparable, V any] struct {
 	Stale     bool      `json:"stale,omitempty"`
 }
 type Stats struct {
-	StaleEntries           int       `json:"stale_entries"`
-	Entries                int       `json:"entries"`
-	Generation             uint64    `json:"generation"`
-	Hits                   uint64    `json:"hits"`
-	Misses                 uint64    `json:"misses"`
-	OptimisticHits         uint64    `json:"optimistic_hits"`
-	OptimisticCompared     uint64    `json:"optimistic_compared"`
-	OptimisticMismatches   uint64    `json:"optimistic_mismatches"`
-	Evictions              uint64    `json:"evictions"`
-	Invalidations          uint64    `json:"invalidations"`
-	LastInvalidationAt     time.Time `json:"last_invalidation_at"`
-	LastInvalidationReason string    `json:"last_invalidation_reason"`
+	Groups                 map[string]GroupStats `json:"groups"`
+	StaleEntries           int                   `json:"stale_entries"`
+	Entries                int                   `json:"entries"`
+	Generation             uint64                `json:"generation"`
+	Hits                   uint64                `json:"hits"`
+	Misses                 uint64                `json:"misses"`
+	OptimisticHits         uint64                `json:"optimistic_hits"`
+	OptimisticCompared     uint64                `json:"optimistic_compared"`
+	OptimisticMismatches   uint64                `json:"optimistic_mismatches"`
+	Evictions              uint64                `json:"evictions"`
+	Invalidations          uint64                `json:"invalidations"`
+	LastInvalidationAt     time.Time             `json:"last_invalidation_at"`
+	LastInvalidationReason string                `json:"last_invalidation_reason"`
 }
 
 // OptimisticStats tracks reliability samples independently from cache entries.
 // Callers can persist it across cache recreation and restore it until a user
 // explicitly clears the cache.
 type OptimisticStats struct {
-	Hits       uint64 `json:"optimistic_hits"`
-	Compared   uint64 `json:"optimistic_compared"`
-	Mismatches uint64 `json:"optimistic_mismatches"`
+	ByGroup    map[string]ReliabilityStats `json:"by_group,omitempty"`
+	Hits       uint64                      `json:"optimistic_hits"`
+	Compared   uint64                      `json:"optimistic_compared"`
+	Mismatches uint64                      `json:"optimistic_mismatches"`
 }
 type Options struct {
 	// RetainExpired keeps bounded entries past expiry for stale-while-revalidate.
@@ -69,6 +71,9 @@ type Cache[K comparable, V any] struct {
 	lastInvalidationAt                                       time.Time
 	lastInvalidationReason                                   string
 	retainExpired                                            bool
+	group                                                    func(K, V) string
+	retainValue                                              func(V) bool
+	groups                                                   map[string]GroupStats
 	optimisticHits, optimisticCompared, optimisticMismatches uint64
 }
 
@@ -83,8 +88,8 @@ func New[K comparable, V any](capacity int, options ...Options) *Cache[K, V] {
 	c.generation.Store(1)
 	return c
 }
-func (c *Cache[K, V]) retained(now, expiry time.Time) bool {
-	return c.retainExpired || validExpiry(now, expiry)
+func (c *Cache[K, V]) retained(now, expiry time.Time, value V) bool {
+	return c.retainExpired && (c.retainValue == nil || c.retainValue(value)) || validExpiry(now, expiry)
 }
 func (c *Cache[K, V]) Generation() uint64 { return c.generation.Load() }
 func (c *Cache[K, V]) Get(k K) (V, bool) {
@@ -94,27 +99,35 @@ func (c *Cache[K, V]) Get(k K) (V, bool) {
 
 // GetState reads freshness and the generation together with the value.
 func (c *Cache[K, V]) GetState(k K) (V, bool, bool, uint64) {
-	return c.getState(k, true, false)
+	return c.getState(k, true, false, nil)
 }
 
 // GetOptimisticState records each request served a stale value atomically with
 // lookup. Requests arriving during the same refresh are counted individually.
 func (c *Cache[K, V]) GetOptimisticState(k K) (V, bool, bool, uint64) {
-	return c.getState(k, true, true)
+	return c.getState(k, true, true, nil)
 }
 
 // PeekState checks a maintenance candidate without affecting LRU or counters.
 func (c *Cache[K, V]) PeekState(k K) (V, bool, bool, uint64) {
-	return c.getState(k, false, false)
+	return c.getState(k, false, false, nil)
 }
-func (c *Cache[K, V]) getState(k K, touch, optimistic bool) (V, bool, bool, uint64) {
+func (c *Cache[K, V]) getState(k K, touch, optimistic bool, allow func(V, bool) bool) (V, bool, bool, uint64) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	if e, ok := c.items[k]; ok {
 		v := e.Value.(entry[K, V])
 		now := c.now()
-		if v.generation == c.Generation() && c.retained(now, v.expiry) {
+		if v.generation == c.Generation() && c.retained(now, v.expiry, v.value) {
 			stale := v.stale || !validExpiry(now, v.expiry)
+			if allow != nil && !allow(v.value, stale) {
+				c.remove(e)
+				if touch {
+					c.misses.Add(1)
+				}
+				var zero V
+				return zero, false, false, c.Generation()
+			}
 			if optimistic && stale {
 				v.optimisticRequests++
 				e.Value = v
@@ -123,6 +136,7 @@ func (c *Cache[K, V]) getState(k K, touch, optimistic bool) (V, bool, bool, uint
 			if touch {
 				c.order.MoveToFront(e)
 				c.hits.Add(1)
+				c.groupHit(k, v.value, optimistic && stale)
 			}
 			return v.value, true, stale, v.generation
 		}
@@ -147,7 +161,7 @@ func (c *Cache[K, V]) StaleRecords(offset, limit int) ([]Record[K, V], uint64) {
 	}
 	for e := c.order.Front(); e != nil; e = e.Next() {
 		v := e.Value.(entry[K, V])
-		if v.generation != generation || !c.retained(now, v.expiry) || !(v.stale || !validExpiry(now, v.expiry)) {
+		if v.generation != generation || !c.retained(now, v.expiry, v.value) || !(v.stale || !validExpiry(now, v.expiry)) {
 			continue
 		}
 		if offset > 0 {
@@ -184,9 +198,13 @@ func (c *Cache[K, V]) PutCompared(k K, v V, g uint64, ttl time.Duration, same fu
 	if ttl != Forever {
 		expiry = c.now().Add(ttl)
 	}
+	if c.group != nil {
+		c.groupName(k, v)
+	}
 	e := c.order.PushFront(entry[K, V]{key: k, value: v, generation: g, expiry: expiry})
 	c.items[k] = e
 	if c.order.Len() > c.capacity {
+		c.groupEviction(c.order.Back().Value.(entry[K, V]))
 		c.remove(c.order.Back())
 		c.evictions.Add(1)
 	}
@@ -197,9 +215,11 @@ func (c *Cache[K, V]) compare(e *list.Element, value V, same func(V, V) bool) {
 	old := e.Value.(entry[K, V])
 	if same != nil && old.generation == c.Generation() && old.optimisticRequests > 0 {
 		c.optimisticCompared += old.optimisticRequests
-		if !same(old.value, value) {
+		mismatch := !same(old.value, value)
+		if mismatch {
 			c.optimisticMismatches += old.optimisticRequests
 		}
+		c.groupCompare(old.key, old.value, old.optimisticRequests, mismatch)
 	}
 }
 
@@ -251,7 +271,7 @@ func (c *Cache[K, V]) MarkStale(keep func(V) bool) uint64 {
 	generation := c.generation.Add(1)
 	for _, e := range c.items {
 		v := e.Value.(entry[K, V])
-		if v.generation != old || !c.retained(c.now(), v.expiry) || !keep(v.value) {
+		if v.generation != old || !c.retained(c.now(), v.expiry, v.value) || !keep(v.value) {
 			c.remove(e)
 		} else {
 			v.generation, v.stale = generation, true
@@ -272,7 +292,7 @@ func (c *Cache[K, V]) FlushValuesWhere(match func(K, V) bool, reason string) {
 	g := c.invalidate(reason)
 	for k, e := range c.items {
 		v := e.Value.(entry[K, V])
-		if v.generation != old || !c.retained(c.now(), v.expiry) || match(k, v.value) {
+		if v.generation != old || !c.retained(c.now(), v.expiry, v.value) || match(k, v.value) {
 			c.remove(e)
 		} else {
 			v.generation = g
@@ -283,36 +303,88 @@ func (c *Cache[K, V]) FlushValuesWhere(match func(K, V) bool, reason string) {
 func (c *Cache[K, V]) Stats() Stats {
 	c.mu.Lock()
 	defer c.mu.Unlock()
+	groups := make(map[string]GroupStats, len(c.groups))
+	for key, s := range c.groups {
+		groups[key] = s
+	}
 	n, stale := 0, 0
 	now := c.now()
 	for _, e := range c.items {
 		v := e.Value.(entry[K, V])
-		if v.generation == c.Generation() && c.retained(now, v.expiry) {
+		if v.generation == c.Generation() && c.retained(now, v.expiry, v.value) {
 			n++
+			if c.group != nil {
+				key := c.groupName(v.key, v.value)
+				s := groups[key]
+				s.Entries++
+				if v.stale || !validExpiry(now, v.expiry) {
+					s.StaleEntries++
+				}
+				groups[key] = s
+			}
 			if v.stale || !validExpiry(now, v.expiry) {
 				stale++
 			}
 		}
 	}
-	return Stats{Entries: n, StaleEntries: stale, Generation: c.Generation(), Hits: c.hits.Load(), Misses: c.misses.Load(), OptimisticHits: c.optimisticHits, OptimisticCompared: c.optimisticCompared, OptimisticMismatches: c.optimisticMismatches, Evictions: c.evictions.Load(), Invalidations: c.invalidations, LastInvalidationAt: c.lastInvalidationAt, LastInvalidationReason: c.lastInvalidationReason}
+	return Stats{Groups: groups, Entries: n, StaleEntries: stale, Generation: c.Generation(), Hits: c.hits.Load(), Misses: c.misses.Load(), OptimisticHits: c.optimisticHits, OptimisticCompared: c.optimisticCompared, OptimisticMismatches: c.optimisticMismatches, Evictions: c.evictions.Load(), Invalidations: c.invalidations, LastInvalidationAt: c.lastInvalidationAt, LastInvalidationReason: c.lastInvalidationReason}
 }
 
 func (c *Cache[K, V]) OptimisticStats() OptimisticStats {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	return OptimisticStats{Hits: c.optimisticHits, Compared: c.optimisticCompared, Mismatches: c.optimisticMismatches}
+	s := OptimisticStats{Hits: c.optimisticHits, Compared: c.optimisticCompared, Mismatches: c.optimisticMismatches}
+	for key, g := range c.groups {
+		if g.OptimisticHits == 0 && g.OptimisticCompared == 0 && g.OptimisticMismatches == 0 {
+			continue
+		}
+		if s.ByGroup == nil {
+			s.ByGroup = make(map[string]ReliabilityStats)
+		}
+		s.ByGroup[key] = ReliabilityStats{g.OptimisticHits, g.OptimisticCompared, g.OptimisticMismatches}
+	}
+
+	return s
 }
 
 func (c *Cache[K, V]) RestoreOptimisticStats(stats OptimisticStats) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
+	c.restoreOptimisticStats(stats)
+}
+
+func (c *Cache[K, V]) restoreOptimisticStats(stats OptimisticStats) {
 	c.optimisticHits = stats.Hits
 	c.optimisticCompared = stats.Compared
 	c.optimisticMismatches = stats.Mismatches
+	for key, g := range c.groups {
+		g.OptimisticHits = 0
+		g.OptimisticCompared = 0
+		g.OptimisticMismatches = 0
+		c.groups[key] = g
+	}
+	if len(stats.ByGroup) > 0 && c.groups == nil {
+		c.groups = make(map[string]GroupStats)
+	}
+	for key, s := range stats.ByGroup {
+		key = boundedGroupKey(c.groups, key)
+		g := c.groups[key]
+		g.OptimisticHits += s.Hits
+		g.OptimisticCompared += s.Compared
+		g.OptimisticMismatches += s.Mismatches
+		c.groups[key] = g
+	}
 }
 
 func (c *Cache[K, V]) ResetOptimisticStats() {
-	c.RestoreOptimisticStats(OptimisticStats{})
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.restoreOptimisticStats(OptimisticStats{})
+	for _, e := range c.items {
+		v := e.Value.(entry[K, V])
+		v.optimisticRequests = 0
+		e.Value = v
+	}
 }
 
 // Values exposes a bounded snapshot without affecting LRU order or hit counters.
@@ -329,7 +401,7 @@ func (c *Cache[K, V]) Snapshot() []Record[K, V] {
 	now, generation := c.now(), c.Generation()
 	for e := c.order.Back(); e != nil; e = e.Prev() {
 		v := e.Value.(entry[K, V])
-		if v.generation == generation && c.retained(now, v.expiry) {
+		if v.generation == generation && c.retained(now, v.expiry, v.value) {
 			out = append(out, Record[K, V]{v.key, v.value, v.expiry, v.stale || !validExpiry(now, v.expiry)})
 		}
 	}
@@ -344,18 +416,21 @@ func (c *Cache[K, V]) Restore(records []Record[K, V]) int {
 	now, generation := c.now(), c.Generation()
 	for _, e := range c.items {
 		v := e.Value.(entry[K, V])
-		if v.generation != generation || !c.retained(now, v.expiry) {
+		if v.generation != generation || !c.retained(now, v.expiry, v.value) {
 			c.remove(e)
 		}
 	}
 	restored := 0
 	for i := len(records) - 1; i >= 0 && c.order.Len() < c.capacity; i-- {
 		r := records[i]
-		if !c.retained(now, r.ExpiresAt) {
+		if !c.retained(now, r.ExpiresAt, r.Value) {
 			continue
 		}
 		if _, exists := c.items[r.Key]; exists {
 			continue
+		}
+		if c.group != nil {
+			c.groupName(r.Key, r.Value)
 		}
 		e := c.order.PushBack(entry[K, V]{key: r.Key, value: r.Value, generation: generation, expiry: r.ExpiresAt, stale: r.Stale})
 		c.items[r.Key] = e
@@ -371,7 +446,7 @@ func (c *Cache[K, V]) Page(offset, limit int, match func(V) bool) ([]V, int) {
 	total := 0
 	for e := c.order.Front(); e != nil; e = e.Next() {
 		v := e.Value.(entry[K, V])
-		if v.generation == c.Generation() && c.retained(now, v.expiry) && (match == nil || match(v.value)) {
+		if v.generation == c.Generation() && c.retained(now, v.expiry, v.value) && (match == nil || match(v.value)) {
 			if total >= offset && len(out) < limit {
 				out = append(out, v.value)
 			}
@@ -379,4 +454,11 @@ func (c *Cache[K, V]) Page(offset, limit int, match func(V) bool) ([]V, int) {
 		}
 	}
 	return out, total
+}
+
+// OptimisticCounters avoids allocating per-group snapshots for frequent health sampling.
+func (c *Cache[K, V]) OptimisticCounters() OptimisticStats {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return OptimisticStats{Hits: c.optimisticHits, Compared: c.optimisticCompared, Mismatches: c.optimisticMismatches}
 }

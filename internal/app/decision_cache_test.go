@@ -22,7 +22,10 @@ func TestOptimisticRevisionRetainsAndPersistsPendingRefresh(t *testing.T) {
 	for _, optimistic := range []bool{false, true} {
 		d := config.Default()
 		d.Settings.Cache.Optimistic = optimistic
-		engine, err := classifier.New(context.Background(), &mocks.Surge{}, classifier.DefaultConfig())
+		cfg := classifier.DefaultConfig()
+		cfg.Optimistic = optimistic
+		cfg.OptimisticIdleRefresh = false
+		engine, err := classifier.New(context.Background(), &mocks.Surge{}, cfg)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -43,7 +46,7 @@ func TestOptimisticRevisionRetainsAndPersistsPendingRefresh(t *testing.T) {
 		if !optimistic {
 			continue
 		}
-		next, _ := classifier.New(context.Background(), &mocks.Surge{}, classifier.DefaultConfig())
+		next, _ := classifier.New(context.Background(), &mocks.Surge{}, cfg)
 		restarted := &Runtime{engine: next, settings: d, pendingDecisions: &saved, decisionScope: rt.decisionScope}
 		restarted.observeDecisionRevision(surge.Snapshot{}, errors.New("temporary Surge failure"))
 		if restarted.pendingDecisions == nil || next.Cache.Stats().Entries != 0 {
@@ -73,7 +76,10 @@ func TestOptimisticDecisionAndResponseOptionsAreIndependent(t *testing.T) {
 			d := config.Default()
 			d.Settings.Cache.Optimistic = decisions
 			d.Settings.Cache.OptimisticResponses = responses
-			engine, _ := classifier.New(context.Background(), &mocks.Surge{}, classifier.DefaultConfig())
+			cfg := classifier.DefaultConfig()
+			cfg.Optimistic = decisions
+			cfg.OptimisticIdleRefresh = false
+			engine, _ := classifier.New(context.Background(), &mocks.Surge{}, cfg)
 			tr := &mocks.Transport{Func: func(_ context.Context, _ resolver.ResolverEndpoint, q *dns.Msg) (*dns.Msg, error) {
 				return mocks.AddressReply(q, "203.0.113.1"), nil
 			}}

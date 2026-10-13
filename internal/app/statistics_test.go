@@ -93,9 +93,19 @@ func TestDNSMonitoringSurvivesRuntimeRebuildRestartAndExposesStatusAndMetrics(t 
 func TestCacheReliabilityStatisticsSurviveServiceRestart(t *testing.T) {
 	a := fixtureApp(t)
 	path := filepath.Join(a.dir, "c.sqlite")
-	want := cache.OptimisticStats{Hits: 17, Compared: 12, Mismatches: 3}
+	want := cache.OptimisticStats{Hits: 17, Compared: 12, Mismatches: 3, ByGroup: map[string]cache.ReliabilityStats{"DIRECT": {Hits: 17, Compared: 12, Mismatches: 3}}}
+	responseWant := want.Clone()
+	responseWant.ByGroup = map[string]cache.ReliabilityStats{"udp://192.0.2.53:53": {Hits: 17, Compared: 12, Mismatches: 3}}
 	a.runtime.engine.Cache.RestoreOptimisticStats(want)
-	a.runtime.responseOptimisticStats = want
+	a.runtime.responseOptimisticStats = responseWant
+	d := a.Configuration()
+	d.Settings.DNS.TimeoutMS++
+	if err := a.activateConfiguration(context.Background(), d); err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(a.runtime.engine.Cache.OptimisticStats(), want) || !reflect.DeepEqual(a.runtime.responseOptimisticStats, responseWant) {
+		t.Fatal("runtime recreation lost cache group statistics")
+	}
 	if err := a.saveDecisionCache(); err != nil {
 		t.Fatal("save decision reliability stats:", err)
 	}
@@ -111,11 +121,11 @@ func TestCacheReliabilityStatisticsSurviveServiceRestart(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = restarted.Close() })
-	if got := restarted.runtime.engine.Cache.OptimisticStats(); got != want {
+	if got := restarted.runtime.engine.Cache.OptimisticStats(); !reflect.DeepEqual(got, want) {
 		t.Fatalf("decision reliability stats after restart=%+v want=%+v", got, want)
 	}
-	if got := restarted.runtime.responseOptimisticStats; got != want {
-		t.Fatalf("response reliability stats after restart=%+v want=%+v", got, want)
+	if got := restarted.runtime.responseOptimisticStats; !reflect.DeepEqual(got, responseWant) {
+		t.Fatalf("response reliability stats after restart=%+v want=%+v", got, responseWant)
 	}
 }
 

@@ -420,7 +420,7 @@ func (a *App) build(d config.Document, saved *decisionCacheSnapshot, responses *
 	if err != nil {
 		return nil, err
 	}
-	rt.engine, err = classifier.New(ctx, rt.adapter, classifier.Config{Optimistic: s.Cache.Optimistic, OptimisticIdleRefresh: s.Cache.OptimisticIdleRefresh, ExpireDecisions: s.Cache.ExpireDecisions, TrustDirect: s.Surge.TrustDirect, Capacity: s.Cache.Capacity, Workers: s.Cache.Workers, QueueSize: s.Cache.Queue, Timeout: time.Duration(s.Cache.TimeoutMS) * time.Millisecond, DirectTTL: time.Duration(s.Cache.DirectTTLSeconds) * time.Second, SurgeTTL: time.Duration(s.Cache.SurgeTTLSeconds) * time.Second, UnknownTTL: time.Duration(s.Cache.UnknownTTLSeconds) * time.Second, ErrorTTL: time.Duration(s.Cache.ErrorTTLSeconds) * time.Second})
+	rt.engine, err = classifier.New(ctx, rt.adapter, classifier.Config{Decisions: s.Cache.Decisions, Optimistic: s.Cache.Optimistic, OptimisticIdleRefresh: s.Cache.OptimisticIdleRefresh, ExpireDecisions: s.Cache.ExpireDecisions, TrustDirect: s.Surge.TrustDirect, Capacity: s.Cache.Capacity, Workers: s.Cache.Workers, QueueSize: s.Cache.Queue, Timeout: time.Duration(s.Cache.TimeoutMS) * time.Millisecond, DirectTTL: time.Duration(s.Cache.DirectTTLSeconds) * time.Second, SurgeTTL: time.Duration(s.Cache.SurgeTTLSeconds) * time.Second, UnknownTTL: time.Duration(s.Cache.UnknownTTLSeconds) * time.Second, ErrorTTL: time.Duration(s.Cache.ErrorTTLSeconds) * time.Second})
 	if err != nil {
 		return nil, err
 	}
@@ -465,7 +465,7 @@ func (a *App) build(d config.Document, saved *decisionCacheSnapshot, responses *
 			return nil, e
 		}
 		rt.wire, _ = resolver.NewWireTransport(dial, time.Duration(s.DNS.TimeoutMS)*time.Millisecond)
-		rt.real, err = resolver.NewReal(rt.wire, s.DNS.Upstreams, s.DNS.PreserveOriginal, s.Cache.ResponseCapacity, resolver.OptimisticOptions{Context: ctx, Enabled: s.Cache.OptimisticResponses, IdleRefresh: s.Cache.OptimisticResponseIdleRefresh, Timeout: time.Duration(s.DNS.TimeoutMS) * time.Millisecond, Workers: s.Cache.Workers})
+		rt.real, err = resolver.NewReal(rt.wire, s.DNS.Upstreams, s.DNS.PreserveOriginal, s.Cache.ResponseCapacity, resolver.OptimisticOptions{Policies: s.Cache.Upstreams, Context: ctx, Enabled: s.Cache.OptimisticResponses, IdleRefresh: s.Cache.OptimisticResponseIdleRefresh, Timeout: time.Duration(s.DNS.TimeoutMS) * time.Millisecond, Workers: s.Cache.Workers})
 		if err != nil {
 			return nil, err
 		}
@@ -484,14 +484,14 @@ func (a *App) build(d config.Document, saved *decisionCacheSnapshot, responses *
 				continue
 			}
 			capacity := max(1, s.Cache.ResponseCapacity/max(1, policyPools))
-			upstream, e := resolver.NewReal(rt.wire, rule.Upstreams, false, capacity, resolver.OptimisticOptions{Context: ctx, Enabled: s.Cache.OptimisticResponses, IdleRefresh: s.Cache.OptimisticResponseIdleRefresh, Timeout: time.Duration(s.DNS.TimeoutMS) * time.Millisecond, Workers: s.Cache.Workers})
+			upstream, e := resolver.NewReal(rt.wire, rule.Upstreams, false, capacity, resolver.OptimisticOptions{Policies: s.Cache.Upstreams, Context: ctx, Enabled: s.Cache.OptimisticResponses, IdleRefresh: s.Cache.OptimisticResponseIdleRefresh, Timeout: time.Duration(s.DNS.TimeoutMS) * time.Millisecond, Workers: s.Cache.Workers})
 			if e != nil {
 				return nil, e
 			}
 			rt.policyResolvers = append(rt.policyResolvers, upstream)
 			binding := dnsserver.PolicyDNSBinding{Field: rule.Field, Policy: rule.Policy, Resolver: &observedReal{real: upstream, rt: rt}, Fallback: rule.Fallback, AttemptTimeout: time.Duration(s.DNS.TimeoutMS) * time.Millisecond}
 			if rule.Fallback == "upstreams" {
-				backup, err := resolver.NewReal(rt.wire, rule.FallbackUpstreams, false, capacity, resolver.OptimisticOptions{Context: ctx, Enabled: s.Cache.OptimisticResponses, IdleRefresh: s.Cache.OptimisticResponseIdleRefresh, Timeout: time.Duration(s.DNS.TimeoutMS) * time.Millisecond, Workers: s.Cache.Workers})
+				backup, err := resolver.NewReal(rt.wire, rule.FallbackUpstreams, false, capacity, resolver.OptimisticOptions{Policies: s.Cache.Upstreams, Context: ctx, Enabled: s.Cache.OptimisticResponses, IdleRefresh: s.Cache.OptimisticResponseIdleRefresh, Timeout: time.Duration(s.DNS.TimeoutMS) * time.Millisecond, Workers: s.Cache.Workers})
 				if err != nil {
 					return nil, err
 				}
@@ -1133,7 +1133,7 @@ func (a *App) View(ctx context.Context, key string) (any, error) {
 		return application, nil
 	case "status":
 		p := rt.machine.Plan()
-		return map[string]any{"software": buildinfo.Current(), "go_runtime": currentGoRuntimeStatus(), "online_update": true, "remote_credential_origin_binding": true, "fast_configuration_save": true, "configuration_application": application, "mode": mode, "state": p.State, "fake_ip_enabled": p.AllowFakeIP, "queries_per_minute": rt.queryRate.Load(), "queries_per_second": math.Float64frombits(a.queryRateBits.Load()), "surge_restart": a.surgeRecovery.Status(), "counters": rt.dispatcher.Statistics().Snapshot(), "client_statistics": clientStatistics, "dns_monitoring": a.dnsMonitoring.View(), "dns_monitoring_history": a.monitoringHistoryStatus(), "cache": map[string]any{"decision": rt.engine.Cache.Stats(), "response": responseCacheStats(rt)}, "warning": rt.Fault(), "uptime_seconds": int(time.Since(rt.started).Seconds())}, nil
+		return map[string]any{"software": buildinfo.Current(), "go_runtime": currentGoRuntimeStatus(), "online_update": true, "remote_credential_origin_binding": true, "fast_configuration_save": true, "selective_cache_policies": true, "configuration_application": application, "mode": mode, "state": p.State, "fake_ip_enabled": p.AllowFakeIP, "queries_per_minute": rt.queryRate.Load(), "queries_per_second": math.Float64frombits(a.queryRateBits.Load()), "surge_restart": a.surgeRecovery.Status(), "counters": rt.dispatcher.Statistics().Snapshot(), "client_statistics": clientStatistics, "dns_monitoring": a.dnsMonitoring.View(), "dns_monitoring_history": a.monitoringHistoryStatus(), "cache": map[string]any{"decision": rt.engine.Cache.Stats(), "response": responseCacheStats(rt)}, "warning": rt.Fault(), "uptime_seconds": int(time.Since(rt.started).Seconds())}, nil
 	case "health":
 		values := rt.health.Values()
 		sort.Slice(values, func(i, j int) bool { return values[i].Name < values[j].Name })
@@ -1184,12 +1184,19 @@ func responseCacheStats(rt *Runtime) map[string]any {
 	responseEntries, responsePending := 0, 0
 	var responseHits, responseMisses, responseEvictions uint64
 	rt.decisionMu.Lock()
-	optimistic := rt.responseOptimisticStats
+	optimistic := rt.responseOptimisticStats.Clone()
 	rt.decisionMu.Unlock()
+	groups := make(map[string]cache.GroupStats)
+	for key, s := range optimistic.ByGroup {
+		groups[key] = cache.GroupStats{OptimisticHits: s.Hits, OptimisticCompared: s.Compared, OptimisticMismatches: s.Mismatches}
+	}
 	optimisticHits, optimisticCompared, optimisticMismatches := optimistic.Hits, optimistic.Compared, optimistic.Mismatches
 	for _, upstream := range append([]*resolver.Real{rt.real}, rt.policyResolvers...) {
 		if upstream != nil {
 			stats := upstream.Cache.Stats()
+			for key, s := range stats.Groups {
+				cache.AddGroupStats(groups, key, s)
+			}
 			responseEntries += stats.Entries
 			responsePending += stats.StaleEntries
 			responseHits += stats.Hits
@@ -1201,6 +1208,7 @@ func responseCacheStats(rt *Runtime) map[string]any {
 		}
 	}
 	return map[string]any{
+		"groups":                groups,
 		"entries":               responseEntries,
 		"stale_entries":         responsePending,
 		"hits":                  responseHits,
@@ -1315,13 +1323,13 @@ func (a *App) Metrics() string {
 		return ""
 	}
 	c := rt.dispatcher.Statistics().Snapshot()
-	cache := rt.engine.Cache.Stats()
+	decisionStats := rt.engine.Cache.Stats()
 	bs := manager.Status()
-	values := map[string]uint64{"dns_queries_total": c.Queries, "dns_direct_total": c.Direct, "dns_surge_total": c.Surge, "dns_reject_total": c.Reject, "dns_intercepted_total": c.Intercepted, "dns_direct_addressed_total": c.Addressed, "decision_cache_hits_total": cache.Hits, "decision_cache_misses_total": cache.Misses, "fake_ip_queries_total": rt.fakeQueries.Load(), "fake_ip_errors_total": rt.fakeErrors.Load(), "real_dns_queries_total": rt.realQueries.Load(), "real_dns_errors_total": rt.realErrors.Load(), "bgp_routes_announced": uint64(bs.Advertised), "surge_rule_match_errors_total": rt.engine.RuleErrors.Load()}
+	values := map[string]uint64{"dns_queries_total": c.Queries, "dns_direct_total": c.Direct, "dns_surge_total": c.Surge, "dns_reject_total": c.Reject, "dns_intercepted_total": c.Intercepted, "dns_direct_addressed_total": c.Addressed, "decision_cache_hits_total": decisionStats.Hits, "decision_cache_misses_total": decisionStats.Misses, "fake_ip_queries_total": rt.fakeQueries.Load(), "fake_ip_errors_total": rt.fakeErrors.Load(), "real_dns_queries_total": rt.realQueries.Load(), "real_dns_errors_total": rt.realErrors.Load(), "bgp_routes_announced": uint64(bs.Advertised), "surge_rule_match_errors_total": rt.engine.RuleErrors.Load()}
 	response := responseCacheStats(rt)
-	values["decision_cache_optimistic_hits_total"] = cache.OptimisticHits
-	values["decision_cache_optimistic_compared_total"] = cache.OptimisticCompared
-	values["decision_cache_optimistic_mismatches_total"] = cache.OptimisticMismatches
+	values["decision_cache_optimistic_hits_total"] = decisionStats.OptimisticHits
+	values["decision_cache_optimistic_compared_total"] = decisionStats.OptimisticCompared
+	values["decision_cache_optimistic_mismatches_total"] = decisionStats.OptimisticMismatches
 	for _, field := range []string{"optimistic_hits", "optimistic_compared", "optimistic_mismatches"} {
 		values["response_cache_"+field+"_total"] = response[field].(uint64)
 	}
@@ -1334,6 +1342,8 @@ func (a *App) Metrics() string {
 	for _, k := range keys {
 		fmt.Fprintf(&b, "%s %d\n", k, values[k])
 	}
+	writeCacheGroupMetrics(&b, "decision_cache", "decision", decisionStats.Groups)
+	writeCacheGroupMetrics(&b, "response_cache", "upstream", response["groups"].(map[string]cache.GroupStats))
 	for _, p := range bs.Peers {
 		v := 0
 		if p.State == "ESTABLISHED" {
