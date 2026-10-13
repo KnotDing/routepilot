@@ -190,3 +190,59 @@ func TestMonitoringHistoryContinuesAfterUpgradeFromSourceLessTotals(t *testing.T
 		t.Fatalf("restored maps alias live counters: %+v", legacy)
 	}
 }
+
+func TestMonitoringCombinedFiltersPersistAndApplyToHistorySummaryAndTrend(t *testing.T) {
+	s, err := Open(filepath.Join(t.TempDir(), "private", "dimensions.sqlite"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	ctx := context.Background()
+	at := time.Now().UTC().Truncate(time.Minute)
+	m := dnsserver.NewMonitoring(dnsserver.DNSMonitoringSnapshot{})
+	sample := m.Snapshot()
+	sample.ObservedAt = at
+	if err = s.SaveDNSMonitoring(ctx, sample); err != nil {
+		t.Fatal(err)
+	}
+	for i := 0; i < 4; i++ {
+		ip := netip.MustParseAddr("192.0.2.1")
+		domain, final, code, path := "example.test", "Node A", "NOERROR", "cache"
+		switch i {
+		case 1:
+			final = "Node B"
+		case 2:
+			ip = netip.MustParseAddr("192.0.2.2")
+		case 3:
+			domain = "other.test"
+			code = "NXDOMAIN"
+			path = "real"
+		}
+		m.BeginSource(ip)
+		m.FinishQuerySource(ip, domain, false, model.DecisionResult{Decision: model.Surge, Policy: "Proxy", FinalPolicy: final}, path, code, time.Millisecond)
+		sample = m.Snapshot()
+		sample.ObservedAt = at.Add(time.Duration(i+1) * 5 * time.Second)
+		if err = s.SaveDNSMonitoring(ctx, sample); err != nil {
+			t.Fatal(err)
+		}
+	}
+	f := dnsserver.MonitoringFilter{Source: "192.0.2.1", Destination: "cache", Policy: dnsserver.MonitoringPolicyValue("Proxy"), FinalPolicy: dnsserver.MonitoringPolicyValue("Node A"), Domain: "example.test", ResponseCode: "NOERROR"}
+	history, err := s.DNSMonitoringFilteredHistory(ctx, at, at.Add(time.Minute), f)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if history.Summary.Completed != 1 || history.Summary.LatencyMS != 1 || history.Points[0].Counts.Completed != 1 || history.Points[0].Counts.Received != 1 || len(history.Sources) != 1 || history.SourcePolicyFlows[0].Queries != 1 || history.Summary.Domains[0].Queries != 1 || len(history.Summary.FilterOptions.Domains) != 2 {
+		t.Fatalf("incorrect filtered history: %+v", history)
+	}
+	if len(history.Summary.Observations) != 0 || len(history.Points[0].Counts.Observations) != 0 {
+		t.Fatal("unneeded raw correlations leaked")
+	}
+	all, err := s.DNSMonitoringHistory(ctx, at, at.Add(time.Minute), "")
+	if err != nil || all.Summary.DimensionCompleted != 4 || all.Summary.Completed != 4 {
+		t.Fatal(all, err)
+	}
+	source, err := s.DNSMonitoringHistory(ctx, at, at.Add(time.Minute), "192.0.2.1")
+	if err != nil || source.Summary.Completed != 3 || source.Summary.DimensionCompleted != 3 {
+		t.Fatal(source, err)
+	}
+}

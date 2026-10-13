@@ -44,7 +44,7 @@ func TestDNSStatisticsSurviveShutdownAndContinueAcrossRestarts(t *testing.T) {
 func TestDNSMonitoringSurvivesRuntimeRebuildRestartAndExposesStatusAndMetrics(t *testing.T) {
 	a := fixtureApp(t)
 	a.dnsMonitoring.Begin()
-	a.dnsMonitoring.Finish(true, model.DecisionResult{Decision: model.Surge, Policy: "Proxy", FinalPolicy: "Node A"}, "real", "NOERROR", 2*time.Millisecond)
+	a.dnsMonitoring.FinishQuerySource(netip.Addr{}, "persist.example", true, model.DecisionResult{Decision: model.Surge, Policy: "Proxy", FinalPolicy: "Node A"}, "real", "NOERROR", 2*time.Millisecond)
 	previous := a.runtime.dispatcher
 	document := a.Configuration()
 	document.Settings.DNS.TimeoutMS += 100
@@ -82,8 +82,12 @@ func TestDNSMonitoringSurvivesRuntimeRebuildRestartAndExposesStatusAndMetrics(t 
 	if history.Summary.Completed != 1 || len(history.Summary.Policies) != 1 || history.Summary.Policies[0].Policy != "Proxy" || history.Summary.Flows[0].Destination != "real" {
 		t.Fatalf("source history lost across restart: %+v", history)
 	}
+	filtered, err := restarted.DNSMonitoringFilteredView(context.Background(), dnsserver.MonitoringFilter{Domain: "persist.example", Destination: "real", Policy: dnsserver.MonitoringPolicyValue("Proxy")})
+	if err != nil || filtered.Completed != 1 || len(filtered.Domains) != 1 || filtered.Domains[0].Domain != "persist.example" {
+		t.Fatal(filtered, err)
+	}
 	metrics := restarted.Metrics()
-	for _, line := range []string{"dns_monitor_completed_total 1", `dns_monitor_flow_total{ingress="intercepted",destination="real"} 1`, `dns_monitor_policy_total{policy="Proxy",final_policy="Node A",destination="real",other="false"} 1`} {
+	for _, line := range []string{`dns_monitor_domain_completed_total{domain="persist.example",other="false"} 1`, "dns_monitor_completed_total 1", `dns_monitor_flow_total{ingress="intercepted",destination="real"} 1`, `dns_monitor_policy_total{policy="Proxy",final_policy="Node A",destination="real",other="false"} 1`} {
 		if !strings.Contains(metrics, line) {
 			t.Fatalf("missing metric %q", line)
 		}

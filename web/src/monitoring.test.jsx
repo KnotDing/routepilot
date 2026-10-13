@@ -177,3 +177,15 @@ it('adds height only around long labels and keeps vertical geometry independent 
  expect(narrow.svgHeight).toBe(wide.svgHeight);expect(narrow.left).toEqual(wide.left);expect(narrow.right).toEqual(wide.right);expect(narrow.edges[0].path).not.toBe(wide.edges[0].path);
  const plain=flowLayout(flows,10,keys);expect(narrow.svgHeight-plain.svgHeight).toBe(72);expect(narrow.svgHeight).toBeLessThan(600);
 });
+
+it('matches canvas height by increasing gaps while preserving all request thicknesses',()=>{
+ const flows=[{ingress:'a',destination:'real',queries:90},{ingress:'b',destination:'real',queries:10}],natural=flowLayout(flows,100,['a','b']),expanded=flowLayout(flows,100,['a','b'],undefined,1,{svgHeight:natural.svgHeight+200});
+ expect(expanded.svgHeight).toBe(natural.svgHeight+200);expect(expanded.naturalSvgHeight).toBe(natural.svgHeight);expect(expanded.scale).toBe(natural.scale);
+ expect(expanded.left.map(n=>n.height)).toEqual(natural.left.map(n=>n.height));expect(expanded.right[0].height).toBe(natural.right[0].height);
+ expect(expanded.left[1].y-expanded.left[0].y).toBeCloseTo(natural.left[1].y-natural.left[0].y+200);expect(expanded.right[0].y).toBe(natural.right[0].y+100);
+ expect(flowLayout(flows,100,['a','b'],undefined,1,{svgHeight:natural.svgHeight-50}).svgHeight).toBe(natural.svgHeight);
+});
+it('keeps the middle column aligned when parallel cards add vertical spacing',()=>{
+ const columns=[['a','b'],['proxy'],['node-a','node-b','node-c']],geometry={columns,nodeCount:3,svgHeight:500},first=flowLayout([{ingress:'a',destination:'proxy',queries:8},{ingress:'b',destination:'proxy',queries:2}],10,columns[0],columns[1],1,geometry),second=flowLayout([{ingress:'proxy',destination:'node-a',queries:6},{ingress:'proxy',destination:'node-b',queries:3},{ingress:'proxy',destination:'node-c',queries:1}],10,columns[1],columns[2],1,geometry);
+ expect(first.svgHeight).toBe(500);expect(second.svgHeight).toBe(500);expect(first.scale).toBe(second.scale);expect(first.right).toEqual(second.left);
+});

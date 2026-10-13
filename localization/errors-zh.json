@@ -448,5 +448,12 @@
   "notification sampling windows must be between 1 and 3600 seconds": "通知统计窗口必须在 1 到 3600 秒之间",
   "cache mismatch alert minimum samples must be between 1 and 1000000": "缓存告警的最少核对请求数必须在 1 到 1000000 之间",
   "DNS request alert thresholds must be between 1 and 1000000 requests per second": "DNS 请求量告警阈值必须在每秒 1 到 1000000 次之间",
-  "sustained DNS request alert duration must be between 1 and 86400 seconds": "持续大量 DNS 请求告警的时长必须在 1 到 86400 秒之间"
+  "sustained DNS request alert duration must be between 1 and 86400 seconds": "持续大量 DNS 请求告警的时长必须在 1 到 86400 秒之间",
+  "invalid monitoring destination": "监控处理去向无效",
+  "invalid monitoring policy": "监控策略筛选条件无效",
+  "invalid monitoring domain": "监控域名无效",
+  "invalid monitoring response code": "监控响应码无效",
+  "monitoring filters are unsupported": "此后端暂不支持多条件监控筛选",
+  "monitoring request dimensions regressed": "监控请求维度计数回退",
+  "monitoring dimensions are unavailable for this history range": "此时段尚未采集组合筛选维度，无法按这些条件统计"
 }

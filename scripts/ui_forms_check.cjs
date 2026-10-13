@@ -7,7 +7,8 @@ const fixture=Function(source.slice(source.indexOf('const settings='),source.ind
  const browser=await chromium.launch({headless:true});
  try{
  const page=await browser.newPage({viewport:{width:1440,height:1000},locale:'zh-CN',colorScheme:'light',reducedMotion:'reduce'});
- let crowdedPolicyFlows=false,sourceNames=false;
+ let crowdedPolicyFlows=false,sourceNames=false,monitorDimensions=false;
+ const monitoringQueries=[];
  const sourceRemark='住院楼二层护理站工作电脑用于观察实时解析策略与最终出口名称';
  const errors=[];page.on('pageerror',e=>errors.push(e.message));
  const out='artifacts/ui-forms';fs.mkdirSync(out,{recursive:true});
@@ -26,6 +27,14 @@ const fixture=Function(source.slice(source.indexOf('const settings='),source.ind
    if(path==='status'&&crowdedPolicyFlows){
     const pairs=[['192.168.20.131','',1492],['192.168.20.131','Hidding',1061],['192.168.20.131','REJECT',900],['192.168.20.131','US_FallBack',130],['192.168.20.131','LX_US',20],['192.168.20.131','DIRECT',6],['192.168.20.3','REJECT',143],['192.168.20.3','US_FallBack',583],['192.168.20.3','LX_US',135],['192.168.20.3','DIRECT',58],['192.168.20.3','HK_FallBack',14],['192.168.20.3','JP_FallBack',6],['192.168.20.111','JP_FallBack',4],['192.168.20.111','SG_FallBack',5],['192.168.20.246','SG_FallBack',3]];
     value.dns_monitoring.source_policy_flows=pairs.map(([source,policy,queries],i)=>({source,policy,queries,kind:policy?'named':'unnamed',final_kind:policy?'named':'unnamed',final_policy:policy?'DNS Node '+i%10:''}));
+   }
+   if(path==='status'&&monitorDimensions)value.dns_monitoring.dimensions_supported=true;
+   if(path.startsWith('dns/monitoring')&&monitorDimensions){
+    monitoringQueries.push(url.search);
+    const rows=[{source:'192.0.2.10',domain:'example.test',destination:'cache',code:'NOERROR',queries:4},{source:'192.0.2.20',domain:'example.test',destination:'cache',code:'NOERROR',queries:3},{source:'192.0.2.20',domain:'api.example.test',destination:'surge',code:'NXDOMAIN',queries:3}],selected=rows.filter(row=>['source','domain','destination'].every(key=>!url.searchParams.get(key)||url.searchParams.get(key)===row[key])&&(!url.searchParams.get('response_code')||url.searchParams.get('response_code')===row.code));
+    const counts=items=>({started_at:'2026-10-13T00:00:00Z',observed_at:'2026-10-13T00:01:00Z',session_started_at:'dimension-fixture',received:items.reduce((sum,row)=>sum+row.queries,0),completed:items.reduce((sum,row)=>sum+row.queries,0),in_flight:0,unconfirmed:0,latency_ms_sum:10,flows:items.map(row=>({ingress:'addressed',destination:row.destination,queries:row.queries})),policies:items.map(row=>({policy:'Proxy',final_policy:'Node A',destination:row.destination,queries:row.queries})),decisions:{SURGE:items.reduce((sum,row)=>sum+row.queries,0)},response_codes:Object.fromEntries(['NOERROR','NXDOMAIN'].map(code=>[code,items.filter(row=>row.code===code).reduce((sum,row)=>sum+row.queries,0)]))});
+    value={...counts(selected),dimensions_supported:true,dimension_completed:counts(selected).completed,completed_only:['domain','destination','policy','final_policy','response_code'].some(key=>url.searchParams.has(key)),filter_options:{destinations:['cache','surge'],policies:[{value:JSON.stringify(['named','Proxy']),name:'Proxy',kind:'named'}],final_policies:[{value:JSON.stringify(['named','Node A']),name:'Node A',kind:'named'}],domains:['api.example.test','example.test'],response_codes:['NOERROR','NXDOMAIN']},domains:[...new Set(selected.map(row=>row.domain))].map(domain=>({domain,queries:selected.filter(row=>row.domain===domain).reduce((sum,row)=>sum+row.queries,0)})),sources:[...new Set(selected.map(row=>row.source))].map(source=>({source,counts:counts(selected.filter(row=>row.source===source))})),source_policy_flows:selected.map(row=>({source:row.source,policy:'Proxy',kind:'named',final_policy:'Node A',final_kind:'named',queries:row.queries}))};
+    if(path.startsWith('dns/monitoring/history'))value={summary:value,sources:value.sources,source_policy_flows:value.source_policy_flows,from:value.started_at,to:value.observed_at,points:[{from:value.started_at,to:value.observed_at,seconds:60,rate_valid:true,counts:value}]};
    }
    if(path==='surge/status'){value.snapshot.ipv6_state='disabled';value.snapshot.always_real_ip_count=61;}
    return route.fulfill({contentType:'application/json',body:JSON.stringify(value)});
@@ -105,24 +114,27 @@ const fixture=Function(source.slice(source.indexOf('const settings='),source.ind
   await page.getByRole('button',{name:'大屏模式',exact:true}).click();
   if(await page.locator('.desktop-sidebar').isVisible())throw Error('Monitoring focus mode still shows navigation');
   const a=await page.locator('.monitor-flow').boundingBox(),b=await page.locator('.monitor-client-policy').boundingBox();if(Math.abs(a.y-b.y)>1||b.x<a.x+a.width)throw Error('4K flow cards are not side by side');
+  const chartHeights=await page.locator('.monitor-flow-grid svg').evaluateAll(svgs=>svgs.map(svg=>svg.getBoundingClientRect().height));if(chartHeights[0]!==chartHeights[1])throw Error('Parallel flow charts have different heights');
   await check('monitoring 4K '+theme);await page.screenshot({path:out+'/monitoring-4k-'+theme+'.png',fullPage:true});
   await page.keyboard.press('Escape');
   if(!(await page.locator('.desktop-sidebar').isVisible()))throw Error('Escape did not exit monitoring focus mode');
  }
  async function flowMetrics(){
   await page.evaluate(()=>new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve))));
-  return page.locator('.monitor-flow-grid svg').evaluateAll(svgs=>svgs.map(svg=>({width:svg.getBoundingClientRect().width,height:svg.getBoundingClientRect().height,nodes:[...svg.querySelectorAll('rect')].map(el=>[Number(el.getAttribute('y')),Number(el.getAttribute('height'))]),labels:[...svg.querySelectorAll('text')].map(el=>({font:getComputedStyle(el).fontSize,y:el.getAttribute('y'),scale:[el.getScreenCTM().a,el.getScreenCTM().d]})),verticalScroll:svg.parentElement.scrollHeight>svg.parentElement.clientHeight+1})));
+  return page.locator('.monitor-flow-grid svg').evaluateAll(svgs=>svgs.map(svg=>({width:svg.getBoundingClientRect().width,height:svg.getBoundingClientRect().height,naturalHeight:Number(svg.dataset.naturalHeight),parallel:svg.closest('.panel').parentElement.children.length===2&&Math.abs(svg.closest('.panel').parentElement.children[0].getBoundingClientRect().y-svg.closest('.panel').parentElement.children[1].getBoundingClientRect().y)<1,nodes:[...svg.querySelectorAll('rect')].map(el=>[Number(el.getAttribute('y')),Number(el.getAttribute('height'))]),labels:[...svg.querySelectorAll('text')].map(el=>({font:getComputedStyle(el).fontSize,y:el.getAttribute('y'),scale:[el.getScreenCTM().a,el.getScreenCTM().d]})),verticalScroll:svg.parentElement.scrollHeight>svg.parentElement.clientHeight+1})));
  }
  function checkFlowResize(before,after){
   for(let i=0;i<before.length;i++){
    const a=before[i],b=after[i];if(a.width===b.width)throw Error('Flow width did not respond to viewport resize');
-   if(a.height!==b.height||JSON.stringify(a.nodes)!==JSON.stringify(b.nodes)||JSON.stringify(a.labels)!==JSON.stringify(b.labels))throw Error('Flow height, vertical layout or text size changed with viewport width');
+   if(a.naturalHeight!==b.naturalHeight||JSON.stringify(a.nodes.map(node=>node[1]))!==JSON.stringify(b.nodes.map(node=>node[1]))||JSON.stringify(a.labels.map(({y,...label})=>label))!==JSON.stringify(b.labels.map(({y,...label})=>label)))throw Error('Intrinsic flow height, band thickness or text size changed with viewport width');
+   if(a.parallel===b.parallel&&(a.height!==b.height||JSON.stringify(a.nodes)!==JSON.stringify(b.nodes)||JSON.stringify(a.labels)!==JSON.stringify(b.labels)))throw Error('Flow vertical layout changed without a row-layout change');
+   const expected=b.parallel?Math.max(...after.map(chart=>chart.naturalHeight)):b.naturalHeight;if(b.height!==expected)throw Error('Side-by-side charts do not match heights or stacked charts retain expanded height');
    if(a.verticalScroll||b.verticalScroll||b.labels.some(label=>label.scale.some(scale=>Math.abs(scale-1)>1e-8)))throw Error('Flow uses internal vertical scrolling or scales SVG text');
   }
  }
  let crowdedMetrics;
  crowdedPolicyFlows=true;await page.reload();await page.getByRole('heading',{level:1,name:'仪表盘',exact:true}).waitFor();await go('大屏监控');
- for(const width of [1440,3840]){
+ for(const width of [1440,3840,2100,1440]){
   await page.setViewportSize({width,height:2160});await page.locator('.monitor-client-policy svg .monitor-node-label').filter({hasText:'Hidding'}).waitFor();
   const overlap=await page.locator('.monitor-client-policy svg').evaluate(svg=>{
    const sides={};for(const group of svg.querySelectorAll(':scope > g')){const rect=group.querySelector('rect'),texts=[...group.querySelectorAll(':scope > text')].map(el=>el.getBBox());if(!rect||!texts.length)continue;const key=rect.getAttribute('x');(sides[key]??=[]).push({top:Math.min(...texts.map(b=>b.y)),bottom:Math.max(...texts.map(b=>b.y+b.height))})}
@@ -137,12 +149,17 @@ const fixture=Function(source.slice(source.indexOf('const settings='),source.ind
    const table=card.querySelector('tbody'),rows=[...table.rows],count=rows.reduce((sum,row)=>sum+Number(row.cells[3].textContent.replaceAll(',','')),0),percent=rows.reduce((sum,row)=>sum+Number(row.cells[4].textContent.replace('%','')),0);
    return {count,percent,unknown:[...card.querySelectorAll('text,td,title')].some(el=>el.textContent.trim()==='未记录最终策略')};
   });if(exact.count!==3068||Math.abs(exact.percent-100)>.1||exact.unknown)throw Error('Unrecorded final-policy requests remain in client flow totals: '+JSON.stringify(exact));
-  const metrics=await flowMetrics();if(metrics.some(chart=>chart.height>600))throw Error('Short crowded labels create an oversized flow chart');if(crowdedMetrics)checkFlowResize(crowdedMetrics,metrics);else crowdedMetrics=metrics;
-  await page.locator('.monitor-client-policy').screenshot({path:out+'/monitoring-crowded-policies-'+width+'.png'});
+  const metrics=await flowMetrics();if(metrics.some(chart=>chart.height>600))throw Error('Short crowded labels create an oversized flow chart');if(crowdedMetrics)checkFlowResize(crowdedMetrics,metrics);crowdedMetrics=metrics;
+  await page.locator('.monitor-client-policy').screenshot({path:out+'/monitoring-crowded-policies-'+width+'.png'});if(width===3840)await page.locator('.monitor-flow-grid').screenshot({path:out+'/monitoring-equal-heights.png'});
  }
+ // A smaller live snapshot must shrink the shared height, rather than
+ // feeding the previously expanded SVG height back into the next layout.
+ await page.setViewportSize({width:3840,height:2160});crowdedPolicyFlows=false;
+ await page.waitForFunction(()=>![...document.querySelectorAll('.monitor-client-policy svg .monitor-node-label')].some(el=>el.textContent.includes('Hidding')));
+ const reduced=await flowMetrics();if(reduced.some(chart=>chart.height!==Math.max(...reduced.map(item=>item.naturalHeight)))||Math.max(...reduced.map(chart=>chart.height))>=Math.max(...crowdedMetrics.map(chart=>chart.height)))throw Error('Parallel charts retain the previous taller snapshot height');
  let namedMetrics;
  crowdedPolicyFlows=false;sourceNames=true;await page.reload();await page.getByRole('heading',{level:1,name:'仪表盘',exact:true}).waitFor();await go('大屏监控');
- for(const width of [1440,3840]){
+ for(const width of [1440,3840,2100,1440]){
   await page.setViewportSize({width,height:2160});
   for(const css of ['.monitor-flow','.monitor-client-policy']){
    const label=page.locator(css+' .monitor-source-label[role=button]');await label.waitFor();
@@ -150,13 +167,14 @@ const fixture=Function(source.slice(source.indexOf('const settings='),source.ind
    if(await text()!==sourceRemark)throw Error('Remark label is truncated or includes IP');
    await label.click();if(await text()!=='192.0.2.10')throw Error('Remark did not toggle to IP');await label.press('Enter');if(await text()!==sourceRemark)throw Error('IP did not toggle back to name');
   }
-  const metrics=await flowMetrics();if(namedMetrics)checkFlowResize(namedMetrics,metrics);else namedMetrics=metrics;
+  const metrics=await flowMetrics();if(namedMetrics)checkFlowResize(namedMetrics,metrics);namedMetrics=metrics;
   await page.screenshot({path:out+'/monitoring-named-'+width+'.png',fullPage:true});
  }
  await page.setViewportSize({width:1440,height:1000});await go('设置');await page.locator('.tabs').getByRole('button',{name:'大屏监控',exact:true}).click();
  await page.getByRole('checkbox',{name:'DNS 请求流向',exact:true}).uncheck();await page.getByRole('checkbox',{name:'平均处理耗时',exact:true}).uncheck();await page.getByRole('checkbox',{name:'启用敏感数据保护',exact:true}).check();await page.getByRole('button',{name:'保存设置',exact:true}).click();await page.getByText('大屏监控设置已保存',{exact:true}).waitFor();
  await page.reload();await page.getByRole('heading',{level:1,name:'仪表盘',exact:true}).waitFor();await go('大屏监控');await page.getByText('敏感数据保护已启用',{exact:true}).waitFor();
  if(await page.locator('.monitor-flow,.monitor-metrics').filter({hasText:'平均处理耗时'}).count()||await page.locator('.monitor-flow').count())throw Error('Hidden monitor cards returned after reload');
+ const singleFlow=await flowMetrics();if(singleFlow.length!==1||singleFlow[0].height!==singleFlow[0].naturalHeight)throw Error('A single visible flow chart retains shared height');
  const protectedHTML=await page.locator('.layout').innerHTML();for(const secret of ['192.0.2.10','192.0.2.1:1055',sourceRemark,'Proxy','Node A'])if(protectedHTML.includes(secret))throw Error('Sensitive monitor data remains in text, attributes or tooltips: '+secret);
  await page.getByRole('button',{name:'查看 客户端 1 的流向',exact:true}).click();await page.getByText('当前统计来源：客户端 1',{exact:true}).waitFor();await page.getByRole('heading',{name:'客户端策略流向',exact:true}).waitFor();await page.locator('.monitor-policies .monitor-policy-name').filter({hasText:'策略 1'}).waitFor();const selectedHTML=await page.locator('.layout').innerHTML();for(const secret of ['192.0.2.10',sourceRemark,'Proxy','Node A'])if(selectedHTML.includes(secret))throw Error('Selected protected source exposed '+secret);await page.screenshot({path:out+'/monitoring-protected-1440.png',fullPage:true});
  await go('设置');await page.locator('.tabs').getByRole('button',{name:'大屏监控',exact:true}).click();await page.getByRole('checkbox',{name:'DNS 请求流向',exact:true}).check();await page.getByRole('checkbox',{name:'平均处理耗时',exact:true}).check();await page.getByRole('checkbox',{name:'启用敏感数据保护',exact:true}).uncheck();await page.getByRole('button',{name:'保存设置',exact:true}).click();
@@ -184,8 +202,18 @@ const fixture=Function(source.slice(source.indexOf('const settings='),source.ind
  }
  await page.setViewportSize({width:1440,height:1000});await page.evaluate(()=>document.documentElement.dataset.theme='dark');await page.screenshot({path:out+'/update-web-dark.png',fullPage:true});
  await dialog.getByRole('button',{name:'稍后升级',exact:true}).click();await page.getByRole('dialog').waitFor({state:'hidden'});
+ monitorDimensions=true;await page.setViewportSize({width:1440,height:1000});await page.evaluate(()=>{sessionStorage.removeItem('routepilot.backend')});await page.reload();await page.getByRole('heading',{level:1,name:'仪表盘',exact:true}).waitFor();await go('大屏监控');await page.getByRole('button',{name:'筛选域名：example.test',exact:true}).waitFor();
+ for(const width of [1440,390]){
+  await page.setViewportSize({width,height:1000});await check('monitor filters '+width);
+  const inline=await page.locator('.monitor-view-controls label').evaluateAll(labels=>labels.every(label=>{const select=label.querySelector('select');if(!select)return true;const range=document.createRange();range.selectNode(label.firstChild);const text=range.getBoundingClientRect(),box=select.getBoundingClientRect();return text.right<=box.left&&Math.abs((text.top+text.bottom-box.top-box.bottom)/2)<2}));if(!inline)throw Error('Monitoring filter names are not before the selects');
+  for(const card of ['.monitor-source-shares','.monitor-domain-shares']){const spacing=await page.locator(card+' .monitor-bar-row').evaluateAll(rows=>rows.length>1?rows[1].getBoundingClientRect().y-rows[0].getBoundingClientRect().y:0);if(spacing>32)throw Error('Source/domain ranking rows are not compact');}
+  await page.screenshot({path:out+'/monitoring-domain-filters-'+width+'.png',fullPage:true});
+ }
+ for(const [label,value] of [['请求来源','192.0.2.20'],['DNS 处理去向','cache'],['策略 / 策略组',JSON.stringify(['named','Proxy'])],['最终策略',JSON.stringify(['named','Node A'])],['域名','example.test'],['响应码','NOERROR']])await page.getByRole('combobox',{name:label,exact:true}).selectOption(value);
+ await page.waitForFunction(()=>document.querySelector('.monitor-metrics')?.textContent.includes('筛选完成请求3'));if(!monitoringQueries.some(query=>{const params=new URLSearchParams(query);return ['source','destination','policy','final_policy','domain','response_code'].every(key=>params.get(key))}))throw Error('Combined monitoring filters were not sent together');
+ await page.getByRole('button',{name:'历史数据',exact:true}).click();await page.getByText('窗口末处理中',{exact:true}).waitFor();if(!(await page.locator('.monitor-metrics').textContent()).includes('筛选完成请求3'))throw Error('Historical monitoring ignores combined filters');
  if(errors.length)throw Error(errors.join('\n'));
- fs.writeFileSync(out+'/verification.json',JSON.stringify({passed:true,widths:[1440,1120,390],pages:pages.length,categories:categories.length,errors},null,2));
+ fs.writeFileSync(out+'/verification.json',JSON.stringify({passed:true,widths:[1440,1120,390],pages:pages.length,categories:categories.length,flowWidths:[1440,3840,2100,1440],equalParallelHeights:true,liveHeightReduction:true,combinedMonitoringFilters:true,compactSourceDomainRows:true,inlineFilterNames:true,errors},null,2));
  console.log(JSON.stringify({passed:true,pages:pages.length,categories:categories.length,widths:[1440,1120,390],screenshots:out}));
  }finally{await browser.close()}
 })().catch(e=>{console.error(e);process.exitCode=1});

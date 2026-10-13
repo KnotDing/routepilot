@@ -1259,5 +1259,22 @@
   "这些阈值只触发通知，不改变分流、路由或自动重启行为。": "These thresholds trigger notifications only; DNS policy, routing and automatic restart behavior are unchanged.",
   "服务异常按健康探测的连续失败阈值触发；缓存与请求量按各自阈值触发。未启用的组件不会告警。设置作用于当前后端。": "Service alerts follow consecutive health probe failures; cache and request rate alerts follow their own thresholds. Disabled components do not alert. Settings apply to the connected backend.",
   "Webhook 由后台独立发送 JSON POST，包含 title、body、state、components、at 及可选 details；页面关闭后仍可推送。地址加密保存，不包含在导出备份中。": "The backend independently sends JSON POST webhooks with title, body, state, components, at and optional details, even while the page is closed. The URL is stored encrypted and excluded from exported backups.",
-  "持续大量 DNS 请求": "DNS sustained requests"
+  "持续大量 DNS 请求": "DNS sustained requests",
+  "全部": "All",
+  "响应码": "Response code",
+  "请求域名占比": "Request domain share",
+  "按已记录域名的完成请求计算占比，点击域名筛选页面统计。": "Shares of recorded completed requests; click a domain to filter all monitoring statistics.",
+  "此后端未提供域名统计，请升级后端。": "This backend does not provide domain statistics. Upgrade the backend.",
+  "筛选域名：{domain}": "Filter domain: {domain}",
+  "其余域名": "Remaining domains",
+  "未记录域名": "Unrecorded domain",
+  "暂无域名统计": "No domain statistics yet",
+  "域名 {number}": "Domain {number}",
+  "筛选完成请求": "Filtered completed requests",
+  "此后端暂不支持多条件监控筛选，请升级后端。": "This backend does not support combined monitoring filters. Upgrade the backend.",
+  "筛选条件按同一请求组合匹配，统计仅包含已完成且已记录这些维度的请求。": "Filters match the same request. Statistics include completed requests with recorded dimensions.",
+  "部分旧请求未记录域名及组合维度，不纳入域名占比或组合筛选。": "Some older requests lack domain and combined dimensions and are excluded from domain shares and combined filters.",
+  "超出明细容量的请求单独统计，无法参与具体条件筛选。": "Requests beyond the detail limit are counted separately and cannot match specific filters.",
+  "使用匿名标识替代客户端 IP、备注、域名及策略名称，隐藏后端名称和地址；悬停提示与明细同样保护。": "Replace client IPs, remarks, domains and policy names with anonymous labels and hide the backend name and address, including tooltips and details.",
+  "此时段尚未采集域名统计。": "Domain statistics were not collected in this time range."
 }

@@ -35,20 +35,28 @@ type DNSSourceCount struct {
 }
 
 type DNSMonitoringSnapshot struct {
-	StartedAt         time.Time             `json:"started_at"`
-	SessionStartedAt  time.Time             `json:"session_started_at"`
-	ObservedAt        time.Time             `json:"observed_at"`
-	Received          uint64                `json:"received"`
-	Completed         uint64                `json:"completed"`
-	Unconfirmed       uint64                `json:"unconfirmed"`
-	InFlight          uint64                `json:"in_flight"`
-	ResponseCodes     map[string]uint64     `json:"response_codes"`
-	Decisions         map[string]uint64     `json:"decisions"`
-	LatencyMS         float64               `json:"latency_ms_sum"`
-	Flows             []DNSFlow             `json:"flows"`
-	Policies          []DNSPolicyCount      `json:"policies"`
-	Sources           []DNSSourceCount      `json:"sources,omitempty"`
-	SourcePolicyFlows []DNSSourcePolicyFlow `json:"source_policy_flows"`
+	DimensionsSupported bool                     `json:"dimensions_supported,omitempty"`
+	DimensionsStartedAt time.Time                `json:"dimensions_started_at,omitempty"`
+	Observations        []DNSObservation         `json:"observations,omitempty"`
+	Domains             []DNSDomainCount         `json:"domains"`
+	FilterOptions       *MonitoringFilterOptions `json:"filter_options,omitempty"`
+	DimensionCompleted  uint64                   `json:"dimension_completed"`
+	DimensionOverflow   uint64                   `json:"dimension_overflow"`
+	CompletedOnly       bool                     `json:"completed_only,omitempty"`
+	StartedAt           time.Time                `json:"started_at"`
+	SessionStartedAt    time.Time                `json:"session_started_at"`
+	ObservedAt          time.Time                `json:"observed_at"`
+	Received            uint64                   `json:"received"`
+	Completed           uint64                   `json:"completed"`
+	Unconfirmed         uint64                   `json:"unconfirmed"`
+	InFlight            uint64                   `json:"in_flight"`
+	ResponseCodes       map[string]uint64        `json:"response_codes"`
+	Decisions           map[string]uint64        `json:"decisions"`
+	LatencyMS           float64                  `json:"latency_ms_sum"`
+	Flows               []DNSFlow                `json:"flows"`
+	Policies            []DNSPolicyCount         `json:"policies"`
+	Sources             []DNSSourceCount         `json:"sources,omitempty"`
+	SourcePolicyFlows   []DNSSourcePolicyFlow    `json:"source_policy_flows"`
 }
 
 type policyKey struct {
@@ -64,6 +72,7 @@ type Monitoring struct {
 	state          DNSMonitoringSnapshot
 	flows          map[flowKey]uint64
 	policies       map[policyKey]uint64
+	observations   map[DNSObservationKey]DNSObservation
 	sources        map[string]*Monitoring
 	policyCapacity int
 }
@@ -96,6 +105,19 @@ func newMonitoring(saved DNSMonitoringSnapshot, trackSources bool, policyCapacit
 	saved.ResponseCodes, saved.Decisions = codes, decisions
 	m := &Monitoring{state: saved, flows: make(map[flowKey]uint64), policies: make(map[policyKey]uint64), policyCapacity: policyCapacity}
 	if trackSources {
+		MonitoringDimensionStart(&m.state, now)
+		m.observations = map[DNSObservationKey]DNSObservation{}
+		for _, row := range saved.Observations {
+			key := row.DNSObservationKey
+			if _, ok := m.observations[key]; !ok && len(m.observations) >= monitoringObservationCapacity {
+				key = DNSObservationKey{Other: true}
+			}
+			n := m.observations[key]
+			n.DNSObservationKey = key
+			n.Queries += row.Queries
+			n.LatencyMS += row.LatencyMS
+			m.observations[key] = n
+		}
 		m.sources = map[string]*Monitoring{}
 		if len(saved.Sources) == 0 && saved.Received > 0 {
 			legacy := saved
@@ -113,6 +135,7 @@ func newMonitoring(saved DNSMonitoringSnapshot, trackSources bool, policyCapacit
 		m.policies[policyKey{p.Policy, p.FinalPolicy, p.Destination, p.Other}] += p.Queries
 	}
 	m.state.Flows, m.state.Policies, m.state.Sources = nil, nil, nil
+	m.state.Observations = nil
 	return m
 }
 
@@ -158,6 +181,9 @@ func (m *Monitoring) Finish(intercepted bool, result model.DecisionResult, desti
 }
 
 func (m *Monitoring) FinishSource(ip netip.Addr, intercepted bool, result model.DecisionResult, destination, rcode string, latency time.Duration) {
+	m.FinishQuerySource(ip, "", intercepted, result, destination, rcode, latency)
+}
+func (m *Monitoring) FinishQuerySource(ip netip.Addr, domain string, intercepted bool, result model.DecisionResult, destination, rcode string, latency time.Duration) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.finish(intercepted, result, destination, rcode, latency)
@@ -166,6 +192,31 @@ func (m *Monitoring) FinishSource(ip netip.Addr, intercepted bool, result model.
 		child.mu.Lock()
 		child.finish(intercepted, result, destination, rcode, latency)
 		child.mu.Unlock()
+	}
+	if m.observations != nil {
+		source := MonitoringSource(ip)
+		if m.sources[source] == nil {
+			source = "other"
+		}
+		ingress := "addressed"
+		if intercepted {
+			ingress = "intercepted"
+		}
+		decision := result.Decision
+		switch decision {
+		case model.Direct, model.Surge, model.Reject, model.Unknown:
+		default:
+			decision = model.Unknown
+		}
+		key := DNSObservationKey{Source: source, Domain: MonitoringDomain(domain), Ingress: ingress, Destination: destination, Policy: result.Policy, FinalPolicy: result.FinalPolicy, Decision: string(decision), ResponseCode: rcode}
+		if _, ok := m.observations[key]; !ok && len(m.observations) >= monitoringObservationCapacity {
+			key = DNSObservationKey{Other: true}
+		}
+		n := m.observations[key]
+		n.DNSObservationKey = key
+		n.Queries++
+		n.LatencyMS += float64(latency) / float64(time.Millisecond)
+		m.observations[key] = n
 	}
 }
 
@@ -199,6 +250,9 @@ func (m *Monitoring) snapshot(details bool) DNSMonitoringSnapshot {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	s := m.state
+	if details {
+		s.Observations = observationRows(m.observations)
+	}
 	s.ObservedAt = time.Now().UTC()
 	s.ResponseCodes, s.Decisions = make(map[string]uint64), make(map[string]uint64)
 	for k, v := range m.state.ResponseCodes {

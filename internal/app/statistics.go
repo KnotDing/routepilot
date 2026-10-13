@@ -113,3 +113,37 @@ func (a *App) DNSMonitoringView(_ context.Context, source string) (dnsserver.DNS
 	}
 	return snapshot, nil
 }
+
+// Optional capability: older connected backends retain source-only monitoring.
+func (a *App) DNSMonitoringFilteredView(_ context.Context, filter dnsserver.MonitoringFilter) (dnsserver.DNSMonitoringSnapshot, error) {
+	full := a.dnsMonitoring.Snapshot()
+	view := full
+	if filter.Source != "" {
+		found := false
+		for _, source := range full.Sources {
+			if source.Source == filter.Source {
+				view = source.Counts
+				view.StartedAt, view.ObservedAt, view.SessionStartedAt = full.StartedAt, full.ObservedAt, full.SessionStartedAt
+				view.SourcePolicyFlows = dnsserver.SourcePolicyFlows([]dnsserver.DNSSourceCount{source})
+				found = true
+				break
+			}
+		}
+		if !found {
+			return dnsserver.EmptyMonitoringCounts(), errors.New("monitoring source is unavailable")
+		}
+	}
+	if filter.HasDimensions() {
+		view = dnsserver.FilterMonitoringCounts(full, filter)
+	}
+	options := dnsserver.ObservationOptions(full.Observations)
+	view.FilterOptions = &options
+	view.DimensionsSupported = true
+	view.DimensionsStartedAt = full.DimensionsStartedAt
+	dnsserver.AttachMonitoringDomains(&view, full.Observations, filter)
+	view.Observations = nil
+	for i := range view.Sources {
+		view.Sources[i].Counts.Policies = nil
+	}
+	return view, nil
+}

@@ -6,7 +6,7 @@ import Foundation
         let defaults = try decoder.decode(MonitoringPreferences.self, from: Data("{}".utf8))
         precondition(defaults.hiddenCards.isEmpty && !defaults.protectSensitive && defaults.valid)
         var saved = MonitoringPreferences()
-        saved.hiddenCards = ["sources", "dnsFlow", "latency"]
+        saved.hiddenCards = ["sources", "domains", "dnsFlow", "latency"]
         saved.protectSensitive = true
         let restored = try decoder.decode(MonitoringPreferences.self, from: JSONEncoder().encode(saved))
         precondition(restored == saved && restored.valid)

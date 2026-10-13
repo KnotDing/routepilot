@@ -1393,6 +1393,11 @@ func (a *App) Metrics() string {
 	}
 	fmt.Fprintf(&b, "dns_client_statistics_storage_healthy %d\n", clientStorageHealthy)
 	monitoring := a.dnsMonitoring.Snapshot()
+	dnsserver.AttachMonitoringDomains(&monitoring, monitoring.Observations, dnsserver.MonitoringFilter{})
+	for _, domain := range monitoring.Domains {
+		fmt.Fprintf(&b, "dns_monitor_domain_completed_total{domain=%q,other=%q} %d\n", domain.Domain, strconv.FormatBool(domain.Other), domain.Queries)
+	}
+	fmt.Fprintf(&b, "dns_monitor_dimensions_completed_total %d\ndns_monitor_dimensions_overflow_total %d\n", monitoring.DimensionCompleted, monitoring.DimensionOverflow)
 	fmt.Fprintf(&b, "dns_monitor_received_total %d\ndns_monitor_completed_total %d\ndns_monitor_unconfirmed_total %d\ndns_monitor_in_flight %d\n", monitoring.Received, monitoring.Completed, monitoring.Unconfirmed, monitoring.InFlight)
 	for _, flow := range monitoring.Flows {
 		fmt.Fprintf(&b, "dns_monitor_flow_total{ingress=%q,destination=%q} %d\n", flow.Ingress, flow.Destination, flow.Queries)

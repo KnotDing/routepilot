@@ -6,7 +6,7 @@
 .monitor-toolbar > div { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; }
 .monitor-toolbar strong { font-size: 16px; }
 .monitor-toolbar small { color: var(--muted); font-variant-numeric: tabular-nums; }
-.monitor-primary-grid { display: grid; grid-template-columns: minmax(0, 1.45fr) minmax(0, 1fr); gap: 22px; }
+.monitor-primary-grid { display: grid; grid-template-columns: repeat(auto-fit,minmax(min(100%,420px),1fr)); gap: 22px; }
 .monitor-secondary-grid { display: grid; grid-template-columns: minmax(0, 1.5fr) repeat(2, minmax(0, 1fr)); gap: 22px; }
 .monitor-screen .section-heading h2 { margin-bottom: 8px; }
 .monitor-screen .section-heading p { font-size: 12px; margin-bottom: 20px; }
@@ -41,8 +41,11 @@
 .monitor-footnote { font-size: 12px; margin-bottom: 0; }
 .monitor-view-controls { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 14px; margin-bottom: 20px; }
 .monitor-view-controls .tabs { margin: 0; }
-.monitor-view-controls label { display: grid; gap: 6px; color: var(--muted); font-size: 12px; min-width: 160px; }
+.monitor-view-controls label { display: flex; align-items:center; gap: 8px; color: var(--muted); font-size: 12px; min-width: 160px; }
 .monitor-view-controls input { min-width: 190px; }
+.monitor-view-controls select { min-width:100px; max-width:240px; width:auto; }
+.monitor-view-controls label { min-width:0; max-width:100%; }
+@media (max-width:600px) { .monitor-view-controls label { width:100%; } .monitor-view-controls select, .monitor-view-controls input { flex:1; min-width:0; } }
 .monitor-source-table { max-height: 320px; }
 .monitor-source-share { display: flex; align-items: center; gap: 12px; }
 .monitor-source-share .monitor-bar-track { flex: 1; min-width: 50px; }
@@ -104,3 +107,8 @@
 @media (min-width: 601px) {
  .monitor-secondary-grid:has(> :nth-child(2):last-child) { grid-template-columns: repeat(2,minmax(0,1fr)); }
 }
+
+/* Source and domain rankings share compact rows at every viewport size. */
+.monitor-source-bars { gap:4px; }
+.monitor-source-bars .monitor-source-link { height:auto; min-height:0; padding:2px 0; line-height:1.3; }
+.monitor-source-bars .monitor-bar-row { min-height:24px; }

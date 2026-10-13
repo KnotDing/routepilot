@@ -19,7 +19,10 @@ export function flowLayout(flows,total,sourceKeys=['addressed','intercepted'],ta
  // column must not stretch every row in all columns.
  const nodeCount=Math.max(sources.length,targets.length,geometry.nodeCount||0),extent=key=>geometry.labelExtents?.get(key)||flowLabelExtents(labelLines),columns=geometry.columns||[sources.map(n=>n.key),targets.map(n=>n.key)];
  const gap=(a,b)=>extent(a).below+extent(b).above+4,gaps=keys=>keys.slice(1).reduce((sum,key,i)=>sum+gap(keys[i],key),0),padding=Math.max(0,...columns.map(gaps),geometry.columns?0:Math.max(0,nodeCount-1)*(flowLabelExtents(labelLines).above+flowLabelExtents(labelLines).below+4)),top=32+Math.max(17,...columns.filter(keys=>keys.length).map(keys=>extent(keys[0]).above)),bottom=8+Math.max(14,...columns.filter(keys=>keys.length).map(keys=>extent(keys.at(-1)).below)),flowHeight=Math.min(100,Math.max(60,nodeCount*8)),height=flowHeight+padding,scale=total?flowHeight/total:0;
- function place(nodes){const keys=nodes.map(n=>n.key);let y=top+(padding-gaps(keys))/2;return nodes.map((n,i)=>{const node={...n,y,height:n.count*scale,used:0};y+=node.height+(nodes[i+1]?gap(n.key,nodes[i+1].key):0);return node})}
+ const naturalSvgHeight=height+top+bottom,extraHeight=Math.max(0,(geometry.svgHeight||0)-naturalSvgHeight);
+ // Keep band thickness and label size fixed. Distribute extra height between
+ // nodes; a single node stays centered instead of acquiring a false thickness.
+ function place(nodes){const keys=nodes.map(n=>n.key),extraGap=nodes.length>1?extraHeight/(nodes.length-1):0;let y=top+(padding-gaps(keys))/2+(nodes.length===1?extraHeight/2:0);return nodes.map((n,i)=>{const node={...n,y,height:n.count*scale,used:0};y+=node.height+(nodes[i+1]?gap(n.key,nodes[i+1].key)+extraGap:0);return node})}
  const left=place(sources),right=place(targets),edges=[];
  for(const source of left)for(const target of right){
   const count=flows.filter(f=>f.ingress===source.key&&f.destination===target.key).reduce((s,f)=>s+f.queries,0);
@@ -29,7 +32,7 @@ export function flowLayout(flows,total,sourceKeys=['addressed','intercepted'],ta
   edges.push({source:source.key,target:target.key,count,path:`M ${x1} ${y1} C ${c1} ${y1}, ${c2} ${y2}, ${x2} ${y2} L ${x2} ${y2+thickness} C ${c2} ${y2+thickness}, ${c1} ${y1+thickness}, ${x1} ${y1+thickness} Z`});
   source.used+=thickness;target.used+=thickness;
  }
- return {left,right,edges,scale,height,svgHeight:height+top+bottom};
+ return {left,right,edges,scale,height:height+extraHeight,naturalSvgHeight,svgHeight:naturalSvgHeight+extraHeight};
 }
 
 // Group small sources without inventing their destination shares. Each ribbon

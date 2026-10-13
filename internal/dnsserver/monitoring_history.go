@@ -34,10 +34,24 @@ func EmptyMonitoringCounts() DNSMonitoringSnapshot {
 
 func MonitoringDifference(current, previous DNSMonitoringSnapshot) (DNSMonitoringSnapshot, error) {
 	d := EmptyMonitoringCounts()
+	d.DimensionsSupported = current.DimensionsSupported
+	d.DimensionsStartedAt = current.DimensionsStartedAt
+	var dimensionErr error
+	d.Observations, dimensionErr = differenceObservations(current.Observations, previous.Observations)
+	if dimensionErr != nil {
+		return d, dimensionErr
+	}
 	if current.Received < previous.Received || current.Completed < previous.Completed || current.Unconfirmed < previous.Unconfirmed || current.LatencyMS < previous.LatencyMS {
 		return d, fmt.Errorf("monitoring counters regressed")
 	}
 	d.Received, d.Completed, d.Unconfirmed = current.Received-previous.Received, current.Completed-previous.Completed, current.Unconfirmed-previous.Unconfirmed
+	var observationsTotal uint64
+	for _, row := range d.Observations {
+		observationsTotal += row.Queries
+	}
+	if observationsTotal > d.Completed {
+		return d, fmt.Errorf("monitoring request dimensions exceed completed requests")
+	}
 	d.InFlight, d.LatencyMS = current.InFlight, current.LatencyMS-previous.LatencyMS
 	for _, pair := range []struct{ current, previous, dst map[string]uint64 }{{current.Decisions, previous.Decisions, d.Decisions}, {current.ResponseCodes, previous.ResponseCodes, d.ResponseCodes}} {
 		for k, v := range pair.previous {
@@ -113,6 +127,14 @@ func MonitoringDifference(current, previous DNSMonitoringSnapshot) (DNSMonitorin
 }
 
 func AddMonitoringCounts(dst *DNSMonitoringSnapshot, src DNSMonitoringSnapshot) {
+	dst.CompletedOnly = dst.CompletedOnly || src.CompletedOnly
+	dst.DimensionCompleted += src.DimensionCompleted
+	dst.DimensionOverflow += src.DimensionOverflow
+	dst.Observations = addObservations(dst.Observations, src.Observations)
+	dst.DimensionsSupported = dst.DimensionsSupported || src.DimensionsSupported
+	if !src.DimensionsStartedAt.IsZero() && (dst.DimensionsStartedAt.IsZero() || src.DimensionsStartedAt.Before(dst.DimensionsStartedAt)) {
+		dst.DimensionsStartedAt = src.DimensionsStartedAt
+	}
 	dst.Received += src.Received
 	dst.Completed += src.Completed
 	dst.Unconfirmed += src.Unconfirmed

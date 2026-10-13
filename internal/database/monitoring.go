@@ -123,6 +123,10 @@ func (s *Store) SaveDNSMonitoring(ctx context.Context, snapshot dnsserver.DNSMon
 }
 
 func (s *Store) DNSMonitoringHistory(ctx context.Context, from, to time.Time, source string) (dnsserver.MonitoringHistory, error) {
+	return s.DNSMonitoringFilteredHistory(ctx, from, to, dnsserver.MonitoringFilter{Source: source})
+}
+func (s *Store) DNSMonitoringFilteredHistory(ctx context.Context, from, to time.Time, filter dnsserver.MonitoringFilter) (dnsserver.MonitoringHistory, error) {
+	source := filter.Source
 	result := dnsserver.MonitoringHistory{From: from, To: to, RetentionDays: MonitoringRetentionDays, ResolutionSeconds: MonitoringResolutionSeconds, Points: []dnsserver.MonitoringBucket{}, Summary: dnsserver.EmptyMonitoringCounts()}
 	if !from.Equal(from.Truncate(time.Minute)) || !to.Equal(to.Truncate(time.Minute)) || !to.After(from) || to.Sub(from) > MonitoringRetentionDays*24*time.Hour {
 		return result, errors.New("monitoring history range must use whole minutes and span at most 7 days")
@@ -157,7 +161,14 @@ func (s *Store) DNSMonitoringHistory(ctx context.Context, from, to time.Time, so
 			lastGroup = group
 		}
 		dnsserver.AddMonitoringCounts(&result.Summary, bucket.Counts)
-		if source != "" {
+		if filter.HasDimensions() {
+			bucket.Counts = dnsserver.FilterMonitoringCounts(bucket.Counts, filter)
+			bucket.Counts.SourcePolicyFlows = nil
+			bucket.Counts.Domains = nil
+			if bucket.Counts.DimensionsStartedAt.IsZero() {
+				bucket.RateValid = false
+			}
+		} else if source != "" {
 			counts := dnsserver.EmptyMonitoringCounts()
 			for _, src := range bucket.Counts.Sources {
 				if src.Source == source {
@@ -175,6 +186,9 @@ func (s *Store) DNSMonitoringHistory(ctx context.Context, from, to time.Time, so
 		result.Summary.ObservedAt = bucket.To
 	}
 
+	dimensionRows := result.Summary.Observations
+	dimensionStart := result.Summary.DimensionsStartedAt
+	options := dnsserver.ObservationOptions(dimensionRows)
 	result.TotalReceived = result.Summary.Received
 	policySources := result.Summary.Sources
 	if source != "" {
@@ -202,7 +216,7 @@ func (s *Store) DNSMonitoringHistory(ctx context.Context, from, to time.Time, so
 	if result.Sources == nil {
 		result.Sources = []dnsserver.DNSSourceCount{}
 	}
-	if source != "" {
+	if source != "" && !filter.HasDimensions() {
 		summary := dnsserver.EmptyMonitoringCounts()
 		summary.StartedAt = result.Summary.StartedAt
 		summary.ObservedAt = result.Summary.ObservedAt
@@ -215,6 +229,22 @@ func (s *Store) DNSMonitoringHistory(ctx context.Context, from, to time.Time, so
 			}
 		}
 		result.Summary = summary
+	}
+	if filter.HasDimensions() {
+		result.Summary = dnsserver.FilterMonitoringCounts(result.Summary, filter)
+		result.Sources = result.Summary.Sources
+		result.SourcePolicyFlows = result.Summary.SourcePolicyFlows
+	}
+	result.Summary.DimensionsStartedAt = dimensionStart
+	result.Summary.DimensionsSupported = !dimensionStart.IsZero()
+	result.Summary.FilterOptions = &options
+	dnsserver.AttachMonitoringDomains(&result.Summary, dimensionRows, filter)
+	result.Summary.Observations = nil
+	for i := range result.Points {
+		result.Points[i].Counts.Observations = nil
+	}
+	for i := range result.Sources {
+		result.Sources[i].Counts.Policies = nil
 	}
 	result.Summary.Sources = nil
 	return result, rows.Err()

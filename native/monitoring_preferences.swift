@@ -1,7 +1,7 @@
 import Foundation
 
 struct MonitoringPreferences: Codable, Equatable {
-    static let cardIDs: Set<String> = ["received", "upstream", "completed", "inflight", "unconfirmed", "latency", "dnsFlow", "clientFlow", "policies", "sources", "trend", "decisions", "rcodes"]
+    static let cardIDs: Set<String> = ["received", "upstream", "completed", "inflight", "unconfirmed", "latency", "dnsFlow", "clientFlow", "policies", "sources", "domains", "trend", "decisions", "rcodes"]
     var hiddenCards: [String] = []
     var protectSensitive = false
     var valid: Bool { hiddenCards.count <= Self.cardIDs.count && Set(hiddenCards).count == hiddenCards.count && hiddenCards.allSatisfy(Self.cardIDs.contains) }

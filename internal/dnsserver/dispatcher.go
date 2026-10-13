@@ -336,7 +336,7 @@ func (d *Dispatcher) Dispatch(ctx context.Context, q model.DNSQueryContext, m *d
 			if rcode == "" {
 				rcode = "RCODE" + strconv.Itoa(reply.Rcode)
 			}
-			d.Monitoring.FinishSource(q.ClientIP, q.Intercepted, result, destination, rcode, time.Since(started))
+			d.Monitoring.FinishQuerySource(q.ClientIP, q.Question.Name, q.Intercepted, result, destination, rcode, time.Since(started))
 		}
 		if d.ClientStatistics != nil {
 			d.ClientStatistics.Record(q.ClientIP, result.Decision, reply.Rcode == dns.RcodeServerFailure, q.ReceivedAt)

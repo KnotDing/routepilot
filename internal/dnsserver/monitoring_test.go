@@ -165,6 +165,9 @@ func TestMonitoringCountsActualPathsWithoutQueryHistory(t *testing.T) {
 			q.SetQuestion("monitor.test.", tc.kind)
 			d.Dispatch(context.Background(), model.DNSQueryContext{}, q)
 			s := d.Monitoring.Snapshot()
+			if len(s.Observations) != 1 || s.Observations[0].Domain != "monitor.test" || s.Observations[0].Destination != tc.path || s.Observations[0].ResponseCode == "" {
+				t.Fatalf("lost actual query dimensions: %+v", s.Observations)
+			}
 			if s.Completed != 1 || s.Received != 1 || s.InFlight != 0 || len(s.Flows) != 1 || s.Flows[0].Destination != tc.path || s.Decisions[string(tc.decision)] != 1 {
 				t.Fatalf("wrong actual flow: %+v", s)
 			}
