@@ -19,7 +19,7 @@ func (c Cache) validatePolicies() error {
 		return fmt.Errorf("at most 1024 upstream cache policies are allowed")
 	}
 	for key := range c.Upstreams {
-		if len(key) > 2048 || strings.ContainsAny(key, "\r\n\x00") || !(strings.HasPrefix(key, "udp://") || strings.HasPrefix(key, "tcp://") || strings.HasPrefix(key, "dot://") || strings.HasPrefix(key, "doh://")) {
+		if len(key) > 2048 || strings.ContainsAny(key, "\r\n\x00") || !(strings.HasPrefix(key, "udp://") || strings.HasPrefix(key, "tcp://") || strings.HasPrefix(key, "dot://") || strings.HasPrefix(key, "doh://") || strings.HasPrefix(key, "surge://")) {
 			return fmt.Errorf("invalid upstream cache identity")
 		}
 	}

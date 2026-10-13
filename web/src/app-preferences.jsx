@@ -90,20 +90,6 @@ export function LocalAppUpdateControls({preferences,actionsTarget=null}){
   {actionsTarget?createPortal(actions,actionsTarget):<div className="toolbar">{actions}</div>}
  </div>;
 }
-export function AppPreferencesPanel({notify}){
- const t=useT(),[draft,setDraft,saved]=usePreferenceDraft(['desktopNotifications','notificationSound']),[busy,setBusy]=useState(false);
- const save=async e=>{e.preventDefault();setBusy(true);try{await savePreferences({...appPreferences(),desktopNotifications:draft.desktopNotifications,notificationSound:draft.notificationSound},warning=>notify(warning,true));saved();notify(t('应用偏好已保存'))}catch(e){notify(e.message,true)}finally{setBusy(false)}};
- const checkbox=(key,label,disabled=false)=><label className="check" key={key}><input type="checkbox" checked={draft[key]} disabled={disabled||busy} onChange={e=>setDraft({...draft,[key]:e.target.checked})}/>{t(label)}</label>;
- return <section className="panel">
-  <h2>{t('本机系统通知')}</h2>
-  <p>{t('App 可接收本机和当前查看的远程后端异常。浏览器通知需要页面保持打开，后台 Webhook 不受页面影响。')}</p>
-  <form onSubmit={save}>
-   <div className="option-grid">{checkbox('desktopNotifications','启用本机系统通知')}{checkbox('notificationSound','通知声音',!draft.desktopNotifications)}</div>
-   <div className="toolbar"><button className="primary" disabled={busy}>{t('保存应用偏好')}</button></div>
-  </form>
- </section>;
-}
-
 // Per-backend alarm state survives Workspace switches during this page session.
 const alarms=new Map();
 export function observeServices({scope,health,settings,remote,backendID}){

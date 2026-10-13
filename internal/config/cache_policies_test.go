@@ -10,7 +10,7 @@ func TestCachePoliciesDefaultsValidationAndClone(t *testing.T) {
 	d := Default()
 	off := false
 	d.Settings.Cache.Decisions = map[string]cache.Policy{"DIRECT": {Optimistic: &off}, "SURGE": {Optimistic: &off}}
-	d.Settings.Cache.Upstreams = map[string]cache.Policy{"udp://192.0.2.53:53": {Optimistic: &off}}
+	d.Settings.Cache.Upstreams = map[string]cache.Policy{"udp://192.0.2.53:53": {Optimistic: &off}, "surge://127.0.0.1:6153": {Optimistic: &off}}
 	if err := d.Validate(); err != nil {
 		t.Fatal(err)
 	}

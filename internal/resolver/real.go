@@ -23,6 +23,7 @@ type response struct {
 	RefreshQuery     *dns.Msg
 	RefreshEndpoints []ResolverEndpoint
 	RefreshOriginal  bool
+	RefreshClient    netip.Addr
 }
 type EndpointStats struct {
 	Endpoint    ResolverEndpoint `json:"endpoint"`
@@ -34,36 +35,45 @@ type EndpointStats struct {
 	LastFailure time.Time        `json:"last_failure"`
 }
 type OptimisticOptions struct {
-	Policies    map[string]cache.Policy
-	Context     context.Context
-	Enabled     bool
-	IdleRefresh bool
-	Timeout     time.Duration
-	Workers     int
+	// Scoped sources (Surge Fake-IP) must not reuse responses across safety epochs.
+	SourceIdentity    string
+	PartitionByClient bool
+	Scope             func() (uint64, bool)
+	Policies          map[string]cache.Policy
+	Context           context.Context
+	Enabled           bool
+	IdleRefresh       bool
+	Timeout           time.Duration
+	Workers           int
 }
 type Real struct {
-	policies         map[string]cache.Policy
-	optimistic       bool
-	idleRefresh      bool
-	refreshTimeout   time.Duration
-	refreshLimit     int
-	ctx              context.Context
-	cancel           context.CancelFunc
-	refreshMu        sync.Mutex
-	refreshing       map[string]bool
-	closed           bool
-	refreshWorkers   sync.WaitGroup
-	transport        UpstreamTransport
-	endpoints        []ResolverEndpoint
-	PreserveOriginal bool
-	Cache            *cache.Cache[string, response]
-	statsMu          sync.Mutex
-	stats            []EndpointStats
-	next             atomic.Uint64
-	lastQuery        atomic.Int64
-	activeQueries    atomic.Int64
-	idleCancel       context.CancelFunc
-	now              func() time.Time
+	sourceIdentity    string
+	partitionByClient bool
+	scope             func() (uint64, bool)
+	scopeMu           sync.Mutex
+	scopeGeneration   uint64
+	policies          map[string]cache.Policy
+	optimistic        bool
+	idleRefresh       bool
+	refreshTimeout    time.Duration
+	refreshLimit      int
+	ctx               context.Context
+	cancel            context.CancelFunc
+	refreshMu         sync.Mutex
+	refreshing        map[string]bool
+	closed            bool
+	refreshWorkers    sync.WaitGroup
+	transport         UpstreamTransport
+	endpoints         []ResolverEndpoint
+	PreserveOriginal  bool
+	Cache             *cache.Cache[string, response]
+	statsMu           sync.Mutex
+	stats             []EndpointStats
+	next              atomic.Uint64
+	lastQuery         atomic.Int64
+	activeQueries     atomic.Int64
+	idleCancel        context.CancelFunc
+	now               func() time.Time
 }
 
 func NewReal(t UpstreamTransport, endpoints []ResolverEndpoint, preserve bool, capacity int, options ...OptimisticOptions) (*Real, error) {
@@ -99,6 +109,7 @@ func NewReal(t UpstreamTransport, endpoints []ResolverEndpoint, preserve bool, c
 	r.ctx, r.cancel = context.WithCancel(option.Context)
 	r.optimistic, r.idleRefresh = option.Enabled, option.IdleRefresh
 	r.policies = cache.ClonePolicies(option.Policies)
+	r.sourceIdentity, r.partitionByClient, r.scope = option.SourceIdentity, option.PartitionByClient, option.Scope
 	r.refreshTimeout, r.refreshLimit = option.Timeout, min(option.Workers, 256)
 	r.Cache = cache.New[string, response](capacity, cache.Options{RetainExpired: r.optimistic})
 	r.configureCacheGroups()
@@ -139,7 +150,10 @@ func (r *Real) Resolve(ctx context.Context, req model.ResolveRequest) (*dns.Msg,
 	if opt := q.IsEdns0(); opt != nil && len(opt.Option) > 0 {
 		cacheable = false
 	}
-	gen := r.Cache.Generation()
+	gen, scopeErr := r.currentGeneration()
+	if scopeErr != nil {
+		return nil, scopeErr
+	}
 	if cacheable {
 		kq := q.Copy()
 		kq.Id = 0
@@ -149,6 +163,9 @@ func (r *Real) Resolve(ctx context.Context, req model.ResolveRequest) (*dns.Msg,
 			return nil, err
 		}
 		var b strings.Builder
+		if r.partitionByClient {
+			fmt.Fprintf(&b, "client:%s|", req.Query.ClientIP.Unmap())
+		}
 		for _, ep := range endpoints {
 			fmt.Fprintf(&b, "%s:%s:%s|", ep.Protocol, ep.Address, ep.URL)
 		}
@@ -199,13 +216,18 @@ func (r *Real) Resolve(ctx context.Context, req model.ResolveRequest) (*dns.Msg,
 
 func (r *Real) exchange(ctx context.Context, req model.ResolveRequest, endpoints []ResolverEndpoint, original bool, key string, cacheable bool, gen uint64, refresh bool) (*dns.Msg, error) {
 	q := req.Message
+	if r.scope != nil {
+		if current, err := r.currentGeneration(); err != nil || current != gen {
+			return nil, errors.New("response cache source generation changed")
+		}
+	}
 	start := int(r.next.Add(1) % uint64(len(endpoints)))
 	var last error
 	for i := 0; i < len(endpoints); i++ {
 		ix := (start + i) % len(endpoints)
 		ep := endpoints[ix]
 		if req.Trace != nil {
-			req.Trace.Endpoint = ep.CacheIdentity()
+			req.Trace.Endpoint = r.endpointIdentity(ep)
 		}
 		began := r.now()
 		reply, err := r.transport.Exchange(ctx, ep, q)
@@ -236,9 +258,14 @@ func (r *Real) exchange(ctx context.Context, req model.ResolveRequest, endpoints
 			}
 			continue
 		}
+		if r.scope != nil {
+			if current, err := r.currentGeneration(); err != nil || current != gen {
+				return nil, errors.New("response cache source generation changed")
+			}
+		}
 		if cacheable {
 			if !refresh {
-				r.Cache.RecordMissGroup(key, response{Endpoint: ep.CacheIdentity()}, gen)
+				r.Cache.RecordMissGroup(key, response{Endpoint: r.endpointIdentity(ep)}, gen)
 			}
 			var fingerprint [32]byte
 			if r.optimistic {
@@ -248,8 +275,8 @@ func (r *Real) exchange(ctx context.Context, req model.ResolveRequest, endpoints
 				refreshQuery := req.Message.Copy()
 				refreshQuery.Id = 0
 				refreshQuery.Question[0].Name = dns.CanonicalName(refreshQuery.Question[0].Name)
-				r.Cache.PutCompared(key, response{Fingerprint: fingerprint, Msg: reply.Copy(), Stored: r.now(), Endpoint: ep.CacheIdentity(),
-					RefreshQuery: refreshQuery, RefreshEndpoints: append([]ResolverEndpoint(nil), endpoints...), RefreshOriginal: original}, gen, ttl, sameResponse)
+				r.Cache.PutCompared(key, response{Fingerprint: fingerprint, Msg: reply.Copy(), Stored: r.now(), Endpoint: r.endpointIdentity(ep),
+					RefreshQuery: refreshQuery, RefreshEndpoints: append([]ResolverEndpoint(nil), endpoints...), RefreshOriginal: original, RefreshClient: req.Query.ClientIP}, gen, ttl, sameResponse)
 			} else {
 				// Successful NODATA / zero-TTL answers still verify the stale
 				// requests even when the new result cannot be retained.
@@ -257,7 +284,7 @@ func (r *Real) exchange(ctx context.Context, req model.ResolveRequest, endpoints
 			}
 		}
 		if req.Trace != nil {
-			req.Trace.Endpoint = ep.CacheIdentity()
+			req.Trace.Endpoint = r.endpointIdentity(ep)
 		}
 		return reply, nil
 	}

@@ -572,6 +572,7 @@
   "登录成功，但凭证未保存": "Signed in, but credentials were not saved",
   "软件更新": "Software updates",
   "通知": "Notifications",
+  "本机通知设置": "Local notification settings",
   "本机系统通知": "Local system notifications",
   "自动检查新版本": "Automatically check for updates",
   "更新源": "Update source",

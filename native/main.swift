@@ -91,6 +91,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
 	var backendFailures = 0
     var remoteNotificationWatch: RemoteNotificationWatch?
     var remoteNotificationGeneration = 0
+    var notificationAuthorizationPending = false
     var refreshingRemoteNotifications = false
     var lastError = "正在连接…"
     var versionWarning: String?
@@ -754,12 +755,54 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
             row.state = CredentialVault.storage == storage ? .on : .off
             return row
         }
-        menu.addItem(submenu("应用偏好", items: [submenu("登录凭证保存方式", items: stores)]))
+        let preferences = AppPreferences.current
+        let notifications = item("启用本机系统通知", action: #selector(toggleDesktopNotifications), enabled: !notificationAuthorizationPending)
+        notifications.state = preferences.desktopNotifications ? .on : .off
+        let sound = item("通知声音", action: #selector(toggleNotificationSound), enabled: preferences.desktopNotifications && !notificationAuthorizationPending)
+        sound.state = preferences.notificationSound ? .on : .off
+        menu.addItem(submenu("应用偏好", items: [
+            submenu("本机通知设置", items: [notifications, sound]),
+            submenu("登录凭证保存方式", items: stores)
+        ]))
         menu.addItem(.separator())
         let quit = item(child == nil ? "退出 RoutePilot" : "退出 RoutePilot（停止临时后台）", action: #selector(quit))
         quit.toolTip = L(child == nil ? "后台独立运行，不会随 App 退出。" : "同时停止 App 启动的临时后台。")
         menu.addItem(quit)
         statusItem.menu = menu
+    }
+    func saveNotificationPreferences(_ preferences: AppPreferences) {
+        AppPreferences.current = preferences
+        serviceNotifications.reset()
+        if let controller = webView?.configuration.userContentController { configurePreferenceSeed(controller) }
+        rebuildMenu()
+    }
+    @objc func toggleDesktopNotifications() {
+        guard !notificationAuthorizationPending else { return }
+        var preferences = AppPreferences.current
+        if preferences.desktopNotifications {
+            preferences.desktopNotifications = false
+            saveNotificationPreferences(preferences)
+            return
+        }
+        notificationAuthorizationPending = true
+        rebuildMenu()
+        Task { @MainActor [weak self] in
+            guard let self else { return }
+            defer { self.notificationAuthorizationPending = false; self.rebuildMenu() }
+            guard await DesktopNotifications.shared.authorize() else {
+                self.alert("通知未授权", "请在 macOS 系统设置 → 通知 → RoutePilot 中允许通知。")
+                return
+            }
+            var current = AppPreferences.current
+            current.desktopNotifications = true
+            self.saveNotificationPreferences(current)
+        }
+    }
+    @objc func toggleNotificationSound() {
+        var preferences = AppPreferences.current
+        guard preferences.desktopNotifications, !notificationAuthorizationPending else { return }
+        preferences.notificationSound.toggle()
+        saveNotificationPreferences(preferences)
     }
     func startReleaseUpdateTimer() {
         releaseTimer?.invalidate()

@@ -498,9 +498,25 @@ func (d *Dispatcher) resolveSurge(ctx context.Context, q model.DNSQueryContext, 
 	defer lease.Release()
 	fakeStarted := time.Now()
 	trace.Destination = "surge"
-	r, err := d.Surge.ResolveFakeIP(ctx, m)
+	var r *dns.Msg
+	var err error
+	if source, ok := d.Surge.(interface {
+		ResolveSurge(context.Context, model.ResolveRequest) (*dns.Msg, error)
+	}); ok {
+		r, err = source.ResolveSurge(ctx, model.ResolveRequest{Query: q, Message: m, Trace: &trace.ResolutionTrace})
+	} else {
+		r, err = d.Surge.ResolveFakeIP(ctx, m)
+	}
 	trace.Duration = time.Since(fakeStarted)
-	trace.Endpoint = "Surge Fake-IP DNS"
+	if trace.Endpoint == "" {
+		trace.Endpoint = "Surge Fake-IP DNS"
+	}
+	defer func() {
+		if trace.Error != "" {
+			trace.CacheHit = false
+			trace.OptimisticCacheHit = false
+		}
+	}()
 	if err != nil || r == nil || ctx.Err() != nil {
 		trace.Error = "Surge DNS 请求失败或超时"
 		return failure(m, dns.RcodeServerFailure)
@@ -609,6 +625,11 @@ func ContainsFakeAddress(r *dns.Msg, prefixes []netip.Prefix) bool {
 		}
 	}
 	return false
+}
+
+// FakeAddressesValid checks every address before retaining or issuing a Surge response.
+func FakeAddressesValid(m *dns.Msg, prefixes []netip.Prefix) bool {
+	return fakeAddressesValid(m, prefixes)
 }
 func fakeAddressesValid(m *dns.Msg, prefixes []netip.Prefix) bool {
 	for _, section := range [][]dns.RR{m.Answer, m.Ns, m.Extra} {

@@ -9,6 +9,7 @@ struct LocalizationTests {
         func translated(_ text: String, _ locale: String, _ params: [String: Any] = [:]) -> String {
             NativeText.translate(text, locale: locale, english: english, errors: errors, params: params)
         }
+        precondition(translated("本机通知设置", "en") == "Local notification settings")
         precondition(translated("检查更新", "en") == "Check for updates")
         precondition(translated("检查Beta版本更新", "en") == "Check for beta updates")
         precondition(translated("检查 Beta 版本更新", "en") == "Check for beta updates")

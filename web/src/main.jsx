@@ -17,7 +17,7 @@ import {CachePanel,OptimisticReliability} from './cache';
 import {Backends} from './backends';
 import {remoteCredentialsSupported,restoreRemoteLogin,restoreLocalLogin,rememberManagementBackend,saveRemoteCredential} from './credentials';
 import {About} from './about';
-import {AppPreferencesPanel,GitHubAccessTokenControls,LocalAppUpdateControls,appPreferences,savePreferences,usePreferenceDraft,observeServices,nativeApp} from './app-preferences';
+import {GitHubAccessTokenControls,LocalAppUpdateControls,appPreferences,savePreferences,usePreferenceDraft,observeServices,nativeApp} from './app-preferences';
 import {NotificationErrors} from './notification-errors';
 import {VersionNotice} from './version-notice';
 import {BackendUpdate} from './backend-update';
@@ -127,7 +127,6 @@ export function Settings({settings,refresh,notify,status={},backend=null,interce
  return <>
   <div className="tabs">{Object.entries(groups).map(([k,v])=><button key={k} className={k===category?'selected':''} onClick={()=>setCategory(k)}>{t(v)}</button>)}</div>
   {category==='monitoring'?<MonitoringSettings notify={notify}/>:category==='about'?<About status={status} backend={backend}/>:category==='statusbar'?<StatusBarSettings notify={notify}/>:category==='automation'?<AutomationSettings notify={notify} backend={backend}/>:<>
-   {category==='notifications'&&<AppPreferencesPanel notify={notify}/>}
    {saving&&<p className="notice" role="status">{t('正在提交配置…')}</p>}
    <form className="settings-form" onSubmit={save}>
     <header className="routing-heading"><h2>{category==='cache'?ct('settingsTitle'):category==='updates'?t('软件更新'):t('{section}设置',{section:t(groups[category])})}</h2>{category==='general'&&<LanguageSelector/>}</header>
@@ -148,7 +147,7 @@ export function Settings({settings,refresh,notify,status={},backend=null,interce
      </>}
      {category==='notifications'&&<><NotificationErrors settings={draft.notifications} onChange={errors=>setDraft({...draft,notifications:{...draft.notifications,errors}})}/><p>{t('通知依据健康探测的连续失败阈值触发，未启用的组件不会告警。设置作用于当前后端。')}</p><p>{t('Webhook 由后台独立发送 JSON POST，包含 title、body、state、components 和 at；页面关闭后仍可推送。地址加密保存，不包含在导出备份中。')}</p><p>{draft.notifications?.webhook_configured?t('已保存 Webhook 地址'):t('尚未配置 Webhook 地址；仍可使用本机系统通知。')}</p></>}
      {category==='updates'&&<><p>{t('自动更新设置保存在当前连接的后端，控制其所在 Mac 的完整应用（App、管理页面与网络服务）的自动检查与自动安装。')}</p><p>{t('自动安装每天最多尝试一次；未在计划时间运行的服务会在启动后补装当天的更新。')}</p><p>{t('启用“自动检查 Beta 版本”后，检查会同时比较最新正式版与编号 Beta，版本号相同时优先正式版；测试版可能包含未完成的功能。')}</p>{draft.updates===undefined&&<p role="alert">{t('当前后端版本较旧，不支持自动更新设置；请先升级该后端。')}</p>}</>}
-     {category==='cache'&&<><CachePolicySettings settings={draft.cache} dns={draft.dns} status={status} onChange={cache=>setDraft({...draft,cache})}/><p>{ct('help')}</p></>}
+     {category==='cache'&&<><CachePolicySettings settings={draft.cache} dns={draft.dns} surge={draft.surge} status={status} onChange={cache=>setDraft({...draft,cache})}/><p>{ct('help')}</p></>}
      {category==='dns'&&<p>{t('仅在确认 Surge 的有效配置关闭 IPv6 时应用；拦截会返回成功空响应（NODATA），上游查询会跳过本地 Hosts、规则判断与 Fake-IP，使用配置的真实 DNS 上游。Surge 开启 IPv6、不可用或配置读取失败时沿用原有规则。')}</p>}
      {category==='surge'&&<><SurgeRestartSettings value={draft.surge.restart} onChange={restart=>setDraft({...draft,surge:{...draft.surge,restart}})} apiURL={draft.surge.api_url} status={status.surge_restart}/><p>{t("开启时，Surge 返回 DIRECT 但连接上下文不充分会记为 UNKNOWN，并交给 Surge。关闭时，采用 Surge 返回的内置 DIRECT 并查询真实 DNS 上游；未来连接仍可能命中不同策略。求值失败或超时仍保持 UNKNOWN。")}</p></>}
     </fieldset>

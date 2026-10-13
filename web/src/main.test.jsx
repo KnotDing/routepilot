@@ -246,3 +246,14 @@ it('deletes a configured local GitHub token through the native bridge',async()=>
  fireEvent.click(screen.getByRole('button',{name:'删除已保存的 token'}));
  await waitFor(()=>expect(tokenBridge).toHaveBeenCalledWith(expect.objectContaining({action:'clear',token:''})));
 });
+
+it('keeps backend notification settings without a local notification card',()=>{
+ window.webkit={messageHandlers:{routepilotPreferences:{postMessage:vi.fn()}}};
+ window.routepilotNativePreferences={desktopNotifications:true,notificationSound:true};
+ render(<Settings settings={{notifications:{enabled:true,recovery:true,webhook_url:''}}} refresh={()=>{}} notify={()=>{}}/>);
+ fireEvent.click(screen.getByRole('button',{name:'通知',exact:true}));
+ expect(screen.getByLabelText('启用服务异常通知')).toBeChecked();
+ expect(screen.queryByText('本机系统通知')).not.toBeInTheDocument();
+ expect(screen.queryByLabelText('启用本机系统通知')).not.toBeInTheDocument();
+ expect(screen.queryByLabelText('通知声音')).not.toBeInTheDocument();
+});

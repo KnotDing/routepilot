@@ -36,7 +36,7 @@ func (r *Real) refreshIdle() {
 			offset++
 			continue
 		}
-		req := model.ResolveRequest{Message: query.Copy(), RetryDNSFailures: true}
+		req := model.ResolveRequest{Query: model.DNSQueryContext{ClientIP: record.Value.RefreshClient}, Message: query.Copy(), RetryDNSFailures: true}
 		if r.refresh(req, record.Value.RefreshEndpoints, record.Value.RefreshOriginal, record.Key, generation, true) {
 			offset++
 		}

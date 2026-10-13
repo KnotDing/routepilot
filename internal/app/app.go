@@ -159,6 +159,7 @@ type Runtime struct {
 	engine                                           *classifier.Engine
 	adapter                                          *surge.Adapter
 	real                                             *resolver.Real
+	surgeResponses                                   *resolver.Real
 	policyResolvers                                  []*resolver.Real
 	wire                                             *resolver.WireTransport
 	server                                           *dnsserver.Server
@@ -402,6 +403,9 @@ func (a *App) build(d config.Document, saved *decisionCacheSnapshot, responses *
 			if cleanup.routes != nil {
 				_ = cleanup.routes.Close(context.Background())
 			}
+			if cleanup.surgeResponses != nil {
+				cleanup.surgeResponses.Close()
+			}
 			if cleanup.engine != nil {
 				cleanup.engine.Close()
 			}
@@ -449,6 +453,20 @@ func (a *App) build(d config.Document, saved *decisionCacheSnapshot, responses *
 	for _, p := range s.Surge.FakePrefixes {
 		rt.dispatcher.FakePrefixes = append(rt.dispatcher.FakePrefixes, netip.MustParsePrefix(p))
 	}
+	realCapacity := s.Cache.ResponseCapacity
+	if s.Cache.OptimisticResponses && s.Cache.Upstreams["surge://"+s.Surge.DNS].OptimisticEnabled() {
+		// Share the existing global response budget instead of adding a full pool.
+		surgeCapacity := max(1, s.Cache.ResponseCapacity/2)
+		realCapacity = max(1, s.Cache.ResponseCapacity-surgeCapacity)
+		rt.surgeResponses, err = resolver.NewReal(&surgeResponseTransport{rt: rt}, []resolver.ResolverEndpoint{{Protocol: "udp", Address: s.Surge.DNS, Enabled: true}}, false, surgeCapacity,
+			resolver.OptimisticOptions{SourceIdentity: "surge://" + s.Surge.DNS, PartitionByClient: true,
+				Scope:    func() (uint64, bool) { gate := rt.machine.Snapshot(); return gate.Generation, gate.AllowFakeIP },
+				Policies: s.Cache.Upstreams, Context: ctx, Enabled: true, IdleRefresh: s.Cache.OptimisticResponseIdleRefresh,
+				Timeout: time.Duration(s.DNS.TimeoutMS) * time.Millisecond, Workers: s.Cache.Workers})
+		if err != nil {
+			return nil, err
+		}
+	}
 	parse := func(v string) netip.Addr { ip, _ := netip.ParseAddr(v); return ip }
 	s4, s6 := parse(s.DNS.Source4), parse(s.DNS.Source6)
 	for _, source := range []netip.Addr{s4, s6} {
@@ -465,7 +483,7 @@ func (a *App) build(d config.Document, saved *decisionCacheSnapshot, responses *
 			return nil, e
 		}
 		rt.wire, _ = resolver.NewWireTransport(dial, time.Duration(s.DNS.TimeoutMS)*time.Millisecond)
-		rt.real, err = resolver.NewReal(rt.wire, s.DNS.Upstreams, s.DNS.PreserveOriginal, s.Cache.ResponseCapacity, resolver.OptimisticOptions{Policies: s.Cache.Upstreams, Context: ctx, Enabled: s.Cache.OptimisticResponses, IdleRefresh: s.Cache.OptimisticResponseIdleRefresh, Timeout: time.Duration(s.DNS.TimeoutMS) * time.Millisecond, Workers: s.Cache.Workers})
+		rt.real, err = resolver.NewReal(rt.wire, s.DNS.Upstreams, s.DNS.PreserveOriginal, realCapacity, resolver.OptimisticOptions{Policies: s.Cache.Upstreams, Context: ctx, Enabled: s.Cache.OptimisticResponses, IdleRefresh: s.Cache.OptimisticResponseIdleRefresh, Timeout: time.Duration(s.DNS.TimeoutMS) * time.Millisecond, Workers: s.Cache.Workers})
 		if err != nil {
 			return nil, err
 		}
@@ -893,6 +911,9 @@ func (rt *Runtime) shutdown(ctx context.Context, waitTTL bool) error {
 	if rt.pf != nil {
 		_ = rt.pf.Close()
 	}
+	if rt.surgeResponses != nil {
+		rt.surgeResponses.Close()
+	}
 	if rt.real != nil {
 		rt.real.Close()
 	}
@@ -1191,7 +1212,7 @@ func responseCacheStats(rt *Runtime) map[string]any {
 		groups[key] = cache.GroupStats{OptimisticHits: s.Hits, OptimisticCompared: s.Compared, OptimisticMismatches: s.Mismatches}
 	}
 	optimisticHits, optimisticCompared, optimisticMismatches := optimistic.Hits, optimistic.Compared, optimistic.Mismatches
-	for _, upstream := range append([]*resolver.Real{rt.real}, rt.policyResolvers...) {
+	for _, upstream := range rt.responsePools() {
 		if upstream != nil {
 			stats := upstream.Cache.Stats()
 			for key, s := range stats.Groups {
@@ -1257,11 +1278,7 @@ func (a *App) Flush(ctx context.Context, domain string) error {
 	}
 	rt.responseOptimisticStats = cache.OptimisticStats{}
 	rt.decisionMu.Unlock()
-	if rt.real != nil {
-		rt.real.Cache.Flush()
-		rt.real.Cache.ResetOptimisticStats()
-	}
-	for _, upstream := range rt.policyResolvers {
+	for _, upstream := range rt.responsePools() {
 		upstream.Cache.Flush()
 		upstream.Cache.ResetOptimisticStats()
 	}

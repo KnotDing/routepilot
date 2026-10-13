@@ -58,3 +58,12 @@ it('expands each master independently and retains item overrides while collapsed
  fireEvent.click(screen.getByLabelText('乐观决策缓存'));
  expect(screen.getByLabelText('DIRECT 允许乐观缓存')).not.toBeChecked();
 });
+
+it('includes Surge DNS as a separate optimistic response source',()=>{
+ const onChange=vi.fn(),settings={optimistic_responses:true,upstreams:{'surge://127.0.0.1:6153':{optimistic:false}}};
+ render(<CachePolicySettings settings={settings} surge={{dns:'127.0.0.1:6153'}} dns={{upstreams:[{protocol:'udp',address:'127.0.0.1:6153'}]}} status={{selective_cache_policies:true}} onChange={onChange}/>);
+ expect(screen.getByLabelText('surge://127.0.0.1:6153 允许乐观缓存')).not.toBeChecked();
+ expect(screen.getByLabelText('udp://127.0.0.1:6153 允许乐观缓存')).toBeChecked();
+ fireEvent.click(screen.getByLabelText('surge://127.0.0.1:6153 允许乐观缓存'));
+ expect(onChange).toHaveBeenCalledWith({...settings,upstreams:{'surge://127.0.0.1:6153':{optimistic:true}}});
+});

@@ -6,9 +6,10 @@ import {cacheText} from './cache-i18n';
 export function endpointCacheIdentity(endpoint){
  return `${endpoint.protocol}://${endpoint.address}${endpoint.protocol==='doh'?'|'+endpoint.url:endpoint.protocol==='dot'?'|'+endpoint.tls_name:''}`;
 }
-export function cacheUpstreamRows(dns={},policies={},groups={}){
+export function cacheUpstreamRows(dns={},policies={},groups={},surge={}){
  const rows=new Map();
  const add=endpoint=>{const key=endpointCacheIdentity(endpoint);if(!rows.has(key))rows.set(key,{key,name:endpoint.name||key})};
+ if(surge.dns)rows.set('surge://'+surge.dns,{key:'surge://'+surge.dns,name:'Surge'});
  (dns.upstreams||[]).forEach(add);
  (dns.policy_upstreams||[]).forEach(rule=>{(rule.upstreams||[]).forEach(add);(rule.fallback_upstreams||[]).forEach(add)});
  [...Object.keys(policies),...Object.keys(groups)].filter(key=>key!=='other').forEach(key=>{if(!rows.has(key))rows.set(key,{key,name:key})});
@@ -25,7 +26,7 @@ export function CacheGroupStatistics({groups,kind='decision'}){
  return <tr key={key}><td data-label={t(kind==='decision'?'decision':'upstream')} className="cache-reason cache-policy-name">{key==='other'?t('otherUpstreams'):key}</td>{values.map((value,i)=><td key={columns[i]} data-label={t(columns[i])}>{value}</td>)}</tr>;
  })}</tbody></table>{!rows.length&&<p className="empty">{t('noGroupSamples')}</p>}</div><p>{t('groupStatisticsHelp')}</p></section>;
 }
-export function CachePolicySettings({settings,dns,status={},onChange}){
+export function CachePolicySettings({settings,dns,surge,status={},onChange}){
  const [locale]=useLocale(),t=cacheText(locale),supported=status.selective_cache_policies===true;
  const update=(field,key,name,value)=>onChange({...settings,[field]:{...settings[field],[key]:{...settings[field]?.[key],[name]:value}}});
  const switches=(field,rows)=>rows.map(({key,name})=>{
@@ -34,7 +35,7 @@ export function CachePolicySettings({settings,dns,status={},onChange}){
  });
  const groups=[
  {master:'optimistic',idle:'optimistic_idle_refresh',field:'decisions',title:'decisionMaster',heading:'decisionPolicies',rows:decisions.filter(key=>key!=='UNKNOWN').map(key=>({key,name:key}))},
- {master:'optimistic_responses',idle:'optimistic_response_idle_refresh',field:'upstreams',title:'responseMaster',heading:'upstreamPolicies',rows:cacheUpstreamRows(dns,settings.upstreams,status.cache?.response?.groups)}
+ {master:'optimistic_responses',idle:'optimistic_response_idle_refresh',field:'upstreams',title:'responseMaster',heading:'upstreamPolicies',rows:cacheUpstreamRows(dns,settings.upstreams,status.cache?.response?.groups,surge)}
  ];
  return <section className="cache-policy-settings"><div className="cache-policy-groups">{groups.map(group=>{
  const enabled=Boolean(settings[group.master]);

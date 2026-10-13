@@ -39,6 +39,17 @@ func responseCacheScope(d config.Document) string {
 }
 
 func (rt *Runtime) responsePools() []*resolver.Real {
+	pools := rt.persistedResponsePools()
+	if rt.surgeResponses != nil {
+		pools = append(pools, rt.surgeResponses)
+	}
+	return pools
+}
+
+// Surge Fake-IP mappings are revalidated during each runtime lifetime. Do not
+// hand their DNS answers across a backend restart or configuration application.
+// Reliability counters still participate in the aggregate snapshot.
+func (rt *Runtime) persistedResponsePools() []*resolver.Real {
 	var pools []*resolver.Real
 	if rt.real != nil {
 		pools = append(pools, rt.real)
@@ -55,7 +66,7 @@ func (rt *Runtime) responseSnapshot(persistent bool) responseCacheSnapshot {
 		snapshot.OptimisticStats.Add(stats)
 	}
 	if !persistent || rt.settings.Settings.Cache.OptimisticResponses {
-		for _, pool := range rt.responsePools() {
+		for _, pool := range rt.persistedResponsePools() {
 			snapshot.Pools = append(snapshot.Pools, pool.ResponseSnapshot(persistent))
 		}
 	}
@@ -66,7 +77,7 @@ func (rt *Runtime) restoreResponses(snapshot *responseCacheSnapshot) {
 	if snapshot == nil || snapshot.Version != 1 {
 		return
 	}
-	pools := rt.responsePools()
+	pools := rt.persistedResponsePools()
 	// Keep the aggregate independent of resolver pools so it survives endpoint
 	// changes, disabled DNS, and runtime recreation without being double-counted.
 	rt.responseOptimisticStats = snapshot.OptimisticStats.Clone()

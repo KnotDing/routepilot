@@ -679,6 +679,13 @@ acceptance was performed. Configuration runtime application is unchanged.
 
 - 实现：按 DIRECT / SURGE / REJECT 决策与实际 DNS 上游设置乐观缓存；总开关勾选后展开分项，取消后收起并保留配置。普通缓存保持原有行为，UNKNOWN 沿用短期普通缓存。
 - 分项统计包含条目、命中、未命中、淘汰、待刷新、旧值命中、已核对、不一致及不一致率；同步页面、API 与 /metrics。核对按实际返回的旧决策 / 旧上游归属，跨配置重建和进程重启持久化，手动清理重置。
-- 验证：隔离发布目录的 `env GOCACHE=/tmp/routepilot-go-build make verify-release` 通过：前端 32 文件 / 159 测试、Go 全包 race / vet、原生核心与真实 WKWebView、17 页 / 14 分类响应式检查、九项分组缓存检查、完整 App 打包与版本 / 资源 / 签名 / DMG / ZIP / SHA256 校验（源码 1.0.4-beta.17 / build 99）。`make fuzz` 通过。GitHub 回归与两个发布 workflow 的最终结果另行核验。
+- 验证：隔离发布目录的 `env GOCACHE=/tmp/routepilot-go-build make verify-release` 通过：前端 32 文件 / 159 测试、Go 全包 race / vet、原生核心与真实 WKWebView、17 页 / 14 分类响应式检查、九项分组缓存检查、完整 App 打包与版本 / 资源 / 签名 / DMG / ZIP / SHA256 校验（源码 1.0.4-beta.17 / build 99）。`make fuzz` 通过。GitHub 回归 run `38353290349` 和 Release run `38353296930` 成功；Gitea run `2092` 的 Ubuntu runner 拉取镜像时 TLS 握手超时，回退任务生成制品，但整体工作流失败，该标签不记为完整核验发布。
 - 未授权安装或升级现用环境，未验收真实 LAN / NAT / IPv6 流量。前序告警、性能、导航与偏好等未提交改动留在原工作区，不纳入此版本。
 - 说明：[分项缓存说明](cache-policies.md)。
+
+## 2026-10-13：Surge 乐观响应与本机通知菜单（beta.18）
+
+- Surge 解析结果作为独立乐观响应来源；覆盖过期响应、刷新不一致、客户端隔离、健康 / 路由 generation 失效拒绝写回、Fake-IP 网段校验和 TTL 发行上限。可靠性计数参与状态 API、缓存 API、metrics 与持久化；Fake-IP 内容不跨运行实例恢复。
+- 本机通知设置迁移到 App 状态栏菜单，保持本机偏好保存、通知权限请求和声音选项；移除管理卡片，后端通知表单仍可编辑。
+- 定向测试及隔离目录的 `env GOCACHE=/tmp/routepilot-go-build make verify-release` 通过：前端 32 文件 / 160 测试、Go 全包 race / vet、原生核心与真实 WKWebView、17 页 / 14 分类响应式检查、九项分组缓存检查（含 Surge 开关保存及通知卡片移除）、完整 App 打包与版本 / 资源 / 签名 / DMG / ZIP / SHA256 校验（源码 1.0.4-beta.18 / build 100）。双仓库 CI 和制品在发布后另行核验。
+- 不安装或升级现用环境，未在真实 Surge / 网关环境验收缓存或实际 macOS 通知授权。

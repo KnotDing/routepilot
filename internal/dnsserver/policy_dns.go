@@ -71,7 +71,7 @@ func (d *Dispatcher) resolvePolicyDNS(ctx context.Context, q model.DNSQueryConte
 		if err := resolver.ResolutionFailure(reply); err != nil && trace.Error == "" {
 			trace.Error = err.Error()
 		}
-		match.Attempts = append(match.Attempts, model.PolicyDNSAttempt{Source: "surge", Resolver: trace.Endpoint, Rcode: &code, Error: trace.Error, LatencyMS: float64(time.Since(begin)) / float64(time.Millisecond)})
+		match.Attempts = append(match.Attempts, model.PolicyDNSAttempt{Source: "surge", Resolver: trace.Endpoint, CacheHit: trace.CacheHit, Rcode: &code, Error: trace.Error, LatencyMS: float64(time.Since(begin)) / float64(time.Millisecond)})
 		if trace.Error != "" {
 			return failure(m, dns.RcodeServerFailure)
 		}

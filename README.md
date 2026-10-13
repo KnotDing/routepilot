@@ -15,7 +15,7 @@ RoutePilot 是一款 macOS 状态栏应用：向 Surge 查询分流策略，为 
 - **缩短直连路径：** DIRECT 查询返回真实地址，客户端后续流量由网关直接送往 WAN，不必绕经 Surge；Fake-IP 和下一跳配置为 Surge 的受管理前缀仍按路由经过 Surge。
 - **Surge 故障时保留新连接的直连路径：** RoutePilot 停止发放新的 Fake-IP，后续查询改用独立真实 DNS 解析，让网关可将新连接直连出网（真实 DNS 与 WAN 可用时）。已发放 Fake-IP 在 TTL / 宽限期内仍可能依赖 Surge。
 
-[📦 下载最新版本](https://github.com/KnotDing/routepilot/releases) · [🧪 乐观缓存分项设置测试版 v1.0.4-beta.17](https://github.com/KnotDing/routepilot/releases/tag/v1.0.4-beta.17) · [Gitea 备用下载](https://gitea.knotding.com/knot/routepilot/releases) · [🚀 快速开始](#quick-start) · [🤖 安装 skill](#agent-skill) · [📚 文档导航](#documentation)
+[📦 下载最新版本](https://github.com/KnotDing/routepilot/releases) · [🧪 Surge 乐观缓存与通知菜单测试版 v1.0.4-beta.18](https://github.com/KnotDing/routepilot/releases/tag/v1.0.4-beta.18) · [Gitea 备用下载](https://gitea.knotding.com/knot/routepilot/releases) · [🚀 快速开始](#quick-start) · [🤖 安装 skill](#agent-skill) · [📚 文档导航](#documentation)
 
 <p align="center">
   <img src="docs/images/management-4k.png" width="100%" alt="RoutePilot App 管理界面 4K 截图">
@@ -167,7 +167,7 @@ DNS 查询不会生成单 IP BGP 路由。Surge 不可用时停止新 Fake-IP、
 
 | 通知方式 | 使用方式 |
 | --- | --- |
-| App 系统通知 | 允许 macOS 通知权限，监控本机及当前已登录的远程连接；关闭管理窗口后仍可监控 |
+| App 系统通知 | 状态栏菜单「应用偏好 → 本机通知设置」启用并允许 macOS 通知权限，监控本机及当前已登录的远程连接；关闭管理窗口后仍可监控 |
 | 后台 Webhook | 后端向配置的 HTTP(S) 地址发送 JSON；App 或页面关闭后仍能推送 |
 
 Webhook 依赖后台和网络仍可用；后台整个失联时，由连接它的 App 提醒。普通浏览器通知需要保持页面打开。

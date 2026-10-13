@@ -95,7 +95,11 @@ func (rt *Runtime) observeDecisionRevision(snapshot surge.Snapshot, err error) (
 			// unexpired responses handed over when optimistic caching was disabled.
 			if !confirmed || previousDigest != "" || optimisticResponses {
 				for _, pool := range rt.responsePools() {
-					pool.ConfigurationChanged(reason, optimisticResponses)
+					if pool == rt.surgeResponses {
+						pool.Cache.FlushReason(reason)
+					} else {
+						pool.ConfigurationChanged(reason, optimisticResponses)
+					}
 				}
 			}
 		}

@@ -12,6 +12,7 @@ const out='artifacts/cache-policies';fs.mkdirSync(out,{recursive:true});
   const endpoint={name:'DoH 测试上游',enabled:true,protocol:'doh',address:'192.0.2.53:443',url:'https://dns.example.test/'+('long-upstream-path-'.repeat(12))};
   const identity=`doh://${endpoint.address}|${endpoint.url}`;
   let settings={...fixture('settings'),cache:{...fixture('settings').cache,optimistic:true,optimistic_responses:true},dns:{...fixture('settings').dns,upstreams:[endpoint]}};
+  const surgeIdentity="surge://"+settings.surge.dns;
   const sample={entries:2,hits:30,misses:10,evictions:1,stale_entries:1,optimistic_hits:20,optimistic_compared:10,optimistic_mismatches:2};
   await page.route('**/*',async route=>{
    const url=new URL(route.request().url());
@@ -22,7 +23,7 @@ const out='artifacts/cache-policies';fs.mkdirSync(out,{recursive:true});
     if(path==='settings'){
      if(route.request().method()==='PUT'){settings=route.request().postDataJSON();value={settings}}else value=settings;
     }
-    if(path==='status')value={...value,selective_cache_policies:true,cache:{decision:{...sample,groups:{DIRECT:sample}},response:{...sample,groups:{[identity]:sample}}}};
+    if(path==='status')value={...value,selective_cache_policies:true,cache:{decision:{...sample,groups:{DIRECT:sample}},response:{...sample,groups:{[identity]:sample,[surgeIdentity]:sample}}}};
     if(path.startsWith('dns/cache?'))value={...value,entries:[],stats:{...sample,groups:{DIRECT:sample}},ttl:settings.cache};
     return route.fulfill({contentType:'application/json',body:JSON.stringify(value)});
    }
@@ -56,12 +57,16 @@ const out='artifacts/cache-policies';fs.mkdirSync(out,{recursive:true});
    if(await page.getByLabel(identity+' 允许乐观缓存',{exact:true}).count())throw Error('Disabled response master left item switches visible');
    await page.getByLabel('乐观响应缓存',{exact:true}).check();
    await page.getByLabel(identity+' 允许乐观缓存',{exact:true}).uncheck();
+   await page.getByLabel(surgeIdentity+' 允许乐观缓存',{exact:true}).uncheck();
    if(await page.getByRole('checkbox',{name:/缓存此项/}).count())throw Error('Ordinary caching control is still visible');
    await page.getByRole('button',{name:'保存设置',exact:true}).click();
    await page.waitForFunction(()=>!document.querySelector('.settings-form fieldset')?.disabled);
-   if(settings.cache.decisions?.DIRECT?.optimistic!==false||settings.cache.upstreams?.[identity]?.optimistic!==false)throw Error('Saved overrides lost explicit false');
+   if(settings.cache.decisions?.DIRECT?.optimistic!==false||settings.cache.upstreams?.[identity]?.optimistic!==false||settings.cache.upstreams?.[surgeIdentity]?.optimistic!==false)throw Error('Saved overrides lost explicit false');
    await page.getByLabel(identity+' 允许乐观缓存',{exact:true}).check();
+   await page.getByLabel(surgeIdentity+' 允许乐观缓存',{exact:true}).check();
    await page.getByLabel('DIRECT 允许乐观缓存',{exact:true}).check();
+   await page.locator('.tabs').getByRole('button',{name:'通知',exact:true}).click();
+   if(await page.getByText('本机系统通知',{exact:true}).count()||await page.getByLabel('启用本机系统通知',{exact:true}).count())throw Error('Local notification card is still visible');
    await go('决策缓存');await page.getByRole('heading',{name:'各决策缓存统计',exact:true}).waitFor();await check('decision statistics '+width);await page.screenshot({path:`${out}/decisions-${width}.png`,fullPage:true});
    await go('查询记录');await page.getByRole('heading',{name:'各上游缓存统计',exact:true}).waitFor();await check('upstream statistics '+width);await page.screenshot({path:`${out}/upstreams-${width}.png`,fullPage:true});
   }
