@@ -45,3 +45,48 @@ func TestCachePoliciesDefaultsValidationAndClone(t *testing.T) {
 		t.Fatal("invalid upstream identity accepted")
 	}
 }
+
+func TestOrdinaryCacheSwitchesRoundTripCloneAndValidation(t *testing.T) {
+	off, on := false, true
+	d := Default()
+	if !d.Settings.Cache.DecisionCacheEnabled() || !d.Settings.Cache.ResponseCacheEnabled() {
+		t.Fatal("legacy caches disabled by default")
+	}
+	d.Settings.Cache.DecisionsEnabled, d.Settings.Cache.ResponsesEnabled = &off, &off
+	d.Settings.Cache.Decisions = map[string]cache.Policy{"DIRECT": {Enabled: &off}}
+	d.Settings.Cache.Upstreams = map[string]cache.Policy{"udp://192.0.2.53:53": {Enabled: &off}}
+	if err := d.Validate(); err != nil {
+		t.Fatal(err)
+	}
+	cloned := d.Clone()
+	*cloned.Settings.Cache.DecisionsEnabled = true
+	*cloned.Settings.Cache.ResponsesEnabled = true
+	*cloned.Settings.Cache.Decisions["DIRECT"].Enabled = true
+	*cloned.Settings.Cache.Upstreams["udp://192.0.2.53:53"].Enabled = true
+	if d.Settings.Cache.DecisionCacheEnabled() || d.Settings.Cache.ResponseCacheEnabled() || d.Settings.Cache.Decisions["DIRECT"].CacheEnabled() || d.Settings.Cache.Upstreams["udp://192.0.2.53:53"].CacheEnabled() {
+		t.Fatal("clone shares cache switches")
+	}
+	raw, err := json.Marshal(d)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var restored Document
+	if err := json.Unmarshal(raw, &restored); err != nil {
+		t.Fatal(err)
+	}
+	if restored.Settings.Cache.DecisionCacheEnabled() || restored.Settings.Cache.ResponseCacheEnabled() || restored.Settings.Cache.Decisions["DIRECT"].CacheEnabled() || restored.Settings.Cache.Upstreams["udp://192.0.2.53:53"].CacheEnabled() {
+		t.Fatal("explicit false lost in roundtrip")
+	}
+	for _, change := range []func(*Cache){
+		func(c *Cache) { c.Optimistic = true },
+		func(c *Cache) { c.OptimisticResponses = true },
+		func(c *Cache) { c.Decisions["DIRECT"] = cache.Policy{Enabled: &off, Optimistic: &on} },
+		func(c *Cache) { c.Upstreams["udp://192.0.2.53:53"] = cache.Policy{Enabled: &off, Optimistic: &on} },
+	} {
+		invalid := d.Clone()
+		change(&invalid.Settings.Cache)
+		if invalid.Validate() == nil {
+			t.Fatal("optimistic cache enabled without ordinary cache")
+		}
+	}
+}

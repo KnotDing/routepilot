@@ -119,7 +119,7 @@ export function Settings({settings,refresh,notify,status={},backend=null,interce
  const exportConfig=async()=>{try{if(!backupSelection.length)throw new Error(t('至少选择一个配置分区'));const query=backupSelection.map(section=>'sections='+encodeURIComponent(section)).join('&');const doc=await request('configuration/export?'+query);const blob=new Blob([JSON.stringify(doc,null,2)],{type:'application/json'});const url=URL.createObjectURL(blob);const link=document.createElement('a');link.href=url;link.download='routepilot-backup.json';link.click();URL.revokeObjectURL(url)}catch(e){notify(e.message,true)}};
  const chooseRestoreFile=async e=>{const file=e.target.files?.[0];if(!file)return;try{if(file.size>512*1024)throw new Error(t('配置文件超过 512 KiB'));let backup=JSON.parse(await file.text());if(backup.format_version===undefined&&backup.version===1){backup={format_version:1,config_version:1,sections:backupOptions.map(([key])=>key),configuration:backup}}if(backup.format_version!==1||backup.config_version!==1||!Array.isArray(backup.sections)||!backup.configuration)throw new Error(t('备份格式或配置版本不兼容'));const available=backup.sections.filter(section=>backupOptions.some(([key])=>key===section));if(!available.length)throw new Error(t('备份中没有可恢复的配置分区'));setRestoreBackup(backup);setRestoreSelection(available)}catch(error){setRestoreBackup(null);setRestoreSelection([]);notify(error.message,true)}finally{e.target.value=''}};
  const importConfig=async()=>{if(!restoreBackup||!restoreSelection.length){notify(t('请选择要恢复的配置分区'),true);return}try{const saved=await request('configuration/import','POST',{backup:restoreBackup,sections:restoreSelection});setDraft(saved.settings);setRestoreBackup(null);notify(t('配置已恢复'));refresh();if(saved.settings.general.web_listen!==settings.general.web_listen||saved.settings.security.tls_cert!==settings.security.tls_cert){if(isRemote())notify(t('远程监听地址已变更，请在管理后端中编辑连接地址并重新连接'));else reconnectAfterApplication((saved.settings.security.tls_cert?'https':'http')+'://'+saved.settings.general.web_listen)}}catch(e){notify(e.message,true)}};
- const entries=Object.entries({...draft[category],...(category==='dns'?{policy_upstreams:draft.dns.policy_upstreams??[]}:category==='security'?{password:draft.security.password??''}:category==='surge'?{api_token:draft.surge.api_token??''}:category==='notifications'?{webhook_url:draft.notifications?.webhook_url??'',clear_webhook:draft.notifications?.clear_webhook??false}:{})}).filter(([k])=>(category!=='cache'||!['decisions','upstreams','optimistic','optimistic_responses','optimistic_idle_refresh','optimistic_response_idle_refresh'].includes(k))&&(category!=='dns'||k!=='clients')&&(category!=='general'||!['mode','name'].includes(k))&&(category!=='surge'||!['trust_direct','restart'].includes(k))&&(category!=='notifications'||!['errors','surge','bgp','dns','controller','anomalies'].includes(k)));
+ const entries=Object.entries({...draft[category],...(category==='dns'?{policy_upstreams:draft.dns.policy_upstreams??[]}:category==='security'?{password:draft.security.password??''}:category==='surge'?{api_token:draft.surge.api_token??''}:category==='notifications'?{webhook_url:draft.notifications?.webhook_url??'',clear_webhook:draft.notifications?.clear_webhook??false}:{})}).filter(([k])=>(category!=='cache'||!['decisions_enabled','responses_enabled','decisions','upstreams','optimistic','optimistic_responses','optimistic_idle_refresh','optimistic_response_idle_refresh'].includes(k))&&(category!=='dns'||k!=='clients')&&(category!=='general'||!['mode','name'].includes(k))&&(category!=='surge'||!['trust_direct','restart'].includes(k))&&(category!=='notifications'||!['errors','surge','bgp','dns','controller','anomalies'].includes(k)));
  const renderField=(entry,section=category)=>{
   section=typeof section==='string'?section:category;
   const [k,v]=entry,requirements=settingsRequirement(section,k,draft,interception);
@@ -168,25 +168,25 @@ function Workspace({backend,onManage,onLocalSession}){const t=useT();const [sess
  const [updateTarget,setUpdateTarget]=useState(null),[updateActionsTarget,setUpdateActionsTarget]=useState(null),[monitorFocus,setMonitorFocus]=useState(false);
  useEffect(()=>{if(!monitorFocus)return;const exit=e=>{if(e.key==='Escape')setMonitorFocus(false)};window.addEventListener('keydown',exit);return()=>window.removeEventListener('keydown',exit)},[monitorFocus]);
  useEffect(()=>{if(page!=='Monitor')setMonitorFocus(false)},[page]);
- const alive=useRef(false),initializing=useRef(false),autoLoginAttempted=useRef(false),[signingIn,setSigningIn]=useState(false);
+ const alive=useRef(false),initializing=useRef(false),autoLoginAttempted=useRef(false),reconnectTimer=useRef(null),[signingIn,setSigningIn]=useState(false);
  const init=async()=>{
-  if(initializing.current)return;initializing.current=true;
+  if(initializing.current)return;initializing.current=true;clearTimeout(reconnectTimer.current);
   try{
    let s=await request('session');if(!alive.current)return;setCSRF(s.csrf);
-   if(backend&&!s.authenticated&&!autoLoginAttempted.current&&remoteCredentialsSupported()){
+   if(!s.authenticated&&!autoLoginAttempted.current&&(backend?remoteCredentialsSupported():nativeApp())){
     autoLoginAttempted.current=true;setSigningIn(true);setError('');
-    try{const restored=await restoreRemoteLogin(backend);if(!alive.current)return;if(restored.session){s={...s,...restored.session};autoLoginAttempted.current=false}}
-    catch(e){if(alive.current)setError(e.message)}
+    try{const restored=await (backend?restoreRemoteLogin(backend):restoreLocalLogin());if(!alive.current)return;if(restored.session){s={...s,...restored.session};autoLoginAttempted.current=false}}
+    catch(e){if(alive.current){setError(e.message);if(e.retryable){autoLoginAttempted.current=false;setSession(null);reconnectTimer.current=setTimeout(init,3000);return}}}
     finally{if(alive.current)setSigningIn(false)}
    }else setError('');
    if(!alive.current)return;
-   setSession(s);if(!backend)onLocalSession?.(s);
+   setCSRF(s.csrf);setSession(s);if(!backend)onLocalSession?.(s);
    if(!s.authenticated)window.webkit?.messageHandlers?.routepilotServiceHealth?.postMessage({clear:true});
-  }catch(e){if(alive.current&&e.name!=='AbortError')setError(e.message)}finally{initializing.current=false}
+  }catch(e){if(alive.current&&e.name!=='AbortError'){setError(e.message);if(nativeApp()&&(!e.status||e.status>=500)){setSession(null);reconnectTimer.current=setTimeout(init,3000)}}}finally{initializing.current=false}
  };
  useEffect(()=>{
   alive.current=true;window.routepilotActiveBackend=backend?{id:backend.id,url:backend.url}:null;init();
-  return()=>{alive.current=false;if(window.routepilotActiveBackend?.id===backend?.id)window.routepilotActiveBackend=null};
+  return()=>{alive.current=false;clearTimeout(reconnectTimer.current);if(window.routepilotActiveBackend?.id===backend?.id)window.routepilotActiveBackend=null};
  },[]);
 
  const refreshing=useRef(false),refreshPending=useRef(false),refreshRef=useRef(null),notificationState=useRef({settings:null,health:[],failures:0}),visible=useWindowVisible();
@@ -287,10 +287,10 @@ export function App(){const t=useT();
   };
   bootstrap();return()=>{cancelled=true;clearTimeout(timer)};
  },[]);
- useEffect(()=>{let reconnecting=false;const expired=async()=>{
-  if(reconnecting)return;reconnecting=true;window.webkit?.messageHandlers?.routepilotServiceHealth?.postMessage({clear:true});selectBackend('');setBackend(null);setLocalSession(null);setManage(false);setError('');
-  try{const session=await localSessionWithCredentials(),selected=await savedBackend(session);selectBackend(selected?.id||'');setBackend(selected);setRevision(v=>v+1);setLocalSession(session)}catch(e){setError(e.message)}finally{reconnecting=false}
- };window.addEventListener('routepilot-local-session-expired',expired);return()=>window.removeEventListener('routepilot-local-session-expired',expired)},[]);
+ useEffect(()=>{let reconnecting=false,cancelled=false,timer;const expired=async()=>{
+  if(reconnecting||cancelled)return;clearTimeout(timer);reconnecting=true;window.webkit?.messageHandlers?.routepilotServiceHealth?.postMessage({clear:true});selectBackend('');setBackend(null);setLocalSession(null);setManage(false);setError('');
+  try{const session=await localSessionWithCredentials(),selected=await savedBackend(session);if(cancelled)return;selectBackend(selected?.id||'');setBackend(selected);setRevision(v=>v+1);setLocalSession(session)}catch(e){if(!cancelled){setError(e.message);if(nativeApp()&&(e.retryable||!e.status||e.status>=500))timer=setTimeout(expired,3000)}}finally{reconnecting=false}
+ };window.addEventListener('routepilot-local-session-expired',expired);return()=>{cancelled=true;clearTimeout(timer);window.removeEventListener('routepilot-local-session-expired',expired)}},[]);
  const switchTo=next=>{window.webkit?.messageHandlers?.routepilotServiceHealth?.postMessage({clear:true});selectBackend(next?.id||'');setBackend(next);setRevision(v=>v+1);setManage(false);rememberManagementBackend(next);if(next)sessionStorage.setItem('routepilot.backend',next.id);else sessionStorage.removeItem('routepilot.backend')};
  if(!localSession)return <div className="login"><h1>RoutePilot</h1><p>{t(window.routepilotNativePreferences?.localCredentialsSupported?'正在恢复已保存的登录状态…':'正在连接本地管理服务…')}</p>{error&&<p role="alert" className="error">{message(error)}</p>}<button onClick={()=>location.reload()}>{t('重新连接')}</button></div>;
  return <>{error&&<div role="alert" className="notice error">{message(error)}</div>}<Workspace key={revision} backend={backend} onLocalSession={session=>{setLocalSession(session);if(session.authenticated)setError('')}} onManage={localSession.authenticated?()=>setManage(true):undefined}/>{manage&&<Backends active={backend} onSelect={switchTo} onClose={()=>setManage(false)}/>}</>;

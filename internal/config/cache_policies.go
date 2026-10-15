@@ -8,6 +8,19 @@ import (
 )
 
 func (c Cache) validatePolicies() error {
+	if !c.DecisionCacheEnabled() && c.Optimistic {
+		return fmt.Errorf("optimistic decision cache requires decision caching")
+	}
+	if !c.ResponseCacheEnabled() && c.OptimisticResponses {
+		return fmt.Errorf("optimistic response cache requires response caching")
+	}
+	for _, policies := range []map[string]cache.Policy{c.Decisions, c.Upstreams} {
+		for _, policy := range policies {
+			if !policy.CacheEnabled() && policy.Optimistic != nil && *policy.Optimistic {
+				return fmt.Errorf("optimistic cache policy requires caching for the same item")
+			}
+		}
+	}
 	for key := range c.Decisions {
 		switch model.Decision(key) {
 		case model.Direct, model.Surge, model.Reject, model.Unknown:
@@ -26,7 +39,23 @@ func (c Cache) validatePolicies() error {
 	return nil
 }
 func cloneCachePolicies(c Cache) Cache {
+	if c.DecisionsEnabled != nil {
+		v := *c.DecisionsEnabled
+		c.DecisionsEnabled = &v
+	}
+	if c.ResponsesEnabled != nil {
+		v := *c.ResponsesEnabled
+		c.ResponsesEnabled = &v
+	}
 	c.Decisions = cache.ClonePolicies(c.Decisions)
 	c.Upstreams = cache.ClonePolicies(c.Upstreams)
 	return c
+}
+
+func (c Cache) DecisionCacheEnabled() bool {
+	return c.DecisionsEnabled == nil || *c.DecisionsEnabled
+}
+
+func (c Cache) ResponseCacheEnabled() bool {
+	return c.ResponsesEnabled == nil || *c.ResponsesEnabled
 }

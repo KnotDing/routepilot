@@ -143,7 +143,7 @@ function MonitoringScreen({snapshot,backendName,focus,onFocus,backendURL,history
   {!dimensionsSupported&&<p className="field-hint">{t('此后端暂不支持多条件监控筛选，请升级后端。')}</p>}
   {view?.completed_only&&<p className="field-hint">{t('筛选条件按同一请求组合匹配，统计仅包含已完成且已记录这些维度的请求。')}</p>}
   {dimensionsSupported&&view&&view.completed>0&&(!view.dimensions_supported||view.completed>view.dimension_completed)&&<p className="field-hint">{t('部分旧请求未记录域名及组合维度，不纳入域名占比或组合筛选。')}</p>}
-  {view?.dimension_overflow>0&&<p className="field-hint">{t('超出明细容量的请求单独统计，无法参与具体条件筛选。')}</p>}
+  {view?.filter_overflow>0?<p className="field-hint">{t('组合明细覆盖 {recorded} / {total} 个请求，具体条件筛选仅统计这些明细；独立域名排行不受此限制。',{recorded:number(view.filter_completed-view.filter_overflow),total:number(view.filter_completed)})}</p>:view?.dimension_overflow>0&&<p className="field-hint">{t('超出明细容量的请求单独统计，无法参与具体条件筛选。')}</p>}
   {historyStatus?.storage_error&&<div role="alert" className="notice error">{t('历史统计保存失败')}: {display.redact(message(historyStatus.storage_error))}</div>}
   {historical.error&&<div role="alert" className="notice error">{display.redact(message(historical.error))}<button onClick={historical.reload}>{t('重试')}</button></div>}
   {mode==='history'&&historical.loading&&<div className="notice">{t('正在读取历史数据…')}</div>}
@@ -154,7 +154,7 @@ function MonitoringScreen({snapshot,backendName,focus,onFocus,backendURL,history
   <FlowChartGrid>{visible('dnsFlow')&&<FlowChart snapshot={view} sources={sources} selected={source} clientSettings={clientSettings}/>}{visible('clientFlow')&&<ClientPolicyChart rows={mode==='history'?historical.history?.source_policy_flows:view.source_policy_flows} clientSettings={clientSettings}/>}</FlowChartGrid>
   <div className="monitor-primary-grid">{visible('policies')&&<Policies snapshot={view} limit={source&&source!=='legacy'?64:512}/>}
   {visible('sources')&&<SourceStatistics sources={shareSources} total={mode==='history'?historical.history?.total_received:snapshot.received} selected={source} onSelect={setSource} clientSettings={clientSettings}/>}
-  {visible('domains')&&<DomainStatistics unrecorded={mode==='history'&&dimensionsSupported&&!view.dimensions_supported} domains={mode==='history'&&dimensionsSupported&&!view.dimensions_supported?undefined:view.domains} selected={filters.domain} onSelect={domain=>setFilters(old=>({...old,domain}))}/>}</div>
+  {visible('domains')&&<DomainStatistics unrecorded={mode==='history'&&dimensionsSupported&&!view.dimensions_supported&&!view.domain_statistics} statistics={view.domain_statistics} domains={mode==='history'&&dimensionsSupported&&!view.dimensions_supported&&!view.domain_statistics?undefined:view.domains} selected={filters.domain} onSelect={domain=>setFilters(old=>({...old,domain}))}/>}</div>
   <div className="monitor-secondary-grid">{visible('trend')&&<Trend samples={historical.history?historicalSamples(historical.history):mode==='history'||source||filtered?[]:samples} historical={mode==='history'} persisted={Boolean(historical.history)}/>}{visible('decisions')&&<Distribution title="分流决策占比" rows={decisions} total={total}/>}{visible('rcodes')&&<Distribution title="DNS 响应码占比" rows={rcodes} total={total}/>}</div></>}
   <p className="monitor-footnote">{t('统计自监控功能启用起累计并跨重启保存，不依赖查询记录开关。流向表示 DNS 请求的最终处理路径；上游重试、后台刷新、网络字节和后续上网流量不在此统计范围。')}</p>
  </div>;

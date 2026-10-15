@@ -3,6 +3,7 @@ package resolver_test
 import (
 	"context"
 	"errors"
+	"fmt"
 	"github.com/miekg/dns"
 	"surge-controller/internal/cache"
 	"surge-controller/internal/model"
@@ -69,50 +70,61 @@ func TestPerUpstreamOptimisticDisablePreservesOrdinaryTTLRestore(t *testing.T) {
 }
 
 func TestResponseRefreshAttributesMismatchToActualOldUpstream(t *testing.T) {
-	endpoints := []resolver.ResolverEndpoint{{Enabled: true, Protocol: "udp", Address: "192.0.2.1:53"}, {Enabled: true, Protocol: "udp", Address: "192.0.2.2:53"}}
-	oldID := endpoints[1].CacheIdentity()
-	newID := endpoints[0].CacheIdentity()
-	off := false
-	entered, release := make(chan struct{}), make(chan struct{})
-	tr := &mocks.Transport{Func: func(ctx context.Context, ep resolver.ResolverEndpoint, q *dns.Msg) (*dns.Msg, error) {
-		if ep.CacheIdentity() == oldID {
-			return mocks.AddressReply(q, "203.0.113.1"), nil
-		}
-		close(entered)
-		select {
-		case <-release:
-		case <-ctx.Done():
-			return nil, ctx.Err()
-		}
-		return mocks.AddressReply(q, "203.0.113.2"), nil
-	}}
-	r, err := resolver.NewReal(tr, endpoints, false, 10, resolver.OptimisticOptions{Enabled: true, Policies: map[string]cache.Policy{newID: {Optimistic: &off}}})
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer r.Close()
-	q := new(dns.Msg)
-	q.SetQuestion("refresh.test.", dns.TypeA)
-	req := model.ResolveRequest{Message: q}
-	r.Resolve(context.Background(), req)
-	r.ConfigurationChanged("updated", true)
-	for i := 0; i < 4; i++ {
-		r.Resolve(context.Background(), req)
-	}
-	select {
-	case <-entered:
-	case <-time.After(time.Second):
-		t.Fatal("refresh missing")
-	}
-	close(release)
-	deadline := time.Now().Add(time.Second)
-	for r.Cache.Stats().OptimisticCompared < 4 && time.Now().Before(deadline) {
-		time.Sleep(time.Millisecond)
-	}
-	s := r.Cache.Stats()
-	old := s.Groups[oldID]
-	if s.Entries != 1 || s.Groups[newID].Entries != 1 || old.OptimisticHits != 4 || old.OptimisticCompared != 4 || old.OptimisticMismatches != 4 || s.Groups[newID].OptimisticCompared != 0 {
-		t.Fatal("missing fresh ordinary result or wrong endpoint attribution", s)
+	for _, disableCache := range []bool{false, true} {
+		t.Run(fmt.Sprintf("disable_cache=%v", disableCache), func(t *testing.T) {
+			endpoints := []resolver.ResolverEndpoint{{Enabled: true, Protocol: "udp", Address: "192.0.2.1:53"}, {Enabled: true, Protocol: "udp", Address: "192.0.2.2:53"}}
+			oldID := endpoints[1].CacheIdentity()
+			newID := endpoints[0].CacheIdentity()
+			off := false
+			entered, release := make(chan struct{}), make(chan struct{})
+			tr := &mocks.Transport{Func: func(ctx context.Context, ep resolver.ResolverEndpoint, q *dns.Msg) (*dns.Msg, error) {
+				if ep.CacheIdentity() == oldID {
+					return mocks.AddressReply(q, "203.0.113.1"), nil
+				}
+				close(entered)
+				select {
+				case <-release:
+				case <-ctx.Done():
+					return nil, ctx.Err()
+				}
+				return mocks.AddressReply(q, "203.0.113.2"), nil
+			}}
+			policy := cache.Policy{Optimistic: &off}
+			wantEntries := 1
+			if disableCache {
+				policy.Enabled = &off
+				wantEntries = 0
+			}
+			r, err := resolver.NewReal(tr, endpoints, false, 10, resolver.OptimisticOptions{Enabled: true, Policies: map[string]cache.Policy{newID: policy}})
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer r.Close()
+			q := new(dns.Msg)
+			q.SetQuestion("refresh.test.", dns.TypeA)
+			req := model.ResolveRequest{Message: q}
+			r.Resolve(context.Background(), req)
+			r.ConfigurationChanged("updated", true)
+			for i := 0; i < 4; i++ {
+				r.Resolve(context.Background(), req)
+			}
+			select {
+			case <-entered:
+			case <-time.After(time.Second):
+				t.Fatal("refresh missing")
+			}
+			close(release)
+			deadline := time.Now().Add(time.Second)
+			for r.Cache.Stats().OptimisticCompared < 4 && time.Now().Before(deadline) {
+				time.Sleep(time.Millisecond)
+			}
+			s := r.Cache.Stats()
+			old := s.Groups[oldID]
+			if s.Entries != wantEntries || s.Groups[newID].Entries != wantEntries || old.OptimisticHits != 4 || old.OptimisticCompared != 4 || old.OptimisticMismatches != 4 || s.Groups[newID].OptimisticCompared != 0 {
+				t.Fatal("missing fresh ordinary result or wrong endpoint attribution", s)
+			}
+
+		})
 	}
 }
 
@@ -163,5 +175,55 @@ func TestUpstreamIdentityIncludesDoHPathAndTLSName(t *testing.T) {
 	b.TLSName = "two.test"
 	if a.CacheIdentity() == b.CacheIdentity() {
 		t.Fatal("TLS name identity collapsed")
+	}
+}
+
+func TestDisabledResponseCacheDoesNotReuseStoreOrRestore(t *testing.T) {
+	ep := resolver.ResolverEndpoint{Enabled: true, Protocol: "udp", Address: "192.0.2.53:53"}
+	q := new(dns.Msg)
+	q.SetQuestion("disabled.test.", dns.TypeA)
+	req := model.ResolveRequest{Message: q}
+	tr := &mocks.Transport{Func: func(_ context.Context, _ resolver.ResolverEndpoint, q *dns.Msg) (*dns.Msg, error) {
+		return mocks.AddressReply(q, "203.0.113.1"), nil
+	}}
+	old, err := resolver.NewReal(tr, []resolver.ResolverEndpoint{ep}, false, 10, resolver.OptimisticOptions{Enabled: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = old.Resolve(context.Background(), req); err != nil {
+		t.Fatal(err)
+	}
+	saved := old.ResponseSnapshot()
+	old.Close()
+	for _, global := range []bool{false, true} {
+		t.Run(fmt.Sprintf("global=%v", global), func(t *testing.T) {
+			off := false
+			options := resolver.OptimisticOptions{Enabled: true}
+			if global {
+				options.CacheEnabled = &off
+			} else {
+				options.Policies = map[string]cache.Policy{ep.CacheIdentity(): {Enabled: &off}}
+			}
+			r, err := resolver.NewReal(tr, []resolver.ResolverEndpoint{ep}, false, 10, options)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer r.Close()
+			if r.RestoreResponses(saved) != 0 {
+				t.Fatal("disabled response cache restored data")
+			}
+			before := tr.Calls.Load()
+			for i := 0; i < 2; i++ {
+				trace := new(model.ResolutionTrace)
+				req.Trace = trace
+				msg, err := r.Resolve(context.Background(), req)
+				if err != nil || msg.Answer[0].(*dns.A).A.String() != "203.0.113.1" || trace.CacheHit {
+					t.Fatal("disabled cache changed result", msg, err, trace)
+				}
+			}
+			if tr.Calls.Load() != before+2 || r.Cache.Stats().Entries != 0 || len(r.ResponseSnapshot()) != 0 || len(r.ResponseSnapshot(true)) != 0 {
+				t.Fatal("disabled cache reused, stored or persisted data", r.Cache.Stats())
+			}
+		})
 	}
 }

@@ -1276,5 +1276,11 @@
   "部分旧请求未记录域名及组合维度，不纳入域名占比或组合筛选。": "Some older requests lack domain and combined dimensions and are excluded from domain shares and combined filters.",
   "超出明细容量的请求单独统计，无法参与具体条件筛选。": "Requests beyond the detail limit are counted separately and cannot match specific filters.",
   "使用匿名标识替代客户端 IP、备注、域名及策略名称，隐藏后端名称和地址；悬停提示与明细同样保护。": "Replace client IPs, remarks, domains and policy names with anonymous labels and hide the backend name and address, including tooltips and details.",
-  "此时段尚未采集域名统计。": "Domain statistics were not collected in this time range."
+  "此时段尚未采集域名统计。": "Domain statistics were not collected in this time range.",
+  "按域名独立累计完成请求，不受组合明细容量限制。": "Completed requests are counted independently by domain, without the combination-detail limit.",
+  "按已记录组合明细中的完成请求计算域名占比。": "Domain shares use completed requests with recorded combination details.",
+  "域名统计起点：{time}；升级前缺失的明细不倒填。": "Domain statistics since {time}. Missing details from before the upgrade are not backfilled.",
+  "部分请求因暂存容量或存储故障未保留域名，单独计入未记录域名。": "Requests whose domains could not be retained due to buffering limits or storage failure are counted separately as unrecorded domains.",
+  "此范围使用旧版组合明细，超出容量的域名无法还原。": "This range uses legacy combination details. Domains lost beyond its capacity cannot be recovered.",
+  "组合明细覆盖 {recorded} / {total} 个请求，具体条件筛选仅统计这些明细；独立域名排行不受此限制。": "Combination details cover {recorded} of {total} requests. Specific filters use only these details; independent domain rankings are unaffected."
 }

@@ -12,10 +12,13 @@ func (e ResolverEndpoint) CacheIdentity() string {
 	return key
 }
 func (r *Real) allowsOptimistic(endpoint string) bool {
-	return r.optimistic && r.policies[endpoint].OptimisticEnabled()
+	return r.allowsCaching(endpoint) && r.optimistic && r.policies[endpoint].OptimisticEnabled()
+}
+func (r *Real) allowsCaching(endpoint string) bool {
+	return r.cacheEnabled && r.policies[endpoint].CacheEnabled()
 }
 func (r *Real) policyForResponse(v response, stale bool) bool {
-	return !stale || r.allowsOptimistic(v.Endpoint)
+	return r.allowsCaching(v.Endpoint) && (!stale || r.allowsOptimistic(v.Endpoint))
 }
 func (r *Real) storedEndpoint(record ResponseCacheRecord) string {
 	endpoints := record.Endpoints

@@ -134,7 +134,7 @@ func TestSurgeResponseToggleOnlyCreatesAllowedPool(t *testing.T) {
 	d.Settings.Cache.OptimisticResponses = true
 	off := false
 	identity := "surge://" + d.Settings.Surge.DNS
-	d.Settings.Cache.Upstreams = map[string]cache.Policy{identity: {Optimistic: &off}}
+	d.Settings.Cache.Upstreams = map[string]cache.Policy{identity: {Enabled: &off}}
 	if err := a.Apply(context.Background(), d); err != nil {
 		t.Fatal(err)
 	}

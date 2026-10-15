@@ -125,6 +125,14 @@ func (s *Store) migrate() error {
 	if _, e = tx.Exec("CREATE TABLE IF NOT EXISTS dns_monitoring_history(bucket INTEGER PRIMARY KEY, document BLOB NOT NULL)"); e != nil {
 		return e
 	}
+	for _, q := range []string{
+		"CREATE TABLE IF NOT EXISTS dns_domain_counts(source TEXT NOT NULL, domain TEXT NOT NULL, other INTEGER NOT NULL, queries INTEGER NOT NULL, PRIMARY KEY(source,domain,other)) WITHOUT ROWID",
+		"CREATE TABLE IF NOT EXISTS dns_domain_history(bucket INTEGER NOT NULL, source TEXT NOT NULL, domain TEXT NOT NULL, other INTEGER NOT NULL, queries INTEGER NOT NULL, PRIMARY KEY(bucket,source,domain,other)) WITHOUT ROWID",
+	} {
+		if _, e = tx.Exec(q); e != nil {
+			return e
+		}
+	}
 	if _, e = tx.Exec("CREATE TABLE IF NOT EXISTS decision_cache(id TEXT PRIMARY KEY, document BLOB NOT NULL)"); e != nil {
 		return e
 	}

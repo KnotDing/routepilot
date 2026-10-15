@@ -2,11 +2,15 @@ package cache
 
 // Policy omits overrides by default to preserve existing cache behavior.
 type Policy struct {
+	Enabled    *bool `json:"enabled,omitempty"`
 	Optimistic *bool `json:"optimistic,omitempty"`
 }
 
+func (p Policy) CacheEnabled() bool {
+	return p.Enabled == nil || *p.Enabled
+}
 func (p Policy) OptimisticEnabled() bool {
-	return p.Optimistic == nil || *p.Optimistic
+	return p.CacheEnabled() && (p.Optimistic == nil || *p.Optimistic)
 }
 func ClonePolicies(policies map[string]Policy) map[string]Policy {
 	if policies == nil {
@@ -14,6 +18,10 @@ func ClonePolicies(policies map[string]Policy) map[string]Policy {
 	}
 	out := make(map[string]Policy, len(policies))
 	for key, p := range policies {
+		if p.Enabled != nil {
+			v := *p.Enabled
+			p.Enabled = &v
+		}
 		if p.Optimistic != nil {
 			v := *p.Optimistic
 			p.Optimistic = &v

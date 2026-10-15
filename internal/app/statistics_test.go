@@ -2,13 +2,16 @@ package app
 
 import (
 	"context"
+	"fmt"
 	"net/netip"
 	"path/filepath"
 	"reflect"
 	"strings"
 	"surge-controller/internal/cache"
+	"surge-controller/internal/database"
 	"surge-controller/internal/dnsserver"
 	"surge-controller/internal/model"
+	"sync"
 	"testing"
 	"time"
 )
@@ -207,5 +210,54 @@ func TestClientPersistenceErrorsAreVisibleAndRetryPreservesCounts(t *testing.T) 
 	view, _ = a.View(context.Background(), "dns/clients")
 	if got := view.(dnsserver.ClientStatsSnapshot); got.StorageError != "" || got.Stats.Queries != 1 {
 		t.Fatal(got)
+	}
+}
+
+func TestIndependentDomainsRemainExactAcrossConcurrentSavesAndReads(t *testing.T) {
+	ctx := context.Background()
+	store, err := database.Open(filepath.Join(t.TempDir(), "private", "domains.sqlite"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	a := &App{store: store, dnsMonitoring: dnsserver.NewMonitoring(dnsserver.DNSMonitoringSnapshot{})}
+	if err = a.saveDNSMonitoring(a.dnsMonitoring.Snapshot()); err != nil {
+		t.Fatal(err)
+	}
+	ip := netip.MustParseAddr("192.0.2.10")
+	for i := 0; i < 100; i++ {
+		a.dnsMonitoring.BeginSource(ip)
+		a.dnsMonitoring.FinishQuerySource(ip, "concurrent.test", false, model.DecisionResult{Decision: model.Direct}, "real", "NOERROR", time.Millisecond)
+	}
+	failures := make(chan error, 2)
+	var workers sync.WaitGroup
+	workers.Add(2)
+	go func() {
+		defer workers.Done()
+		for i := 0; i < 8; i++ {
+			if err := a.saveDNSMonitoring(a.dnsMonitoring.Snapshot()); err != nil {
+				failures <- err
+				return
+			}
+		}
+	}()
+	go func() {
+		defer workers.Done()
+		for i := 0; i < 8; i++ {
+			view, err := a.DNSMonitoringFilteredView(ctx, dnsserver.MonitoringFilter{})
+			if err != nil {
+				failures <- err
+				return
+			}
+			if view.DomainStatistics == nil || view.DomainStatistics.Completed != 100 || len(view.Domains) != 1 || view.Domains[0].Queries != 100 {
+				failures <- fmt.Errorf("domain batch counted twice or omitted: %+v", view.DomainStatistics)
+				return
+			}
+		}
+	}()
+	workers.Wait()
+	close(failures)
+	for err := range failures {
+		t.Error(err)
 	}
 }

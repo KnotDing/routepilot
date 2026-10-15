@@ -530,19 +530,18 @@ label[data-missing=true] > :is(input,textarea,select):not(:disabled),.form-grid 
 
 @media (max-width: 600px) { .settings-update-actions > button { flex: 1 1 auto; padding-inline: 10px; } }
 
-.sidebar-controls { display: flex; gap: 8px; margin: -14px 8px 16px; }
-.sidebar-controls button,.sidebar-collapse { padding: 0; width: 36px; height: 32px; color: #b3bfd1; background: transparent; border-color: #ffffff20; }
+.sidebar-hide,.sidebar-collapse { padding: 0; width: 36px; height: 32px; color: #b3bfd1; background: transparent; border-color: #ffffff20; }
 .sidebar-footer-actions { display:flex; align-items:center; gap:8px; }
 .desktop-sidebar[hidden] { display: none; }
 .desktop-sidebar.sidebar-icons { width: 72px; padding-inline: 12px; }
 .sidebar-icons .brand { justify-content: center; margin-inline: 0; }
 .sidebar-icons .brand > div, .sidebar-icons .nav-label, .sidebar-icons .nav-heading, .sidebar-icons .sidebar-address { display: none; }
 .sidebar-icons nav button { justify-content: center; padding-inline: 0; }
-.sidebar-icons .sidebar-controls { flex-direction: column; align-items: center; margin-inline: 0; }
 .sidebar-icons .aside-foot { padding-inline: 0; }
 .sidebar-icons .sidebar-connection, .sidebar-icons .sidebar-signout { justify-content: center; }
-.sidebar-icons .sidebar-footer-actions { margin-inline:-8px; gap:0; justify-content:center; }
+.sidebar-icons .sidebar-footer-actions { margin-inline:-8px; gap:0; justify-content:center; flex-wrap:wrap; }
 .sidebar-icons .sidebar-footer-actions button { width:32px; padding:0; flex:none; }
+.sidebar-icons .sidebar-footer-actions .sidebar-signout { width:100%; }
 .sidebar-signout { gap: 8px; }
 .sidebar-floating { z-index: 60; box-shadow: 12px 0 32px #0003; }
 .sidebar-reveal { display: none; }

@@ -192,7 +192,7 @@ func (a *App) saveDecisionCache() error {
 func (rt *Runtime) allowedDecisions(records []decisionRecord) []decisionRecord {
 	out := records[:0]
 	for _, record := range records {
-		if !record.Stale || rt.engine.AllowsOptimistic(record.Value.Decision) {
+		if rt.engine.AllowsCaching(record.Value.Decision) && (!record.Stale || rt.engine.AllowsOptimistic(record.Value.Decision)) {
 			out = append(out, record)
 		}
 	}

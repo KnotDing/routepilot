@@ -77,6 +77,8 @@ type BGP struct {
 	KeepaliveSeconds uint64 `json:"keepalive_seconds"`
 }
 type Cache struct {
+	DecisionsEnabled                  *bool                   `json:"decisions_enabled,omitempty"`
+	ResponsesEnabled                  *bool                   `json:"responses_enabled,omitempty"`
 	Decisions                         map[string]cache.Policy `json:"decisions,omitempty"`
 	Upstreams                         map[string]cache.Policy `json:"upstreams,omitempty"`
 	Optimistic                        bool                    `json:"optimistic"`

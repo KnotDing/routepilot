@@ -34,6 +34,7 @@ const fixture=Function(source.slice(source.indexOf('const settings='),source.ind
     const rows=[{source:'192.0.2.10',domain:'example.test',destination:'cache',code:'NOERROR',queries:4},{source:'192.0.2.20',domain:'example.test',destination:'cache',code:'NOERROR',queries:3},{source:'192.0.2.20',domain:'api.example.test',destination:'surge',code:'NXDOMAIN',queries:3}],selected=rows.filter(row=>['source','domain','destination'].every(key=>!url.searchParams.get(key)||url.searchParams.get(key)===row[key])&&(!url.searchParams.get('response_code')||url.searchParams.get('response_code')===row.code));
     const counts=items=>({started_at:'2026-10-13T00:00:00Z',observed_at:'2026-10-13T00:01:00Z',session_started_at:'dimension-fixture',received:items.reduce((sum,row)=>sum+row.queries,0),completed:items.reduce((sum,row)=>sum+row.queries,0),in_flight:0,unconfirmed:0,latency_ms_sum:10,flows:items.map(row=>({ingress:'addressed',destination:row.destination,queries:row.queries})),policies:items.map(row=>({policy:'Proxy',final_policy:'Node A',destination:row.destination,queries:row.queries})),decisions:{SURGE:items.reduce((sum,row)=>sum+row.queries,0)},response_codes:Object.fromEntries(['NOERROR','NXDOMAIN'].map(code=>[code,items.filter(row=>row.code===code).reduce((sum,row)=>sum+row.queries,0)]))});
     value={...counts(selected),dimensions_supported:true,dimension_completed:counts(selected).completed,completed_only:['domain','destination','policy','final_policy','response_code'].some(key=>url.searchParams.has(key)),filter_options:{destinations:['cache','surge'],policies:[{value:JSON.stringify(['named','Proxy']),name:'Proxy',kind:'named'}],final_policies:[{value:JSON.stringify(['named','Node A']),name:'Node A',kind:'named'}],domains:['api.example.test','example.test'],response_codes:['NOERROR','NXDOMAIN']},domains:[...new Set(selected.map(row=>row.domain))].map(domain=>({domain,queries:selected.filter(row=>row.domain===domain).reduce((sum,row)=>sum+row.queries,0)})),sources:[...new Set(selected.map(row=>row.source))].map(source=>({source,counts:counts(selected.filter(row=>row.source===source))})),source_policy_flows:selected.map(row=>({source:row.source,policy:'Proxy',kind:'named',final_policy:'Node A',final_kind:'named',queries:row.queries}))};
+    if(!['domain','destination','policy','final_policy','response_code'].some(key=>url.searchParams.has(key)))value.domain_statistics={started_at:'2026-10-15T00:00:00Z',completed:counts(selected).completed,unrecorded:0};
     if(path.startsWith('dns/monitoring/history'))value={summary:value,sources:value.sources,source_policy_flows:value.source_policy_flows,from:value.started_at,to:value.observed_at,points:[{from:value.started_at,to:value.observed_at,seconds:60,rate_valid:true,counts:value}]};
    }
    if(path==='surge/status'){value.snapshot.ipv6_state='disabled';value.snapshot.always_real_ip_count=61;}
@@ -72,6 +73,23 @@ const fixture=Function(source.slice(source.indexOf('const settings='),source.ind
     await page.getByRole('heading',{name:'BGP',exact:true}).waitFor({state:'detached'});
     await mode.selectOption('bgp');
     await page.getByRole('heading',{name:'BGP',exact:true}).waitFor();
+   }
+   if(label==='缓存'){
+    const decision=page.getByRole('checkbox',{name:'决策缓存',exact:true}),response=page.getByRole('checkbox',{name:'响应缓存',exact:true}),optimistic=page.getByRole('checkbox',{name:'乐观决策缓存',exact:true}),optimisticResponse=page.getByRole('checkbox',{name:'乐观响应缓存',exact:true});
+    await optimistic.check();await optimisticResponse.check();
+    await page.getByRole('checkbox',{name:'DIRECT 缓存此项',exact:true}).uncheck();
+    const item=page.getByRole('checkbox',{name:'DIRECT 允许乐观缓存',exact:true});
+    if(!(await item.isDisabled())||await item.isChecked())throw Error('Disabled decision still allows optimistic caching');
+    const upstream='udp://223.6.6.6:53';await page.getByRole('checkbox',{name:upstream+' 缓存此项',exact:true}).uncheck();
+    const responseItem=page.getByRole('checkbox',{name:upstream+' 允许乐观缓存',exact:true});
+    if(!(await responseItem.isDisabled())||await responseItem.isChecked())throw Error('Disabled upstream still allows optimistic caching');
+    await decision.uncheck();await response.uncheck();
+    if(!(await optimistic.isDisabled())||await optimistic.isChecked()||!(await optimisticResponse.isDisabled())||await optimisticResponse.isChecked())throw Error('Disabled masters still allow optimistic caching');
+    await decision.check();await response.check();await optimistic.check();await optimisticResponse.check();
+    const panels=await page.locator('.cache-policy-group').evaluateAll(els=>els.map(el=>{const r=el.getBoundingClientRect();return {x:r.x,y:r.y,right:r.right,bottom:r.bottom}}));
+    if(panels.length!==4||panels.some(r=>r.x<0||r.right>width))throw Error('Cache groups overflow viewport');
+    if(width>900?(panels[0].y!==panels[1].y||panels[2].y!==panels[3].y):panels.some((r,i)=>i&&r.y<panels[i-1].bottom))throw Error('Cache group responsive layout failed');
+    await page.screenshot({path:out+'/cache-controls-'+width+'.png',fullPage:true});
    }
    if(label==='软件更新'){const save=page.getByRole('button',{name:'保存设置',exact:true}),checkButton=page.getByRole('button',{name:'立即检查更新',exact:true});await checkButton.waitFor();if(!(await checkButton.evaluate((el)=>el.parentElement.querySelector('button.primary')?.textContent==='保存设置')))throw Error('Update check button is not beside Save');const install=page.getByRole('button',{name:'升级应用',exact:true});if(!(await install.evaluate(el=>[...el.parentElement.querySelectorAll('button')].some(button=>button.textContent==='立即检查更新'))))throw Error('Install button is not beside update check');const buttonY=await checkButton.evaluate(el=>el.getBoundingClientRect().y),installY=await install.evaluate(el=>el.getBoundingClientRect().y);if(Math.abs(buttonY-installY)>1)throw Error('Update check and install buttons are not on one row');if(await page.getByText('检查与升级针对当前连接的后端所在 Mac。',{exact:true}).count())throw Error('Removed update hint remains');if(await page.locator('.settings-form .update-status').evaluateAll(els=>els.some(el=>getComputedStyle(el).borderBottomStyle!=='none')))throw Error('Update settings divider remains');await page.screenshot({path:out+'/update-settings-'+width+'.png',fullPage:true});}
    await check(width+' '+label);
@@ -202,7 +220,7 @@ const fixture=Function(source.slice(source.indexOf('const settings='),source.ind
  }
  await page.setViewportSize({width:1440,height:1000});await page.evaluate(()=>document.documentElement.dataset.theme='dark');await page.screenshot({path:out+'/update-web-dark.png',fullPage:true});
  await dialog.getByRole('button',{name:'稍后升级',exact:true}).click();await page.getByRole('dialog').waitFor({state:'hidden'});
- monitorDimensions=true;await page.setViewportSize({width:1440,height:1000});await page.evaluate(()=>{sessionStorage.removeItem('routepilot.backend')});await page.reload();await page.getByRole('heading',{level:1,name:'仪表盘',exact:true}).waitFor();await go('大屏监控');await page.getByRole('button',{name:'筛选域名：example.test',exact:true}).waitFor();
+ monitorDimensions=true;await page.setViewportSize({width:1440,height:1000});await page.evaluate(()=>{sessionStorage.removeItem('routepilot.backend')});await page.reload();await page.getByRole('heading',{level:1,name:'仪表盘',exact:true}).waitFor();await go('大屏监控');await page.getByRole('button',{name:'筛选域名：example.test',exact:true}).waitFor();await page.locator('.monitor-domain-shares').getByText(/域名统计起点/).waitFor();
  for(const width of [1440,390]){
   await page.setViewportSize({width,height:1000});await check('monitor filters '+width);
   const inline=await page.locator('.monitor-view-controls label').evaluateAll(labels=>labels.every(label=>{const select=label.querySelector('select');if(!select)return true;const range=document.createRange();range.selectNode(label.firstChild);const text=range.getBoundingClientRect(),box=select.getBoundingClientRect();return text.right<=box.left&&Math.abs((text.top+text.bottom-box.top-box.bottom)/2)<2}));if(!inline)throw Error('Monitoring filter names are not before the selects');

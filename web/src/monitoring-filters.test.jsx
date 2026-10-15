@@ -38,3 +38,23 @@ it('reports unavailable old historical dimensions without discarding working liv
  await waitFor(()=>expect(document.querySelector('.monitor-metrics')).toHaveTextContent('筛选完成请求8'));expect(await screen.findByRole('alert')).toHaveTextContent('此时段尚未采集组合筛选维度');
  fireEvent.click(screen.getByRole('button',{name:'历史数据',exact:true}));await waitFor(()=>expect(document.querySelector('.monitor-metrics')).toBeNull());expect(await screen.findByRole('alert')).toHaveTextContent('无法按这些条件统计');
 });
+
+it('shows independent domain rankings with an exact remainder and explains partial combination filters',async()=>{
+ serve();const original=request.getMockImplementation();
+ request.mockImplementation(async path=>{
+  const value=await original(path),url=new URL(path,'http://fixture/');
+  const coverage={filter_completed:1000,filter_overflow:900};value.source_policy_flows=[];
+  if(url.searchParams.get('domain'))return {...value,...coverage};
+  return {...value,...coverage,domains:[{domain:'late-hot.example',queries:800},{domain:'another.example',queries:100},{domain:'',rest:true,queries:100}],domain_statistics:{started_at:'2026-10-15T00:00:00Z',completed:1000,unrecorded:0}};
+ });
+ render(<MonitoringPanel snapshot={counts(rows)} onFocus={()=>{}}/>);
+ const domain=await screen.findByRole('button',{name:'筛选域名：late-hot.example'});
+ const card=document.querySelector('.monitor-domain-shares');
+ expect(card).toHaveTextContent('80.00%');expect(card).toHaveTextContent('其余域名');expect(card).toHaveTextContent('域名统计起点');
+ expect(card).not.toHaveTextContent('超出明细容量');expect(card).toHaveTextContent('不受组合明细容量限制');
+ expect(screen.getByText(/组合明细覆盖 100 \/ 1,000/)).toBeInTheDocument();
+ fireEvent.click(domain);
+ await waitFor(()=>expect(document.querySelector('.monitor-metrics')).toHaveTextContent('筛选完成请求0'));
+ expect(screen.getByText(/组合明细覆盖 100 \/ 1,000/)).toBeInTheDocument();
+ expect(document.querySelector('.monitor-domain-shares')).toHaveTextContent('按已记录组合明细');
+});

@@ -48,12 +48,17 @@ func decodeMonitoringBucket(raw []byte) (dnsserver.MonitoringBucket, error) {
 
 // SaveDNSMonitoring commits the cumulative checkpoint and its history delta
 // together. A retry or restart cannot count a persisted interval twice.
-func (s *Store) SaveDNSMonitoring(ctx context.Context, snapshot dnsserver.DNSMonitoringSnapshot) error {
+func (s *Store) SaveDNSMonitoring(ctx context.Context, snapshot dnsserver.DNSMonitoringSnapshot, domains ...*dnsserver.DomainBatch) error {
 	tx, err := s.DB.BeginTx(ctx, nil)
 	if err != nil {
 		return err
 	}
 	defer tx.Rollback()
+	for _, batch := range domains {
+		if err = saveMonitoringDomains(ctx, tx, batch); err != nil {
+			return err
+		}
+	}
 	var previous dnsserver.DNSMonitoringSnapshot
 	var raw []byte
 	err = tx.QueryRowContext(ctx, "SELECT document FROM statistics WHERE id='dns_monitoring_history_checkpoint'").Scan(&raw)
@@ -76,7 +81,7 @@ func (s *Store) SaveDNSMonitoring(ctx context.Context, snapshot dnsserver.DNSMon
 			if delta.Received != 0 || delta.Completed != 0 || delta.Unconfirmed != 0 {
 				return errors.New("monitoring timestamp did not advance")
 			}
-			return nil
+			return tx.Commit()
 		}
 		from := previous.ObservedAt
 		valid := snapshot.SessionStartedAt == previous.SessionStartedAt && elapsed > 0 && elapsed <= 15*time.Second
@@ -117,6 +122,9 @@ func (s *Store) SaveDNSMonitoring(ctx context.Context, snapshot dnsserver.DNSMon
 	}
 	cutoff := snapshot.ObservedAt.Add(-MonitoringRetentionDays * 24 * time.Hour).UTC().Truncate(time.Minute).Unix()
 	if _, err = tx.ExecContext(ctx, "DELETE FROM dns_monitoring_history WHERE bucket<?", cutoff); err != nil {
+		return err
+	}
+	if _, err = tx.ExecContext(ctx, "DELETE FROM dns_domain_history WHERE bucket<?", cutoff); err != nil {
 		return err
 	}
 	return tx.Commit()
@@ -186,6 +194,12 @@ func (s *Store) DNSMonitoringFilteredHistory(ctx context.Context, from, to time.
 		result.Summary.ObservedAt = bucket.To
 	}
 
+	if err = rows.Err(); err != nil {
+		return result, err
+	}
+	if err = rows.Close(); err != nil {
+		return result, err
+	}
 	dimensionRows := result.Summary.Observations
 	dimensionStart := result.Summary.DimensionsStartedAt
 	options := dnsserver.ObservationOptions(dimensionRows)
@@ -239,6 +253,22 @@ func (s *Store) DNSMonitoringFilteredHistory(ctx context.Context, from, to time.
 	result.Summary.DimensionsSupported = !dimensionStart.IsZero()
 	result.Summary.FilterOptions = &options
 	dnsserver.AttachMonitoringDomains(&result.Summary, dimensionRows, filter)
+	result.Summary.FilterCompleted, result.Summary.FilterOverflow = 0, 0
+	for _, row := range dimensionRows {
+		result.Summary.FilterCompleted += row.Queries
+		if row.Other {
+			result.Summary.FilterOverflow += row.Queries
+		}
+	}
+	if !filter.HasDimensions() {
+		domains, stats, err := s.DNSMonitoringDomains(ctx, from, to, source, nil)
+		if err != nil {
+			return result, fmt.Errorf("read historical domain statistics: %w", err)
+		}
+		if stats != nil {
+			result.Summary.Domains, result.Summary.DomainStatistics = domains, stats
+		}
+	}
 	result.Summary.Observations = nil
 	for i := range result.Points {
 		result.Points[i].Counts.Observations = nil

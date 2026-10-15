@@ -27,21 +27,26 @@ export function CacheGroupStatistics({groups,kind='decision'}){
  })}</tbody></table>{!rows.length&&<p className="empty">{t('noGroupSamples')}</p>}</div><p>{t('groupStatisticsHelp')}</p></section>;
 }
 export function CachePolicySettings({settings,dns,surge,status={},onChange}){
- const [locale]=useLocale(),t=cacheText(locale),supported=status.selective_cache_policies===true;
- const update=(field,key,name,value)=>onChange({...settings,[field]:{...settings[field],[key]:{...settings[field]?.[key],[name]:value}}});
- const switches=(field,rows)=>rows.map(({key,name})=>{
- const policy=settings[field]?.[key]||{};
- return <div className="cache-policy-row" key={key}><label className="check cache-policy-item" title={t('optimisticEnabled')}><input type="checkbox" aria-label={`${key} ${t('optimisticEnabled')}`} checked={policy.optimistic!==false} onChange={e=>update(field,key,'optimistic',e.target.checked)}/><span className="cache-policy-name">{name}{name!==key&&<small>{key}</small>}</span></label></div>;
+ const [locale]=useLocale(),t=cacheText(locale),supported=status.selective_cache_policies===true,cacheControls=status.cache_controls===true;
+ const update=(field,key,name,value)=>onChange({...settings,[field]:{...settings[field],[key]:{...settings[field]?.[key],[name]:value,...(name==='enabled'&&!value?{optimistic:false}:{})}}});
+ const switches=(group)=>group.rows.map(({key,name})=>{
+ const policy=settings[group.field]?.[key]||{},allowed=!group.optimistic||policy.enabled!==false,label=t(group.optimistic?'optimisticEnabled':'cacheEnabled');
+ return <div className="cache-policy-row" key={key}><label className="check cache-policy-item" title={allowed?label:t('enableCacheFirst')}><input type="checkbox" aria-label={`${key} ${label}`} disabled={!allowed} checked={allowed&&policy[group.optimistic?'optimistic':'enabled']!==false} onChange={e=>{if(allowed)update(group.field,key,group.optimistic?'optimistic':'enabled',e.target.checked)}}/><span className="cache-policy-name">{name}{name!==key&&<small>{key}</small>}</span></label></div>;
  });
+ const upstreams=cacheUpstreamRows(dns,settings.upstreams,status.cache?.response?.groups,status.surge_response_cache===true?surge:undefined);
  const groups=[
- {master:'optimistic',idle:'optimistic_idle_refresh',field:'decisions',title:'decisionMaster',heading:'decisionPolicies',rows:decisions.filter(key=>key!=='UNKNOWN').map(key=>({key,name:key}))},
- {master:'optimistic_responses',idle:'optimistic_response_idle_refresh',field:'upstreams',title:'responseMaster',heading:'upstreamPolicies',rows:cacheUpstreamRows(dns,settings.upstreams,status.cache?.response?.groups,status.surge_response_cache===true?surge:undefined)}
+ ...(cacheControls?[
+ {master:'decisions_enabled',optimisticMaster:'optimistic',field:'decisions',title:'decisionCacheMaster',heading:'decisionCacheMaster',rows:decisions.map(key=>({key,name:key}))},
+ {master:'responses_enabled',optimisticMaster:'optimistic_responses',field:'upstreams',title:'responseCacheMaster',heading:'responseCacheMaster',rows:upstreams}
+ ]:[]),
+ {master:'optimistic',cacheMaster:'decisions_enabled',optimistic:true,idle:'optimistic_idle_refresh',field:'decisions',title:'decisionMaster',heading:'decisionPolicies',rows:decisions.filter(key=>key!=='UNKNOWN').map(key=>({key,name:key}))},
+ {master:'optimistic_responses',cacheMaster:'responses_enabled',optimistic:true,idle:'optimistic_response_idle_refresh',field:'upstreams',title:'responseMaster',heading:'upstreamPolicies',rows:upstreams}
  ];
- return <section className="cache-policy-settings"><div className="cache-policy-groups">{groups.map(group=>{
- const enabled=Boolean(settings[group.master]);
- return <fieldset className="cache-policy-group" aria-label={t(group.heading)} key={group.master}><legend><label className="check" title={t(group.master+'_tooltip')}><input type="checkbox" aria-label={t(group.title)} checked={enabled} onChange={e=>onChange({...settings,[group.master]:e.target.checked})}/>{t(group.title)}</label></legend>{enabled&&<>
- {Object.hasOwn(settings,group.idle)&&<label className="check cache-policy-idle" title={t(group.idle+'_tooltip')}><input type="checkbox" checked={settings[group.idle]!==false} onChange={e=>onChange({...settings,[group.idle]:e.target.checked})}/>{t(group.idle)}</label>}
- {supported?<><h3>{t(group.heading)}</h3>{switches(group.field,group.rows)}{group.field==='upstreams'&&<><p>{t('originalUpstreamHelp')}</p>{surge?.dns&&status.surge_response_cache!==true&&<p role="status">{t('surgeUnsupported')}</p>}</>}</>:<p role="status">{t('selectiveUnsupported')}</p>}
+ return <section className="cache-policy-settings">{!cacheControls&&<p role="status">{t('cacheControlsUnsupported')}</p>}<div className="cache-policy-groups">{groups.map(group=>{
+ const allowed=!group.optimistic||settings[group.cacheMaster]!==false,enabled=allowed&&(group.optimistic?Boolean(settings[group.master]):settings[group.master]!==false);
+ return <fieldset className="cache-policy-group" aria-label={t(group.heading)} key={group.master}><legend><label className="check" title={t(allowed?group.master+'_tooltip':'enableCacheFirst')}><input type="checkbox" aria-label={t(group.title)} disabled={!allowed} checked={enabled} onChange={e=>{if(allowed)onChange({...settings,[group.master]:e.target.checked,...(!group.optimistic&&!e.target.checked?{[group.optimisticMaster]:false}:{})})}}/>{t(group.title)}</label></legend>{enabled&&<>
+ {group.idle&&Object.hasOwn(settings,group.idle)&&<label className="check cache-policy-idle" title={t(group.idle+'_tooltip')}><input type="checkbox" checked={settings[group.idle]!==false} onChange={e=>onChange({...settings,[group.idle]:e.target.checked})}/>{t(group.idle)}</label>}
+ {supported?<><h3>{t(group.field==='decisions'?'decisionPolicies':'upstreamPolicies')}</h3>{switches(group)}{group.field==='upstreams'&&<><p>{t('originalUpstreamHelp')}</p>{surge?.dns&&status.surge_response_cache!==true&&<p role="status">{t('surgeUnsupported')}</p>}</>}</>:<p role="status">{t('selectiveUnsupported')}</p>}
  </>}</fieldset>;
- })}</div>{supported&&(settings.optimistic||settings.optimistic_responses)&&<p>{t('selectiveHelp')}</p>}</section>;
+ })}</div>{supported&&<p>{t(cacheControls?'cacheControlsHelp':'selectiveHelp')}</p>}</section>;
 }

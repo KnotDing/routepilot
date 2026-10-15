@@ -35,6 +35,7 @@ type EndpointStats struct {
 	LastFailure time.Time        `json:"last_failure"`
 }
 type OptimisticOptions struct {
+	CacheEnabled *bool
 	// Scoped sources (Surge Fake-IP) must not reuse responses across safety epochs.
 	SourceIdentity    string
 	PartitionByClient bool
@@ -47,6 +48,7 @@ type OptimisticOptions struct {
 	Workers           int
 }
 type Real struct {
+	cacheEnabled      bool
 	sourceIdentity    string
 	partitionByClient bool
 	scope             func() (uint64, bool)
@@ -107,7 +109,8 @@ func NewReal(t UpstreamTransport, endpoints []ResolverEndpoint, preserve bool, c
 		option.Workers = 8
 	}
 	r.ctx, r.cancel = context.WithCancel(option.Context)
-	r.optimistic, r.idleRefresh = option.Enabled, option.IdleRefresh
+	r.cacheEnabled = option.CacheEnabled == nil || *option.CacheEnabled
+	r.optimistic, r.idleRefresh = r.cacheEnabled && option.Enabled, option.IdleRefresh
 	r.policies = cache.ClonePolicies(option.Policies)
 	r.sourceIdentity, r.partitionByClient, r.scope = option.SourceIdentity, option.PartitionByClient, option.Scope
 	r.refreshTimeout, r.refreshLimit = option.Timeout, min(option.Workers, 256)
@@ -146,7 +149,7 @@ func (r *Real) Resolve(ctx context.Context, req model.ResolveRequest) (*dns.Msg,
 	// Cache partition includes resolver identity, DO/CD, and full query options
 	// (including ECS) to avoid mixing split-horizon or DNSSEC responses.
 	key := ""
-	cacheable := !q.CheckingDisabled
+	cacheable := r.cacheEnabled && !q.CheckingDisabled
 	if opt := q.IsEdns0(); opt != nil && len(opt.Option) > 0 {
 		cacheable = false
 	}
@@ -271,7 +274,7 @@ func (r *Real) exchange(ctx context.Context, req model.ResolveRequest, endpoints
 			if r.optimistic {
 				fingerprint = responseFingerprint(reply)
 			}
-			if ttl := ResponseTTL(reply); ttl > 0 {
+			if ttl := ResponseTTL(reply); ttl > 0 && r.allowsCaching(r.endpointIdentity(ep)) {
 				refreshQuery := req.Message.Copy()
 				refreshQuery.Id = 0
 				refreshQuery.Question[0].Name = dns.CanonicalName(refreshQuery.Question[0].Name)

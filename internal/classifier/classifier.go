@@ -18,6 +18,7 @@ var ErrBusy = errors.New("rule evaluation capacity exhausted")
 
 type Key struct{ Domain, ClientGroup, QueryClass string }
 type Config struct {
+	CacheEnabled                                       *bool
 	Decisions                                          map[string]cache.Policy
 	Capacity, Workers, QueueSize                       int
 	Timeout, DirectTTL, SurgeTTL, UnknownTTL, ErrorTTL time.Duration
@@ -71,6 +72,11 @@ func New(parent context.Context, a model.SurgeAdapter, c Config) (*Engine, error
 		}
 	}
 	c.Decisions = cache.ClonePolicies(c.Decisions)
+	if c.CacheEnabled != nil {
+		v := *c.CacheEnabled
+		c.CacheEnabled = &v
+		c.Optimistic = c.Optimistic && v
+	}
 	ctx, cancel := context.WithCancel(parent)
 	e := &Engine{adapter: a, config: c, Cache: cache.New[Key, model.DecisionResult](c.Capacity), jobs: make(chan job, c.QueueSize), idleJobs: make(chan job, 1), ctx: ctx, cancel: cancel, refreshing: make(map[Key]uint64)}
 	e.Cache.ConfigureGroups(func(_ Key, d model.DecisionResult) string { return string(d.Decision) }, nil)
@@ -177,7 +183,7 @@ func (e *Engine) Classify(ctx context.Context, q model.DNSQueryContext) (model.D
 	// Per-client isolation is the safe default for Surge source-address rules.
 	key := Key{domain, q.ClientIP.String(), fmt.Sprint(q.Question.Qtype, "/", q.Question.Qclass)}
 	d, ok, stale, gen := e.Cache.GetAllowedState(key, e.config.Optimistic, func(d model.DecisionResult, stale bool) bool {
-		return !stale || e.AllowsOptimistic(d.Decision)
+		return e.AllowsCaching(d.Decision) && (!stale || e.AllowsOptimistic(d.Decision))
 	})
 	if ok {
 		if stale {
@@ -298,7 +304,11 @@ func (e *Engine) evaluate(parent context.Context, q model.DNSQueryContext, key K
 			out.decision.ExpiresAt = out.decision.CreatedAt.Add(ttl)
 		}
 		if !refresh || out.err == nil && out.decision.Decision != model.Unknown {
-			if out.err == nil && out.decision.Decision != model.Unknown {
+			if !e.AllowsCaching(out.decision.Decision) {
+				e.Cache.DeleteCompared(key, out.decision, gen, func(old, next model.DecisionResult) bool {
+					return old.Decision == next.Decision && old.FinalPolicy == next.FinalPolicy
+				})
+			} else if out.err == nil && out.decision.Decision != model.Unknown {
 				same := func(old, next model.DecisionResult) bool {
 					return old.Decision == next.Decision && old.FinalPolicy == next.FinalPolicy
 				}
@@ -321,5 +331,9 @@ func (e *Engine) FlushDomain(domain string) error {
 }
 
 func (e *Engine) AllowsOptimistic(decision model.Decision) bool {
-	return e.config.Optimistic && decision != model.Unknown && e.config.Decisions[string(decision)].OptimisticEnabled()
+	return e.AllowsCaching(decision) && e.config.Optimistic && decision != model.Unknown && e.config.Decisions[string(decision)].OptimisticEnabled()
+}
+
+func (e *Engine) AllowsCaching(decision model.Decision) bool {
+	return (e.config.CacheEnabled == nil || *e.config.CacheEnabled) && e.config.Decisions[string(decision)].CacheEnabled()
 }

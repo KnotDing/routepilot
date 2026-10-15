@@ -35,12 +35,24 @@ func (a *App) saveClientStatistics() error {
 }
 
 func (a *App) saveDNSMonitoring(snapshot dnsserver.DNSMonitoringSnapshot) error {
+	a.domainPersistMu.Lock()
+	defer a.domainPersistMu.Unlock()
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()
-	if err := a.store.SaveDNSMonitoring(ctx, snapshot); err != nil {
-		message := err.Error()
-		a.monitorPersistError.Store(&message)
-		return fmt.Errorf("persist DNS monitoring: %w", err)
+	for i := 0; i < 2; i++ {
+		batch := a.dnsMonitoring.PendingDomains()
+		if i > 0 && batch == nil {
+			break
+		}
+		if err := a.store.SaveDNSMonitoring(ctx, snapshot, batch); err != nil {
+			message := err.Error()
+			a.monitorPersistError.Store(&message)
+			return fmt.Errorf("persist DNS monitoring: %w", err)
+		}
+		a.dnsMonitoring.CommitDomains(batch)
+		if batch == nil {
+			break
+		}
 	}
 	a.monitorPersistError.Store(nil)
 	return nil
@@ -64,6 +76,11 @@ func (a *App) persistStatistics(ctx context.Context, last dnsserver.CounterSnaps
 		select {
 		case <-ctx.Done():
 			return
+		case <-a.dnsMonitoring.DomainWake():
+			if err := a.saveDNSMonitoring(a.dnsMonitoring.Snapshot()); err != nil {
+				slog.Error("DNS monitoring persistence failed", "error", err)
+			}
+			continue
 		case <-ticker.C:
 			snapshot := a.dnsCounters.Snapshot()
 			if snapshot != last {
@@ -115,7 +132,7 @@ func (a *App) DNSMonitoringView(_ context.Context, source string) (dnsserver.DNS
 }
 
 // Optional capability: older connected backends retain source-only monitoring.
-func (a *App) DNSMonitoringFilteredView(_ context.Context, filter dnsserver.MonitoringFilter) (dnsserver.DNSMonitoringSnapshot, error) {
+func (a *App) DNSMonitoringFilteredView(ctx context.Context, filter dnsserver.MonitoringFilter) (dnsserver.DNSMonitoringSnapshot, error) {
 	full := a.dnsMonitoring.Snapshot()
 	view := full
 	if filter.Source != "" {
@@ -141,9 +158,42 @@ func (a *App) DNSMonitoringFilteredView(_ context.Context, filter dnsserver.Moni
 	view.DimensionsSupported = true
 	view.DimensionsStartedAt = full.DimensionsStartedAt
 	dnsserver.AttachMonitoringDomains(&view, full.Observations, filter)
+	view.FilterCompleted, view.FilterOverflow = 0, 0
+	for _, row := range full.Observations {
+		view.FilterCompleted += row.Queries
+		if row.Other {
+			view.FilterOverflow += row.Queries
+		}
+	}
+	if !filter.HasDimensions() {
+		domains, stats, err := a.domainStatistics(ctx, filter.Source)
+		if err != nil {
+			return view, fmt.Errorf("read domain statistics: %w", err)
+		}
+		if stats != nil {
+			view.Domains, view.DomainStatistics = domains, stats
+		}
+	}
 	view.Observations = nil
 	for i := range view.Sources {
 		view.Sources[i].Counts.Policies = nil
 	}
 	return view, nil
+}
+
+func (a *App) domainStatistics(ctx context.Context, source string) ([]dnsserver.DNSDomainCount, *dnsserver.DNSDomainStatistics, error) {
+	a.domainPersistMu.Lock()
+	defer a.domainPersistMu.Unlock()
+	version := a.dnsMonitoring.DomainVersion()
+	if a.domainViewValid && version == a.domainViewVersion && source == a.domainViewSource {
+		return a.domainViewRows, a.domainViewStats, nil
+	}
+	buffer := a.dnsMonitoring.BufferedDomains()
+	rows, stats, err := a.store.DNSMonitoringDomains(ctx, time.Time{}, time.Time{}, source, &buffer)
+	if err != nil {
+		return nil, nil, err
+	}
+	a.domainViewValid, a.domainViewVersion, a.domainViewSource = true, version, source
+	a.domainViewRows, a.domainViewStats = rows, stats
+	return rows, stats, nil
 }

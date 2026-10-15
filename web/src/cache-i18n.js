@@ -88,6 +88,22 @@ Object.assign(messages.en,{
  originalUpstreamHelp:'Upstreams are identified by protocol, address and DoH URL / TLS name. The same upstream shares its switches across global, policy and backup pools. Observed original-destination upstreams can also be configured; unconfigured upstreams inherit the global switch.',
  decisionBreakdown:'Cache statistics by decision',upstreamBreakdown:'Cache statistics by upstream',upstream:'Upstream',noGroupSamples:'No per-item samples yet',otherUpstreams:'Other upstreams (statistics capacity group)'
 });
+Object.assign(messages['zh-CN'],{
+ decisionCacheMaster:'决策缓存',responseCacheMaster:'响应缓存',cacheEnabled:'缓存此项',
+ decisions_enabled_tooltip:'缓存规则求值结果；关闭后每次请求重新求值，并停用乐观决策缓存。',
+ responses_enabled_tooltip:'按 DNS TTL 缓存上游响应；关闭后每次请求查询上游，并停用乐观响应缓存。',
+ enableCacheFirst:'请先启用对应的缓存。',
+ cacheControlsUnsupported:'当前后端不支持关闭普通缓存，请升级后端后设置决策缓存与响应缓存。',
+ cacheControlsHelp:'普通缓存与乐观缓存分别设置，保存并应用后生效。关闭某类缓存或某个分项时，对应乐观缓存同时关闭且不可启用；该项不再复用、写入或恢复缓存。仅关闭乐观缓存时仍保留有效普通缓存。UNKNOWN 可关闭普通缓存，不提供乐观缓存。'
+});
+Object.assign(messages.en,{
+ decisionCacheMaster:'Decision cache',responseCacheMaster:'Response cache',cacheEnabled:'Cache this item',
+ decisions_enabled_tooltip:'Cache rule evaluation results. Disabling this evaluates every request and disables optimistic decision caching.',
+ responses_enabled_tooltip:'Cache upstream responses within their DNS TTL. Disabling this queries upstreams on every request and disables optimistic response caching.',
+ enableCacheFirst:'Enable the corresponding cache first.',
+ cacheControlsUnsupported:'This backend cannot disable ordinary caching. Upgrade it to configure decision and response caching.',
+ cacheControlsHelp:'Configure ordinary and optimistic caching separately, then save and apply. Disabling a cache or item also disables its optimistic cache and prevents enabling it. Disabled items are not reused, stored or restored. Disabling only optimistic caching retains valid ordinary entries. UNKNOWN supports ordinary caching only.'
+});
 export const cacheText=locale=>key=>messages[locale]?.[key==='optimisticHelp'?'optimisticHelpSummary':key]||messages['zh-CN'][key==='optimisticHelp'?'optimisticHelpSummary':key]||key;
 
 export function cacheInvalidationReason(locale,reason){

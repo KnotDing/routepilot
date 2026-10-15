@@ -4,6 +4,7 @@
 .cache-policy-group { grid-column: auto; min-width: 0; border: 1px solid var(--border, #dce2ea); border-radius: 12px; padding: 16px; }
 .cache-policy-group legend { padding-inline: 8px; }
 .cache-policy-group .check { display: flex; align-items: center; gap: 10px; font-size: 13px; line-height: 22px; cursor: pointer; }
+.cache-policy-group .check:has(input:disabled) { color: var(--muted); cursor: default; }
 .cache-policy-group legend .check { min-height: var(--control-height); padding: 9px 12px; border: 1px solid var(--border, #dce2ea); border-radius: 9px; background: var(--hover); font-weight: 600; }
 .cache-policy-group h3 { margin-block: 12px; }
 .cache-policy-row { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; margin-block: 12px; padding: 12px; border: 1px solid var(--border, #dce2ea); border-radius: 10px; background: var(--hover); }

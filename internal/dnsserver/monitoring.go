@@ -35,6 +35,9 @@ type DNSSourceCount struct {
 }
 
 type DNSMonitoringSnapshot struct {
+	DomainStatistics    *DNSDomainStatistics     `json:"domain_statistics,omitempty"`
+	FilterCompleted     uint64                   `json:"filter_completed,omitempty"`
+	FilterOverflow      uint64                   `json:"filter_overflow,omitempty"`
 	DimensionsSupported bool                     `json:"dimensions_supported,omitempty"`
 	DimensionsStartedAt time.Time                `json:"dimensions_started_at,omitempty"`
 	Observations        []DNSObservation         `json:"observations,omitempty"`
@@ -68,13 +71,19 @@ type flowKey struct{ ingress, destination string }
 // Monitoring is shared across runtime rebuilds and persisted independently of
 // query history. Each request contributes exactly one flow and policy pair.
 type Monitoring struct {
-	mu             sync.Mutex
-	state          DNSMonitoringSnapshot
-	flows          map[flowKey]uint64
-	policies       map[policyKey]uint64
-	observations   map[DNSObservationKey]DNSObservation
-	sources        map[string]*Monitoring
-	policyCapacity int
+	domainBuffer    map[DomainCountKey]uint64
+	domainPending   *DomainBatch
+	domainSequence  uint64
+	domainVersion   uint64
+	domainStartedAt time.Time
+	domainWake      chan struct{}
+	mu              sync.Mutex
+	state           DNSMonitoringSnapshot
+	flows           map[flowKey]uint64
+	policies        map[policyKey]uint64
+	observations    map[DNSObservationKey]DNSObservation
+	sources         map[string]*Monitoring
+	policyCapacity  int
 }
 
 func NewMonitoring(saved DNSMonitoringSnapshot) *Monitoring {
@@ -105,6 +114,9 @@ func newMonitoring(saved DNSMonitoringSnapshot, trackSources bool, policyCapacit
 	saved.ResponseCodes, saved.Decisions = codes, decisions
 	m := &Monitoring{state: saved, flows: make(map[flowKey]uint64), policies: make(map[policyKey]uint64), policyCapacity: policyCapacity}
 	if trackSources {
+		m.domainStartedAt = now
+		m.domainBuffer = map[DomainCountKey]uint64{}
+		m.domainWake = make(chan struct{}, 1)
 		MonitoringDimensionStart(&m.state, now)
 		m.observations = map[DNSObservationKey]DNSObservation{}
 		for _, row := range saved.Observations {
@@ -208,7 +220,9 @@ func (m *Monitoring) FinishQuerySource(ip netip.Addr, domain string, intercepted
 		default:
 			decision = model.Unknown
 		}
-		key := DNSObservationKey{Source: source, Domain: MonitoringDomain(domain), Ingress: ingress, Destination: destination, Policy: result.Policy, FinalPolicy: result.FinalPolicy, Decision: string(decision), ResponseCode: rcode}
+		domain = MonitoringDomain(domain)
+		m.recordDomain(source, domain)
+		key := DNSObservationKey{Source: source, Domain: domain, Ingress: ingress, Destination: destination, Policy: result.Policy, FinalPolicy: result.FinalPolicy, Decision: string(decision), ResponseCode: rcode}
 		if _, ok := m.observations[key]; !ok && len(m.observations) >= monitoringObservationCapacity {
 			key = DNSObservationKey{Other: true}
 		}

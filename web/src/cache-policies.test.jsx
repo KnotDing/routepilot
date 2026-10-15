@@ -26,7 +26,7 @@ it('lists global, policy, backup and observed original upstreams by real identit
 });
 it('explains unsupported backends without showing editable overrides',()=>{
  render(<CachePolicySettings settings={{optimistic:true}} onChange={()=>{}}/>);
- expect(screen.getByRole('status')).toHaveTextContent('当前后端不支持');expect(screen.queryByLabelText('DIRECT 允许乐观缓存')).not.toBeInTheDocument();
+ expect(screen.getAllByRole('status').some(el=>el.textContent.includes('当前后端不支持'))).toBe(true);expect(screen.queryByLabelText('DIRECT 允许乐观缓存')).not.toBeInTheDocument();
  expect(screen.getByLabelText('乐观决策缓存')).toBeChecked();
 });
 it('reports mismatch rate using verified requests and translates the breakdown',()=>{
@@ -72,5 +72,48 @@ it('degrades Surge controls independently when the connected backend is older',(
  render(<CachePolicySettings settings={{optimistic_responses:true}} surge={{dns:'127.0.0.1:6153'}} dns={{upstreams:[{protocol:'udp',address:'192.0.2.53:53'}]}} status={{selective_cache_policies:true}} onChange={()=>{}}/>);
  expect(screen.queryByLabelText('surge://127.0.0.1:6153 允许乐观缓存')).not.toBeInTheDocument();
  expect(screen.getByLabelText('udp://192.0.2.53:53 允许乐观缓存')).toBeChecked();
- expect(screen.getByRole('status')).toHaveTextContent('升级后端');
+ expect(screen.getAllByRole('status').some(el=>el.textContent.includes('升级后端'))).toBe(true);
+});
+
+it('requires ordinary caches before enabling optimistic masters or individual items',()=>{
+ function Controlled(){
+  const [settings,setSettings]=React.useState({optimistic:true,optimistic_responses:true});
+  return <CachePolicySettings settings={settings} surge={{dns:'127.0.0.1:6153'}} dns={{upstreams:[{protocol:'udp',address:'192.0.2.53:53'}]}} status={{selective_cache_policies:true,cache_controls:true,surge_response_cache:true}} onChange={setSettings}/>;
+ }
+ render(<Controlled/>);
+ expect(screen.getByLabelText('UNKNOWN 缓存此项')).toBeChecked();
+ expect(screen.queryByLabelText('UNKNOWN 允许乐观缓存')).not.toBeInTheDocument();
+ for(const key of ['DIRECT','SURGE','REJECT','surge://127.0.0.1:6153','udp://192.0.2.53:53']){
+  fireEvent.click(screen.getByLabelText(`${key} 缓存此项`));
+  expect(screen.getByLabelText(`${key} 允许乐观缓存`)).toBeDisabled();
+  expect(screen.getByLabelText(`${key} 允许乐观缓存`)).not.toBeChecked();
+  fireEvent.click(screen.getByLabelText(`${key} 允许乐观缓存`));
+  expect(screen.getByLabelText(`${key} 允许乐观缓存`)).not.toBeChecked();
+  fireEvent.click(screen.getByLabelText(`${key} 缓存此项`));
+  expect(screen.getByLabelText(`${key} 允许乐观缓存`)).toBeEnabled();
+  expect(screen.getByLabelText(`${key} 允许乐观缓存`)).not.toBeChecked();
+ }
+ fireEvent.click(screen.getByRole('checkbox',{name:'决策缓存',exact:true}));
+ expect(screen.getByLabelText('乐观决策缓存')).toBeDisabled();
+ expect(screen.getByLabelText('乐观决策缓存')).not.toBeChecked();
+ expect(screen.getByLabelText('乐观响应缓存')).toBeEnabled();
+ expect(screen.queryByLabelText('DIRECT 缓存此项')).not.toBeInTheDocument();
+ fireEvent.click(screen.getByRole('checkbox',{name:'响应缓存',exact:true}));
+ expect(screen.getByLabelText('乐观响应缓存')).toBeDisabled();
+ expect(screen.getByLabelText('乐观响应缓存')).not.toBeChecked();
+ fireEvent.click(screen.getByRole('checkbox',{name:'决策缓存',exact:true}));
+ expect(screen.getByLabelText('乐观决策缓存')).toBeEnabled();
+ expect(screen.getByLabelText('乐观决策缓存')).not.toBeChecked();
+ fireEvent.click(screen.getByLabelText('乐观决策缓存'));
+ expect(screen.getByLabelText('DIRECT 允许乐观缓存')).not.toBeChecked();
+});
+it('keeps ordinary cache controls unavailable on older backends and translates new controls',()=>{
+ const {rerender}=render(<><LanguageSelector/><CachePolicySettings settings={{}} status={{selective_cache_policies:true}} onChange={()=>{}}/></>);
+ expect(screen.queryByRole('checkbox',{name:'决策缓存',exact:true})).not.toBeInTheDocument();
+ expect(screen.getByText(/当前后端不支持关闭普通缓存/)).toBeInTheDocument();
+ rerender(<><LanguageSelector/><CachePolicySettings settings={{}} status={{selective_cache_policies:true,cache_controls:true}} onChange={()=>{}}/></>);
+ fireEvent.change(screen.getByLabelText(/页面语言|Page language/),{target:{value:'en'}});
+ expect(screen.getByRole('checkbox',{name:'Decision cache',exact:true})).toBeChecked();
+ expect(screen.getByRole('checkbox',{name:'Response cache',exact:true})).toBeChecked();
+ expect(screen.getByLabelText('UNKNOWN Cache this item')).toBeChecked();
 });

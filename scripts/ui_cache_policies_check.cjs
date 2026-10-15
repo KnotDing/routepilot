@@ -44,8 +44,8 @@ const out='artifacts/cache-policies';fs.mkdirSync(out,{recursive:true});
   await page.goto('http://127.0.0.1:18918');await page.getByRole('heading',{name:'仪表盘',exact:true}).waitFor();
   for(const width of [1440,768,390]){
    await page.setViewportSize({width,height:1000});await go('设置');await page.locator('.tabs').getByRole('button',{name:'缓存',exact:true}).click();
-   await page.getByRole('heading',{name:'按上游设置缓存',exact:true}).waitFor();
-   if(width>1000){const boxes=await page.locator('.cache-policy-group').evaluateAll(items=>items.map(el=>({y:el.getBoundingClientRect().y,x:el.getBoundingClientRect().x})));if(boxes.length!==2||Math.abs(boxes[0].y-boxes[1].y)>1||boxes[0].x===boxes[1].x)throw Error('Cache groups did not appear side by side');}
+   await page.getByRole('heading',{name:'按上游设置缓存',exact:true}).first().waitFor();
+   if(width>1000){const boxes=await page.locator('.cache-policy-group').evaluateAll(items=>items.map(el=>({y:el.getBoundingClientRect().y,x:el.getBoundingClientRect().x})));if(boxes.length!==4||Math.abs(boxes[0].y-boxes[1].y)>1||Math.abs(boxes[2].y-boxes[3].y)>1||boxes[0].x===boxes[1].x)throw Error('Cache groups did not appear side by side');}
    await check('cache settings '+width);await page.screenshot({path:`${out}/settings-${width}.png`,fullPage:true});
    await page.locator('.cache-policy-settings').screenshot({path:`${out}/groups-${width}.png`});
    await page.getByLabel('DIRECT 允许乐观缓存',{exact:true}).uncheck();
@@ -58,7 +58,10 @@ const out='artifacts/cache-policies';fs.mkdirSync(out,{recursive:true});
    await page.getByLabel('乐观响应缓存',{exact:true}).check();
    await page.getByLabel(identity+' 允许乐观缓存',{exact:true}).uncheck();
    await page.getByLabel(surgeIdentity+' 允许乐观缓存',{exact:true}).uncheck();
-   if(await page.getByRole('checkbox',{name:/缓存此项/}).count())throw Error('Ordinary caching control is still visible');
+   if(!await page.getByRole('checkbox',{name:'DIRECT 缓存此项',exact:true}).isChecked())throw Error('Ordinary decision cache was changed by optimistic settings');
+   await page.getByRole('checkbox',{name:identity+' 缓存此项',exact:true}).uncheck();
+   if(!await page.getByLabel(identity+' 允许乐观缓存',{exact:true}).isDisabled())throw Error('Disabled ordinary upstream still allows optimistic caching');
+   await page.getByRole('checkbox',{name:identity+' 缓存此项',exact:true}).check();
    await page.getByRole('button',{name:'保存设置',exact:true}).click();
    await page.waitForFunction(()=>!document.querySelector('.settings-form fieldset')?.disabled);
    if(settings.cache.decisions?.DIRECT?.optimistic!==false||settings.cache.upstreams?.[identity]?.optimistic!==false||settings.cache.upstreams?.[surgeIdentity]?.optimistic!==false)throw Error('Saved overrides lost explicit false');

@@ -27,7 +27,7 @@ func (r *Real) ResponseSnapshot(persistent ...bool) []ResponseCacheRecord {
 	records := r.Cache.Snapshot()
 	out := make([]ResponseCacheRecord, 0, len(records))
 	for _, record := range records {
-		if record.Value.Msg == nil || len(persistent) > 0 && persistent[0] && !r.allowsOptimistic(record.Value.Endpoint) {
+		if record.Value.Msg == nil || !r.allowsCaching(record.Value.Endpoint) || len(persistent) > 0 && persistent[0] && !r.allowsOptimistic(record.Value.Endpoint) {
 			continue
 		}
 		msg := record.Value.Msg.Copy()
@@ -59,7 +59,7 @@ func (r *Real) RestoreResponses(records []ResponseCacheRecord) int {
 	values := make([]cache.Record[string, response], 0, len(records))
 	for _, record := range records {
 		endpoint := r.storedEndpoint(record)
-		if endpoint == "" {
+		if endpoint == "" || !r.allowsCaching(endpoint) {
 			continue
 		}
 		optimistic := r.allowsOptimistic(endpoint)

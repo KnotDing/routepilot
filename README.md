@@ -15,7 +15,7 @@ RoutePilot 是一款 macOS 状态栏应用：向 Surge 查询分流策略，为 
 - **缩短直连路径：** DIRECT 查询返回真实地址，客户端后续流量由网关直接送往 WAN，不必绕经 Surge；Fake-IP 和下一跳配置为 Surge 的受管理前缀仍按路由经过 Surge。
 - **Surge 故障时保留新连接的直连路径：** RoutePilot 停止发放新的 Fake-IP，后续查询改用独立真实 DNS 解析，让网关可将新连接直连出网（真实 DNS 与 WAN 可用时）。已发放 Fake-IP 在 TTL / 宽限期内仍可能依赖 Surge。
 
-[📦 下载最新版本](https://github.com/KnotDing/routepilot/releases) · [🧪 域名占比与组合筛选测试版 v1.0.4-beta.21](https://github.com/KnotDing/routepilot/releases/tag/v1.0.4-beta.21) · [Gitea 备用下载](https://gitea.knotding.com/knot/routepilot/releases) · [🚀 快速开始](#quick-start) · [🤖 安装 skill](#agent-skill) · [📚 文档导航](#documentation)
+[📦 下载最新版本](https://github.com/KnotDing/routepilot/releases) · [🧪 缓存控制与统计修复测试版 v1.0.4-beta.22](https://github.com/KnotDing/routepilot/releases/tag/v1.0.4-beta.22) · [Gitea 备用下载](https://gitea.knotding.com/knot/routepilot/releases) · [🚀 快速开始](#quick-start) · [🤖 安装 skill](#agent-skill) · [📚 文档导航](#documentation)
 
 <p align="center">
   <img src="docs/images/management-4k.png" width="100%" alt="RoutePilot App 管理界面 4K 截图">
@@ -132,7 +132,7 @@ DNS 查询不会生成单 IP BGP 路由。Surge 不可用时停止新 Fake-IP、
 
 ### 缓存：先响应，再刷新 ⚡
 
-**设置 → 缓存** 提供乐观决策缓存和乐观响应缓存两个独立开关，默认关闭：
+**设置 → 缓存** 提供决策缓存与响应缓存总开关，默认开启，可分别按决策和上游配置；乐观决策缓存和乐观响应缓存默认关闭，沿用相同的分组设置方式。关闭某类缓存或某个分项时，对应乐观缓存同步关闭且不能启用，保存并应用后停止该项缓存读写与恢复。详情见[按决策与上游控制缓存](docs/cache-policies.md)。
 
 | 选项 | 开启后的行为 |
 | --- | --- |
@@ -187,9 +187,9 @@ Webhook JSON 包含 `title`、`body`、`state`、`components` 和 `at`，不包�
 
 App 菜单的 **应用偏好 → 登录凭证保存方式** 可选 macOS 钥匙串或本地文件，两者均支持本机和远程登录。远程凭证按连接 ID 与地址分别保存，密码不写入连接配置、导出备份或网页存储。
 
-升级后重新打开管理窗口，会恢复此前选择的连接，并使用已保存凭证自动登录；未保存或凭证失效时才需要手动输入。两种存储独立，切换不会迁移凭证，需在所选方式下登录一次。普通浏览器使用自己的密码管理器。
+升级后重新打开管理窗口，会恢复此前选择的连接，并使用已保存凭证自动登录；后台重启导致已打开页面的会话失效时，也会重新使用已保存凭证恢复登录，短暂连接失败自动重试；主动退出后保持退出。未保存或凭证失效时才需要手动输入。两种存储独立，切换不会迁移凭证，需在所选方式下登录一次。普通浏览器使用自己的密码管理器。
 
-侧边栏可完整显示、仅保留菜单图标或完全隐藏；收起 / 展开按钮位于侧栏左下角的退出按钮旁。隐藏后将鼠标移到左侧边缘悬浮展开，也可通过按钮固定回来。偏好保存在当前管理界面，不写入连接后端。
+侧边栏可完整显示、仅保留菜单图标或完全隐藏；隐藏 / 固定与收起 / 展开按钮均位于侧栏左下角的退出按钮旁。隐藏后将鼠标移到左侧边缘悬浮展开，也可通过按钮固定回来。偏好保存在当前管理界面，不写入连接后端。
 
 ### 客户端设置
 

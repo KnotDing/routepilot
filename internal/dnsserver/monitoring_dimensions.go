@@ -29,6 +29,7 @@ type DNSObservation struct {
 	LatencyMS float64 `json:"latency_ms_sum"`
 }
 type DNSDomainCount struct {
+	Rest    bool   `json:"rest,omitempty"`
 	Domain  string `json:"domain"`
 	Other   bool   `json:"other,omitempty"`
 	Queries uint64 `json:"queries"`
@@ -193,7 +194,7 @@ func AttachMonitoringDomains(view *DNSMonitoringSnapshot, rows []DNSObservation,
 		}
 	}
 	for key, n := range counts {
-		view.Domains = append(view.Domains, DNSDomainCount{key.domain, key.other, n})
+		view.Domains = append(view.Domains, DNSDomainCount{Domain: key.domain, Other: key.other, Queries: n})
 	}
 	sort.Slice(view.Domains, func(i, j int) bool {
 		a, b := view.Domains[i], view.Domains[j]
