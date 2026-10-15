@@ -132,13 +132,13 @@
 
 ## 最近已核验发布（2026-10-15）
 
-- 最新已发布正式版为 `v1.0.3`；最新完整核验测试版为 `v1.0.4-beta.26`，标签指向 `70ddfedf3108ed421be3e408593e0ae9e9d7b233`，注释标签对象为 `3cb6c5b165ba9d01c23afc36c10469ef20183086`。后续交接文档提交不移动发布标签。
-- beta.26 GitHub 回归 [run 38696844640](https://github.com/KnotDing/routepilot/actions/runs/38696844640) 与 [Release run 38696844858](https://github.com/KnotDing/routepilot/actions/runs/38696844858) 成功；[Gitea run 2104](https://gitea.knotding.com/knot/routepilot/actions/runs/2104) 成功复用 GitHub 制品，macOS 回退任务跳过。发布提交及注释标签对象已核对双仓库一致。
-- [GitHub Release](https://github.com/KnotDing/routepilot/releases/tag/v1.0.4-beta.26) 与 [Gitea 备用 Release](https://gitea.knotding.com/knot/routepilot/releases/tag/v1.0.4-beta.26) 均为 `prerelease=true`、`draft=false`，只有 DMG、ZIP、SHA256SUMS 三项非空附件。六项附件均下载，双仓库 SHA256 完全相同；ZIP、代码签名与 DMG 完整性通过。实际 App 与捆绑后台均为 `1.0.4-beta.26 / build 34`（CI run number），源码 / 本地包 build 为 108，不混为一谈。
-- beta.26 按依赖应用配置：DNS / 缓存 / 健康设置变更保留未改动的 BGP speaker 与邻居会话，BGP 全局修改保留 DNS；隐私、客户端策略及备注热更新。新增默认关闭的「截断探测主机名的域部分」，只显示设备名，保留完整缓存并可即时恢复。必要的源地址绑定、安全门禁和 TTL 联动仍保留。细节见 `.gitea/release-notes/v1.0.4-beta.26.md`、`docs/configuration-application.md` 与 `docs/acceptance.md`。
-- 本地 `make verify-release` 全部通过：前端 35 文件 / 189 项、Go 全包 race / vet、原生核心与真实 WKWebView、17 页面 / 14 设置分类、9 项缓存 UI 检查及完整包校验。GitHub 回归另包含版本解析 fuzz。证据为 `artifacts/releases/v1.0.4-beta.26/local-verification.log`、`local-package-verification.json`、`publication-verification.json` 与同目录工作流 / 远端引用记录。
-- 未安装、升级或重启现用 App / 后台；未验收真实网关 RIB / FIB、LAN PTR、PF / LAN / Surge / NAT / IPv6 流量或长期资源占用。既有 `update_dialog.swift` WebKit 并发警告仍存在。
-- 此节为带日期的快照。接手时以 `git status`、`internal/buildinfo/release.json`、远端标签与实际 Release / Actions 为准；下方 beta.25 / beta.15 等旧交接仅为历史记录。
+- 最新已发布正式版为 `v1.0.3`；最新完整核验测试版为 `v1.0.4-beta.27`，标签指向 `7c36b3aae8a7bbe590f8dce11c1fac13b371e781`，注释标签对象为 `7100a6414613abc168a7ea34b571bbf228cbfc6b`。后续交接文档提交不移动发布标签。
+- beta.27 GitHub 回归 [run 38721553427](https://github.com/KnotDing/routepilot/actions/runs/38721553427) 与 [Release run 38721553616](https://github.com/KnotDing/routepilot/actions/runs/38721553616) 成功；[Gitea run 2105](https://gitea.knotding.com/knot/routepilot/actions/runs/2105) 成功复用 GitHub 制品，macOS 回退任务跳过。发布提交及注释标签对象已核对双仓库一致。
+- [GitHub Release](https://github.com/KnotDing/routepilot/releases/tag/v1.0.4-beta.27) 与 [Gitea 备用 Release](https://gitea.knotding.com/knot/routepilot/releases/tag/v1.0.4-beta.27) 均为 `prerelease=true`、`draft=false`，只有 DMG、ZIP、SHA256SUMS 三项非空附件。六项附件均下载，双仓库 SHA256 完全相同；ZIP、代码签名与 DMG 完整性通过。实际 App 与捆绑后台均为 `1.0.4-beta.27 / build 35`（CI run number），源码 / 本地包 build 为 109，不混为一谈。
+- beta.27 新增多管理窗口：状态栏按后端新建 / 唤起独立页面，后端选择、会话、回调、可见性和编辑状态隔离；标题显示名称及地址。请求按选中地址绑定，其他窗口修改连接地址后，旧页面返回 409 并要求重新连接。细节见 `.gitea/release-notes/v1.0.4-beta.27.md`、`docs/remote-management.md` 与 `docs/acceptance.md`。
+- 本地 `make verify-release` 全部通过：前端 35 文件 / 190 项、Go 全包 race / vet、原生核心 / 真实 WKWebView / 多窗口隔离、17 页面 / 14 设置分类、9 项缓存 UI 检查及完整包校验。GitHub 回归另包含版本解析 fuzz。证据为 `artifacts/releases/v1.0.4-beta.27/local-verification.log`、`local-package-verification.json`、`publication-verification.json` 与同目录工作流 / 远端引用记录。
+- 未安装、升级或重启现用 App / 后台；未验收真实远程 / 实际钥匙串登录、长期多窗口资源占用、网关 RIB / FIB、PF / LAN / Surge / NAT / IPv6 路径。既有 `update_dialog.swift` WebKit 并发警告仍存在。
+- 此节为带日期的快照。接手时以 `git status`、`internal/buildinfo/release.json`、远端标签与实际 Release / Actions 为准；下方 beta.26 / beta.25 / beta.15 等旧交接仅为历史记录。
 
 ## 任务交接（2026-10-11）
 
@@ -250,10 +250,10 @@
 ## 任务交接（2026-10-15，v1.0.4-beta.27）
 
 - 目标与验收条件：同时打开多个管理页面分别控制本地 / 不同远程后端；选择、写操作、登录回调和窗口生命周期相互隔离，保存的连接地址被修改时阻止旧页面请求转向新目标。
-- 当前状态：进行中。`v1.0.4-beta.27`（源码 build 109）完整 `make verify-release` 已通过，准备提交并双仓库推送。
+- 当前状态：已完成。`v1.0.4-beta.27` 已在 GitHub 和 Gitea 完整核验发布；最终交接更新作为发布后的文档提交同步双仓库，不移动发布标签。
 - 已完成与修改文件：`native/management_windows.swift` 管理窗口集合、逐页后端与存储、可见性、关闭和监听迁移；`main.swift` bridge 按来源分派并逐页管理后台通知，`remote_credentials.swift` 按来源登录并打开 / 唤起指定后端；`notifications.swift` 的后台请求绑定选中地址。`web/src/client.js` / `main.jsx` 记录每页目标地址，`internal/remote/remote.go` 核对所有带绑定头的请求；新错误中英映射在 `localization/errors-zh.json`。构建 / 原生测试脚本已纳入新模块，README、远程说明和验收同步。
 - 验证：`sh scripts/test_native.sh` 最终全部通过（含新真实 AppDelegate / WKWebView / JS 请求客户端隔离验收）；前端 35 文件 / 190 项与生产构建通过；`env GOCACHE=/Volumes/Code/RoutePilot/.cache/go-build go test -race ./internal/remote ./internal/api -count=1 -timeout 90s`、相关 vet 与 `go build ./...` 通过；完整 Swift 源码以 macOS 13 目标编译 / 链接通过。证据目录 `artifacts/multiple-management-windows-2026-10-15/`。未覆盖真实远程 / 实际钥匙串登录、安装升级、长期资源测量与现场网络；既有 WebKit 并发警告保留。
 - 发布前验证：`env GOCACHE=/Volumes/Code/RoutePilot/.cache/go-build make verify-release` 全部通过，前端 35 文件 / 190 项、Go 全包 race / vet、原生核心 / 真实 WKWebView / 多窗口隔离、17 页面 / 14 分类响应式检查、9 项缓存 UI 和完整 App / 后台 / CLI / DMG / ZIP 校验。实际本地包 App 与后台均为 `1.0.4-beta.27 / build 109`；证据见 `artifacts/releases/v1.0.4-beta.27/local-verification.log` 与 `local-package-verification.json`。
-- 已发布：目标 `v1.0.4-beta.27` 尚未发布；版本、README 与发行说明已准备，正式 skill 安装版本保持 `v1.0.3`；最近核验发布仍为上节 `v1.0.4-beta.26`。
+- 已发布：`v1.0.4-beta.27`，发布提交 `7c36b3aae8a7bbe590f8dce11c1fac13b371e781`，注释标签对象 `7100a6414613abc168a7ea34b571bbf228cbfc6b` 已双仓库核对。GitHub 回归 `38721553427`（含 fuzz）、Release `38721553616` 成功，Gitea `2105` 成功镜像 GitHub 制品 / 回退跳过。两个页面均为非草稿测试版，各有相同 DMG / ZIP / SHA256SUMS 三附件；六附件下载非空、哈希一致，包内 App 与后台均为 `1.0.4-beta.27 / build 35`，ZIP / 签名 / DMG 完整性通过。GitHub: https://github.com/KnotDing/routepilot/releases/tag/v1.0.4-beta.27；Gitea: https://gitea.knotding.com/knot/routepilot/releases/tag/v1.0.4-beta.27。正式 skill 安装版本保持 `v1.0.3`。
 - 保留的无关改动：无；本轮开始时只有本次待发布改动。旧包 / bin 备份至 `artifacts/pre-beta27-backup-20261015/`，历史证据保留；不安装或重启现用环境。
-- 下一步与依赖：提交并双仓库推送 main / 注释标签，等待 GitHub 回归与两个 Release workflow 成功，核验六附件、包版本并补齐本文件。证据目录 `artifacts/releases/v1.0.4-beta.27/`。源地址绑定头对旧客户端保持可选兼容；新页面的全部读取、写入和任务轮询绑定需本机中继后台同步升级。新窗口不复制状态栏本地会话 Cookie，通过已存凭证独立登录；未保存凭证时新窗口需登录。原生测试通过 `ROUTEPILOT_NATIVE_TEST` 排除实际 App 启动和凭证种子，使用随机 loopback 端口及现有请求客户端；不能运行测试构建作为生产 App。
+- 下一步与依赖：无未完成的实现或发布事项；后续可随时交接，先核对工作区和远端。继续提交仍须双仓库同步；GitHub SSH 不稳定时沿用此前按命令的 HTTPS 改写及已有 gh 凭证助手，不输出凭证。证据目录 `artifacts/releases/v1.0.4-beta.27/`。源地址绑定头对旧客户端保持可选兼容；新页面的全部读取、写入和任务轮询绑定需本机中继后台同步升级。新窗口不复制状态栏本地会话 Cookie，通过已存凭证独立登录；未保存凭证时新窗口需登录。原生测试通过 `ROUTEPILOT_NATIVE_TEST` 排除实际 App 启动和凭证种子，使用随机 loopback 端口及现有请求客户端；不能运行测试构建作为生产 App。
