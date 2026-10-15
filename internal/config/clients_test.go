@@ -1,6 +1,7 @@
 package config
 
 import (
+	"encoding/json"
 	"surge-controller/internal/model"
 	"testing"
 )
@@ -32,5 +33,33 @@ func TestClientSettingsValidateCloneAndNormalizedDuplicates(t *testing.T) {
 	bad.Settings.DNS.Clients[0].Decision = model.Unknown
 	if bad.Validate() == nil {
 		t.Fatal("unsupported forced policy accepted")
+	}
+}
+
+func TestClientHostnameProbeIsOptIn(t *testing.T) {
+	d := Default()
+	if err := json.Unmarshal([]byte(`{"settings":{"logging":{"level":"info"}}}`), &d); err != nil {
+		t.Fatal(err)
+	}
+	if d.Settings.Logging.ProbeHostnames {
+		t.Fatal("hostname probing must default off")
+	}
+	d.Settings.Logging.ProbeHostnames = true
+	encoded, err := json.Marshal(d)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var restored Document
+	if err := json.Unmarshal(encoded, &restored); err != nil {
+		t.Fatal(err)
+	}
+	if !restored.Settings.Logging.ProbeHostnames {
+		t.Fatal("round trip lost hostname setting")
+	}
+	if !d.Clone().Settings.Logging.ProbeHostnames {
+		t.Fatal("clone lost hostname setting")
+	}
+	if err := d.Validate(); err != nil {
+		t.Fatal(err)
 	}
 }

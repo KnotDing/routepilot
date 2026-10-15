@@ -1,4 +1,5 @@
 import Foundation
+import AppKit
 import WebKit
 
 @MainActor
@@ -26,6 +27,38 @@ extension AppDelegate {
         // restoration; this stores a selection, never credentials or sessions.
         UserDefaults.standard.set(["id": id, "url": address], forKey: "managementBackend")
         UserDefaults.standard.synchronize()
+    }
+    @objc func openManagementBackend(_ sender: NSMenuItem) {
+        guard let id = sender.representedObject as? String else { return }
+        let selected = managementBackends.first { $0.id == id }
+        guard id.isEmpty || selected != nil else { return }
+        let previous = UserDefaults.standard.dictionary(forKey: "managementBackend") as? [String: String]
+        let changed = (previous?["id"] ?? "") != id || (previous?["url"] ?? "") != (selected?.url ?? "")
+        recordManagementSelection(["backendID": id, "backendURL": selected?.url ?? ""])
+        if changed {
+            remoteNotificationGeneration += 1
+            remoteNotificationWatch = nil
+        }
+        let existingView = webView
+        openManagement()
+        guard changed, let view = existingView, webView === view else { return }
+        configurePreferenceSeed(view.configuration.userContentController)
+        let base = client.base
+        // A new window restores the selected profile from the preference seed.
+        // Reused windows also need their session selection replaced before reload.
+        Task { @MainActor [weak self] in
+            guard let self, self.credentialPage(view, base: base) else { return }
+            do {
+                _ = try await view.callAsyncJavaScript("""
+                    if (id) sessionStorage.setItem('routepilot.backend', id);
+                    else sessionStorage.removeItem('routepilot.backend');
+                    """, arguments: ["id": id], in: nil, contentWorld: .page)
+                guard self.credentialPage(view, base: base) else { return }
+                view.reload()
+            } catch {
+                self.alert("后端切换失败", error.localizedDescription)
+            }
+        }
     }
     func handleLocalCredentials(_ values: [String: String]) async {
         guard let view = webView, let requestID = values["requestID"], (1...80).contains(requestID.count),

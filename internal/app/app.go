@@ -156,6 +156,7 @@ type Runtime struct {
 	cancel                                           context.CancelFunc
 	done                                             chan struct{}
 	dispatcher                                       *dnsserver.Dispatcher
+	clientHostnames                                  *clientHostnames
 	engine                                           *classifier.Engine
 	adapter                                          *surge.Adapter
 	real                                             *resolver.Real
@@ -582,6 +583,10 @@ func (a *App) build(d config.Document, saved *decisionCacheSnapshot, responses *
 		}
 	}
 	rt.routes = routing.New(ctx, d, func(severity, message string) { a.event(severity, "routing", message) })
+	if s.Logging.ProbeHostnames {
+		rt.clientHostnames = newClientHostnames(s.DNS.Clients, net.DefaultResolver.LookupAddr)
+		go rt.clientHostnames.run(ctx, a.clientStatistics)
+	}
 	failed = false
 	go a.monitor(ctx, rt)
 	return rt, nil
@@ -891,6 +896,9 @@ func (rt *Runtime) close(ctx context.Context, waitTTL bool) error {
 func (rt *Runtime) shutdown(ctx context.Context, waitTTL bool) error {
 	expiry := rt.machine.Stop()
 	rt.cancel()
+	if rt.clientHostnames != nil {
+		<-rt.clientHostnames.done
+	}
 	if rt.server != nil {
 		rt.server.Close()
 	}
@@ -1153,6 +1161,9 @@ func (a *App) View(ctx context.Context, key string) (any, error) {
 	clientStatistics := dnsserver.ClientStatsSnapshot{Clients: []dnsserver.ClientStats{}}
 	if (key == "status" || key == "dns/clients") && rt.dispatcher != nil && rt.dispatcher.ClientStatistics != nil {
 		clientStatistics = rt.dispatcher.ClientStatistics.Snapshot()
+		if rt.clientHostnames != nil {
+			rt.clientHostnames.decorate(&clientStatistics)
+		}
 	}
 	if e := a.clientPersistError.Load(); e != nil {
 		clientStatistics.StorageError = *e

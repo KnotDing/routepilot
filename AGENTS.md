@@ -97,6 +97,7 @@
 2. 按已授权范围完成本地检查，创建 Conventional Commit，推送 `main` 与注释标签。
 3. `main` 推送由 GitHub `test.yaml` 执行回归；Beta 标签由 GitHub Release workflow 执行精简打包，同时 Gitea Release workflow 等待并复用 GitHub 制品，等待超时或获取失败时才在 Gitea macOS runner 回退构建。Beta 标签本身不运行完整回归/fuzz，不能因此宣称完整测试已通过。
 4. 确认 GitHub 回归成功及两个 Release workflow 完成；回归失败需要修复，不以已生成安装包代替通过。Beta 发布页必须 `prerelease=true`、`draft=false`。
+5. 每次发布测试版都必须更新本文件，做好随时交接给其他 agent 的准备。发布前按下方交接格式记录版本、任务范围、已有验证和待办；发布后补齐最终提交 / 标签、双仓库 workflow 与 Release / 附件证据，更新「最近已核验发布」和本轮交接。未完成或受阻时准确记录当前状态、失败原因和下一步，不将进行中的发布写为已核验。交接更新提交后同样推送双仓库，不移动已发布标签。
 
 ### 正式版
 
@@ -116,6 +117,7 @@
 - 多 agent 委派遵循当前会话和上层指令；需要委派时先明确负责文件、依赖、禁止触碰范围和验收方式。共享工作区不得相互覆盖。
 - 接收结果后检查实际差异与命令证据，不把口头“已完成”作为验证。
 - 交接只写继续工作需要的信息；不要重复完整发布历史，不携带凭证。使用以下格式：
+- 每次测试版发布后，后续任务随时可能由其他 agent 接手；本文件必须能独立说明最新任务与发布状态。不得仅在聊天回复或未提交的本地日志中留下交接信息；发布过程中已有的交接记录也应随进度更新，保留未覆盖验收、无关改动及继续工作所需依赖。
 
 ```text
 ## 任务交接
@@ -199,13 +201,13 @@
 | URL 路由导入与定时同步 | `internal/routeimport/import.go`；`internal/api/api.go` 的 `RunRouteFeedScheduler` | `web/src/route-import.jsx`；配置中的 route feeds；导入与后台任务状态 |
 | 健康检查、异常通知、Surge 重启 | `internal/app/app.go` 的 `monitor`；`surge_recovery.go`；`notification_anomalies.go`（每秒统计告警采样）；`internal/state/machine.go` | `internal/surge/recovery.go`；`internal/notifications/notifications.go`、`anomalies.go`（有界核对窗口与持续计时，不驱动路由门禁）；`internal/config/notification_anomalies.go`；`native/notifications.swift`；`web/src/surge-restart.jsx`、`notification-errors.jsx`、`notification-anomalies.jsx`；`docs/notification-anomalies.md` |
 | 大屏监控、策略命中与 DNS 流向 | `internal/dnsserver/monitoring.go`（`Begin` / `FinishQuerySource` / `Snapshot`）；`monitoring_dimensions.go`（有界真实请求关联与组合筛选）；`monitoring_domains.go`（独立域名待写批次、保存唤醒与确认）；`source_policy_flows.go`（有界真实来源 / 命中策略 / 最终策略三元组）；`dispatcher.go` 的实际解析路径标记；`internal/app/statistics.go`；`internal/database/monitoring.go`（事务检查点与分钟增量桶）、`monitoring_domains.go`（磁盘累计 / 分钟域名排行与批次去重） | `internal/api/monitoring.go`（实时源详情 / 历史 GET）、`internal/remote/remote.go`；`app.go` 的 `status.dns_monitoring` / `Metrics`；`web/src/monitoring.jsx`、`monitoring-filters.jsx`（六维选择 / 域名占比）、`monitoring-flow-grid.jsx`（并列图自然高度同步 / 上下排列恢复）、`monitoring-source-label.jsx`（完整备注换行 / 点击 IP 切换）、`monitoring-history.jsx`、`monitoring-data.js`（三层共享比例尺）、`monitoring.css`；`docs/monitoring.md` |
-| DNS 累计统计、客户端与查询历史 | `internal/dnsserver/dispatcher.go` 的 `Counters` / `ClientStatistics` / `History`；`internal/app/statistics.go`（客户端共享累计实例与五秒检查点）；`internal/dnsserver/client_statistics.go`（恢复校验） | `web/src/dns-overview.jsx`、`clients.jsx`、`client-settings.jsx`（列表编辑窗口）、`dns-result.jsx`；客户端配置校验在 `internal/config/clients.go`，分流在 `internal/dnsserver/client_policy.go`；查询历史不要误当成持久化累计统计 |
+| DNS 累计统计、客户端与查询历史 | `internal/dnsserver/dispatcher.go` 的 `Counters` / `ClientStatistics` / `History`；`internal/app/statistics.go`（客户端共享累计实例与五秒检查点）；`internal/dnsserver/client_statistics.go`（恢复校验）；`internal/app/client_hostnames.go`（日志与隐私可选的后台 PTR 探测与有界临时名称缓存） | `web/src/dns-overview.jsx`、`clients.jsx`、`client-settings.jsx`（列表编辑窗口）、`dns-result.jsx`；客户端配置校验在 `internal/config/clients.go`，分流在 `internal/dnsserver/client_policy.go`；查询历史不要误当成持久化累计统计 |
 | 登录、管理 IP 白名单、反向代理 | `internal/security/security.go`（`Wrap`）；`client_ip.go`；`internal/config/management_security.go` | `internal/controlclient/access.go`；`web/src/credentials.js`、`backends.jsx`；`native/credentials.swift`、`remote_credentials.swift`；`docs/remote-management.md` |
 | 远程连接与接口兼容 | `internal/remote/remote.go` 的接口允许列表与中继；`web/src/client.js` 的 `request` / `requestOptional` / `selectBackend` | `web/src/backends.jsx`、`version-notice.jsx`；`Workspace` 的页面请求与登录恢复 |
 | 检查版本、更新源、自动下载/安装与跳过版本 | `internal/config/config.go` 的 `Updates.UpdateSource`；`internal/softwareupdate/update.go`（`Check` / `StartForChannel` / 版本比较）；`internal/softwareupdate/worker.go` 保留已选来源；`internal/api/update_scheduler.go` | `web/src/main.jsx` 的 `Settings`、`app-preferences.jsx`、`backend-update.jsx`（持久挂载更新器 / 检查按钮 portal）、`form-fields.jsx`；`native/release_updater.swift`；`native/credentials.swift` 的 `GitHubAccessTokenVault` 保存本机 App 的 GitHub token；`update_dialog.swift`、`update_assistant.swift` |
 | 完整升级、回滚、远端 App 重启 | `internal/softwareupdate/application.go`、`worker.go`、`app_restart.go`（`ForceRestartApp` / 取消旧助手与 GUI 交接）；`agent.go`（更新助手）、`download_progress.go`（实际下载字节采样） | `native/remote_update_restart.swift`、`installer.swift`；`internal/security/update_sessions.go`；凭证与管理窗口恢复 |
 | CLI / skill 开关、安装目标与冲突 | `internal/api/automation.go`；`internal/appautomation/automation.go`（目标后端的桌面用户 helper） | `native/automation.swift`；`web/src/automation-settings.jsx`；`scripts/install_cli.sh` / `install_skill.sh`；`skills/routepilot-control/` |
-| 状态栏菜单、动画与指标 | `native/main.swift` 的 `rebuildMenu` / `refreshFromBackend`；`status_icon.swift`、`status_preferences.swift` | `web/src/status-bar-settings.jsx`；`internal/app/surge_recovery.go` 的请求速率采样 |
+| 状态栏菜单、动画与指标 | `native/main.swift` 的 `rebuildMenu` / `refreshFromBackend`；`status_icon.swift`、`status_preferences.swift`；`management_backends.swift`（打开管理窗口的后端子菜单）；`remote_credentials.swift` 的 `openManagementBackend`（选择保存与窗口切换） | `web/src/status-bar-settings.jsx`；`internal/app/surge_recovery.go` 的请求速率采样 |
 | 窗口尺寸、重开页面与 JS bridge | `native/main.swift` 的管理窗口与 `userContentController`；`window_frame.swift`；`monitoring_preferences.swift`（大屏显示偏好） | `web/src/credentials.js`、`app-preferences.jsx`、`window-visibility.js` |
 | 页面布局、主题与双语 | `web/src/style.css`、对应专用 JSX；导航在 `navigation.jsx`（完整 / 图标 / 隐藏悬浮状态，当前界面 localStorage 偏好） | `web/src/monitoring-preferences.jsx`（卡片显示 / 展示脱敏，App 偏好与浏览器保存）；`web/src/i18n.js`、`locale.js`；`localization/ui-en.json` / `errors-zh.json`；缓存与路由另有专用 i18n；帮助气泡的触发器和定位在 `.inline-help-control` / `.inline-help-popover` |
 | 数据库与重启恢复 | `internal/database/store.go`（迁移 / `Save` / `Load`）；`active_configuration.go` 区分已保存与已生效配置 | `internal/app/decision_cache.go`、`response_cache.go`、`statistics.go`；不要改变现有 secret 加密边界 |
@@ -228,3 +230,13 @@
 - 测试文件通常在目标 Go 包内的 `*_test.go`、`web/src/*.test.*`；原生检查入口 `scripts/test_native.sh`，浏览器入口 `scripts/ui_forms_check.cjs`。测试执行遵循当前任务授权与上层指令。
 - 默认排除 `.git/`、`.cache/`、`web/node_modules/`、`web/dist*/`、`bin/`、`artifacts/` 和发布历史目录；需要版本追溯时才定向读取标签与说明。
 - 文件职责或关键调用改变后同步更新本表；新增模块只记录职责、入口和关联，不在 AGENTS.md 复制实现代码。
+
+## 任务交接（2026-10-15，v1.0.4-beta.25）
+
+- 目标与验收条件：发布主机名探测及状态栏后端选择测试版；每次测试版发布必须更新本文件并准备交接，核对双仓库提交 / 标签、回归、发布 workflow 与三附件。
+- 当前状态：进行中。目标 `v1.0.4-beta.25`（源码 build 107）；双仓库已核对同一 beta.24 基线 `308abe4`，beta.25 标签未使用。GitHub SSH 22 / 443 间歇关闭，已核对 HTTPS 入口可用；推送时按命令将 GitHub SSH URL 映射到同仓库 HTTPS 并使用已有 gh 凭证助手，仍通过 origin 的双 pushurl 同步，不更改持久远端配置或输出凭证。
+- 已完成与修改文件：PTR 后台探测见 `internal/app/client_hostnames.go`、`app.go`、`internal/config/config.go`、`internal/dnsserver/dispatcher.go`；显示与开关见 `web/src/clients.jsx`、`main.jsx` 及双语；状态栏后端菜单见 `native/management_backends.swift`、`main.swift`、`remote_credentials.swift` 与构建 / 原生测试入口；说明见 `docs/client-settings.md`、`docs/remote-management.md`、`docs/acceptance.md`、`.gitea/release-notes/v1.0.4-beta.25.md`。
+- 验证：实现阶段相关前端 48 项测试、相关 Go 客户端 race / vet、前后端构建、完整原生编译与原生检查通过；发布前 `env GOCACHE=/Volumes/Code/RoutePilot/.cache/go-build make verify-release` 全部通过：前端 35 文件 / 189 项、Go 全包 race / vet、原生核心与真实 WKWebView、17 页面 / 14 设置分类响应式检查、9 项缓存 UI 检查和完整 App / DMG / ZIP / SHA256 包校验（源码 build 107）。未验收真实 LAN PTR、现用 App 的完整远程登录、LAN / Surge / NAT / IPv6 流量或长期资源占用。
+- 已发布：尚未提交或发布 beta.25；上一次已核验发布为 beta.24。不得将本轮代码误认为已在现用环境生效。
+- 保留的无关改动：无；现有全部工作区改动属于本轮两项功能及发布 / 交接要求，未提交构建产物。
+- 下一步与依赖：提交并将 main 与注释标签推送双仓库，核对 GitHub 回归及两个 Release 工作流，下载两边 DMG / ZIP / SHA256SUMS 并检查实际版本；成功后更新本轮交接和最近已核验发布，再提交并双仓库推送。日志 / 制品证据目录 `artifacts/releases/v1.0.4-beta.25/`，旧产物备份 `artifacts/pre-beta25-backup-20261015/`；不安装升级或重启现用环境。

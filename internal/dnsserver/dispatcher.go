@@ -48,14 +48,16 @@ func (c *Counters) Restore(s CounterSnapshot) {
 }
 
 type ClientStats struct {
-	ClientIP string    `json:"client_ip"`
-	Queries  uint64    `json:"queries"`
-	Direct   uint64    `json:"direct"`
-	Surge    uint64    `json:"surge"`
-	Reject   uint64    `json:"reject"`
-	Unknown  uint64    `json:"unknown"`
-	Errors   uint64    `json:"errors"`
-	LastSeen time.Time `json:"last_seen"`
+	Hostname      string    `json:"hostname,omitempty"`
+	HostnameError string    `json:"hostname_error,omitempty"`
+	ClientIP      string    `json:"client_ip"`
+	Queries       uint64    `json:"queries"`
+	Direct        uint64    `json:"direct"`
+	Surge         uint64    `json:"surge"`
+	Reject        uint64    `json:"reject"`
+	Unknown       uint64    `json:"unknown"`
+	Errors        uint64    `json:"errors"`
+	LastSeen      time.Time `json:"last_seen"`
 }
 
 type ClientStatsTotals struct {

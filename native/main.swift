@@ -84,6 +84,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
 	let serviceNotifications = ServiceNotifications()
 	var notificationSettings: [String: Any] = [:]
     var backendUpdateSettings: [String: Any] = [:]
+    var managementBackends: [ManagementBackend] = []
     var updateSource: String {
         (backendUpdateSettings["update_source"] as? String) == "gitea" ? "gitea" : "github"
     }
@@ -272,6 +273,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
             health = try await client.call("health") as? [[String: Any]] ?? []
             bgp = try await client.call("bgp/status") as? [String: Any] ?? [:]
             let settings = try await client.call("settings") as? [String: Any] ?? [:]
+            managementBackends = ManagementBackendMenu.profiles(settings["remote_backends"])
             notificationSettings = settings["notifications"] as? [String: Any] ?? [:]
             backendUpdateSettings = settings["updates"] as? [String: Any] ?? [:]
             backendFailures = 0
@@ -704,7 +706,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
         let needsLogin = !authenticated && lastError == "需要登录管理服务"
         let summary = L(serviceVisualState.label)
         menu.addItem(item("RoutePilot · " + summary, enabled: false))
-        menu.addItem(item("打开管理窗口", action: #selector(openManagement)))
+        menu.addItem(ManagementBackendMenu.item(backends: managementBackends,
+            selected: UserDefaults.standard.dictionary(forKey: "managementBackend") as? [String: String],
+            localURL: client.base.absoluteString, target: self, action: #selector(openManagementBackend(_:))))
 
         var details = [item(L("本机后台：{address}", ["address": client?.base.absoluteString ?? "—"]), enabled: false)]
         if connected {

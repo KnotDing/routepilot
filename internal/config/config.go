@@ -113,6 +113,7 @@ type Logging struct {
 	HistoryCapacity int    `json:"history_capacity"`
 	LogDomains      bool   `json:"log_domains"`
 	EventRetention  int    `json:"event_retention"`
+	ProbeHostnames  bool   `json:"probe_hostnames"`
 }
 type Notifications struct {
 	Anomalies         NotificationAnomalies `json:"anomalies"`
@@ -340,7 +341,7 @@ func Default() Document {
 		Surge:   Surge{CLIPath: "/Applications/Surge.app/Contents/Applications/surge-cli", DNS: "198.18.0.2:53", FakePrefixes: []string{"198.18.0.0/15"}},
 		BGP:     BGP{LocalASN: 64512, ListenPort: 179, RouteLimit: 128, HoldSeconds: 30, KeepaliveSeconds: 10},
 		Cache:   Cache{OptimisticIdleRefresh: true, OptimisticResponseIdleRefresh: true, Capacity: 10000, ResponseCapacity: 10000, Workers: 8, Queue: 256, TimeoutMS: 500, DirectTTLSeconds: 300, SurgeTTLSeconds: 300, UnknownTTLSeconds: 10, ErrorTTLSeconds: 1, InvalidateDirectOnSelectionChange: true, InvalidateRejectOnSelectionChange: true},
-		Health:  Health{1000, 3, 3, 60, 3, "example.com"}, Logging: Logging{"info", true, 1000, true, 2000},
+		Health:  Health{1000, 3, 3, 60, 3, "example.com"}, Logging: Logging{Level: "info", QueryHistory: true, HistoryCapacity: 1000, LogDomains: true, EventRetention: 2000},
 		Notifications: Notifications{Anomalies: (NotificationAnomalies{}).Effective(), Surge: true, BGP: true, DNS: true, Controller: true, CooldownSeconds: 300},
 		Security:      Security{Username: "admin", SessionMinutes: 60, AllowedNetworks: []string{"127.0.0.0/8", "::1/128"}, AuthBypassNetworks: []string{}, TrustedProxies: []string{}, ProxyOrigins: []string{}, ProxyClientIPHeader: "X-Forwarded-For"},
 		Updates:       Updates{AutomaticCheck: true, CheckIntervalHours: 12, UpdateTime: "03:00", UpdateSource: "github"},

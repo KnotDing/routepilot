@@ -28,3 +28,15 @@ it('explains when old client entries were evicted from the bounded list',()=>{
  render(<ClientsPanel snapshot={{clients:[],stats:{clients:1},capacity:4096,evicted_clients:3}}/>);
  expect(screen.getByText(/客户端列表容量为 4096 个；已淘汰 3 个不活跃客户端/)).toBeInTheDocument();
 });
+
+it('shows reverse names without filling the manual remark editor',()=>{
+ const {rerender}=render(<ClientsPanel snapshot={{clients:[{client_ip:'192.0.2.10',hostname:'desktop.lan'}]}}/>);
+ expect(screen.getByText('desktop.lan')).toBeInTheDocument();
+ expect(screen.getByText('反向查询')).toBeInTheDocument();
+ rerender(<ClientsPanel configs={[{ip:'192.0.2.10',name:'办公电脑'}]} snapshot={{clients:[{client_ip:'192.0.2.10',hostname:'desktop.lan'}]}}/>);
+ expect(screen.getByText('办公电脑')).toBeInTheDocument();
+ expect(screen.queryByText('desktop.lan')).toBeNull();
+ rerender(<ClientsPanel snapshot={{clients:[{client_ip:'192.0.2.10',hostname_error:'lookup failed'}]}}/>);
+ expect(screen.getByText('192.0.2.10')).toBeInTheDocument();
+ expect(screen.getByText('主机名探测失败')).toHaveAttribute('title','lookup failed');
+});

@@ -1,4 +1,11 @@
 {
+  "后端切换失败": "Backend switch failed",
+  "探测主机名": "Probe hostnames",
+  "备注 / 主机名": "Remark / hostname",
+  "反向查询": "Reverse lookup",
+  "无可用 PTR 记录": "No usable PTR record",
+  "主机名探测失败": "Hostname lookup failed",
+  "开启后，当前后端使用其系统 DNS 在后台反向查询未备注客户端的主机名。备注优先，查询失败时保留 IP；不会自动写入备注。": "When enabled, the selected backend uses its system DNS to look up hostnames for clients without remarks in the background. Remarks take priority; failed lookups keep the IP address. Results are not saved as remarks.",
   "API 凭据（留空保留）": "API token (leave blank to keep)",
   "BGP 发布": "BGP advertisement",
   "BGP 已发布 / 上限": "BGP advertised / limit",

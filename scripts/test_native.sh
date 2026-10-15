@@ -14,6 +14,8 @@ compile monitoring native/monitoring_preferences.swift native/monitoring_prefere
 .cache/native-tests/monitoring
 compile localization native/localization.swift native/localization_test.swift
 .cache/native-tests/localization localization
+compile backend-menu -framework AppKit native/test_support.swift native/localization.swift native/release_updater.swift native/management_backends.swift native/management_backends_test.swift
+.cache/native-tests/backend-menu
 compile core -framework AppKit -framework WebKit -framework Security native/test_support.swift native/localization.swift native/release_updater.swift native/update_assistant.swift native/status_icon.swift native/status_preferences.swift native/credentials.swift native/automation.swift native/core_test.swift
 .cache/native-tests/core
 compile remote-restart -framework AppKit -framework WebKit -framework UserNotifications native/test_support.swift native/localization.swift native/release_updater.swift native/window_frame.swift native/status_preferences.swift native/monitoring_preferences.swift native/automation.swift native/notifications.swift native/remote_update_restart.swift native/remote_update_restart_test.swift

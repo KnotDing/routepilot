@@ -1,6 +1,7 @@
 import React from 'react';
 import {it,expect,vi,afterEach} from 'vitest';
 import {render,screen,fireEvent,cleanup,act,waitFor} from '@testing-library/react';
+import {clientDisplaySettings} from './clients';
 import {MonitoringPanel} from './monitoring';
 import {MonitoringSettings,monitoringCards,readMonitoringPreferences,saveMonitoringPreferences} from './monitoring-preferences';
 import {request} from './client';
@@ -73,4 +74,17 @@ it('persists App preferences through the acknowledged native bridge and refuses 
  await saveMonitoringPreferences({hiddenCards:['sources'],protectSensitive:true});
  expect(readMonitoringPreferences()).toMatchObject({hiddenCards:['sources'],protectSensitive:true});expect(localStorage.length).toBe(0);expect(postMessage.mock.calls[0][0].notificationSound).toBe(false);expect(postMessage.mock.calls[0][0].updatePrompts).toBe(false);
  delete window.routepilotNativePreferences.monitoring;await expect(saveMonitoringPreferences({protectSensitive:false})).rejects.toThrow('更新 App');expect(postMessage).toHaveBeenCalledTimes(1);expect(readMonitoringPreferences().protectSensitive).toBe(true);
+});
+
+it('uses detected hostnames as fallback names and protects them with monitoring privacy',async()=>{
+ const hostname='detected-desktop.lan';
+ const rows=[{client_ip:ip,hostname}];
+ const configured=[{ip,name:remark}];
+ expect(clientDisplaySettings(configured,rows)[0].name).toBe(remark);
+ const clientSettings=clientDisplaySettings([{ip,name:''}],rows);
+ const {container}=render(<MonitoringPanel {...props} clientSettings={clientSettings}/>);
+ expect(container.textContent).toContain(hostname);
+ await act(()=>saveMonitoringPreferences({protectSensitive:true}));
+ expect(container.innerHTML).not.toContain(hostname);
+ expect(container.innerHTML).not.toContain(ip);
 });

@@ -769,3 +769,12 @@ acceptance was performed. Configuration runtime application is unchanged.
 - `env GOCACHE=/Volumes/Code/RoutePilot/.cache/go-build go test -race ./internal/dnsserver ./internal/database ./internal/app -count=1 -timeout 180s` 三包通过；相同三包 `go vet`、`npm --prefix web run build`、`go build ./...` 通过。前端与原生源码未修改，未重复运行 UI 或 Swift 测试。
 - 发布前 `env GOCACHE=/Volumes/Code/RoutePilot/.cache/go-build make package package-check` 通过，覆盖完整 App / 后台 / CLI、版本、资源、签名、DMG 布局、ZIP 与 SHA256SUMS；旧产物备份至 `artifacts/pre-beta24-backup-20261015/`，包日志为 `artifacts/releases/v1.0.4-beta.24/package.log`。版本更新后的升级、版本提示和全量翻译三文件共 39 项测试通过。
 - 实现阶段未提交、发布、安装、重启现用后台或读取现用数据库。本轮获授权发布 `v1.0.4-beta.24`（源码 build 106），双仓库工作流、附件和版本核验证据保存至 `artifacts/releases/v1.0.4-beta.24/`。已保存检查点与历史可保留；旧版失败期间尚未落盘的请求无法保证跨进程重启恢复，不能补造已丢失的请求关联。修复需随新版后台更新生效。
+
+## 2026-10-15：主机名探测与状态栏后端选择（beta.25 发布验证）
+
+- 「设置 → 日志与隐私」新增默认关闭的 `probe_hostnames`，兼容旧配置并参与克隆和配置保存。后台使用系统解析器串行反向查询未备注客户端，带单次 2 秒超时、每批最多 8 个及轮转选择、成功 1 小时 / 失败 5 分钟缓存；结果随运行实例结束清除，不写入手工备注或持久客户端计数。客户端列表提供探测来源 / 失败提示，大屏名称复用备注优先规则与敏感数据保护，仍按 IP 统计和筛选。覆盖备注跳过、IP 归一化、无效 PTR、缓存重试 / 淘汰、取消、实例启停和只读状态接口。
+- 状态栏「打开管理窗口」复用现有本机配置刷新中的已保存后端列表，有远程后端时展开本地与远程子菜单，地址悬停与上次选择勾选；仅本地时直接打开本地。选择同一后端只唤起窗口；切换后端更新原有选择保存和页面会话后重新加载，仍通过本机认证中继访问远端，不切换状态栏监控目标。菜单检查覆盖同名后端按 ID 区分、地址变更、移除、选择动作与本地快捷入口。
+- 实现阶段：相关前端 6 文件 / 48 项测试通过；相关 Go 客户端 race 与 vet、前后端构建通过。原生菜单、核心、偏好、本地化、远端重启与真实 WKWebView 检查通过，完整原生程序编译通过。原生 UI 在受限环境下无法访问 WebKit 系统服务，放行后单独重跑通过；既有 `update_dialog.swift` WebKit 并发警告仍存在。
+- 发布前 `env GOCACHE=/Volumes/Code/RoutePilot/.cache/go-build make verify-release` 全部通过：前端 35 文件 / 189 项、Go 全包 race / vet、原生核心与真实 WKWebView、17 页面 / 14 设置分类（1440 / 1120 / 390）、9 项缓存 UI 检查、完整 App / 后台 / CLI 打包与版本 / 资源 / 签名 / DMG 布局 / ZIP / SHA256 校验（源码 `1.0.4-beta.25 / build 107`）。本地原始日志 `artifacts/releases/v1.0.4-beta.25/local-verification.log`；CI 回归另执行版本解析 fuzz。
+- 本轮发布目标为 `v1.0.4-beta.25`（源码 build 107），本地发布检查、打包与双仓库发布证据保存在 `artifacts/releases/v1.0.4-beta.25/`；原有包及二进制备份至 `artifacts/pre-beta25-backup-20261015/`。
+- 未授权安装、升级或重启现用 App / 后台；未做真实局域网 PTR、LAN / Surge / NAT / IPv6 流量及长期资源占用验收。后端菜单检查与窗口 / 会话逻辑验证不代替现用 App 的完整远程登录现场验收。

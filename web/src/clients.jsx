@@ -13,7 +13,7 @@ const summaryMetrics=[
  ['DNS 错误数','errors']
 ];
 const clientColumns=[
- ['client_ip','客户端 IP'],['name','备注名称'],['decision','查询策略'],['queries','DNS 请求数'],['direct','DIRECT'],
+ ['client_ip','客户端 IP'],['name','备注 / 主机名'],['decision','查询策略'],['queries','DNS 请求数'],['direct','DIRECT'],
  ['surge','SURGE'],['reject','REJECT'],['unknown','UNKNOWN'],
  ['errors','DNS 错误'],['last_seen','最后活动']
 ];
@@ -31,9 +31,16 @@ export function ClientsPanel({snapshot={},configs=[],refresh,notify}){
    {!supported&&<p className="notice">{t('此后端暂不支持客户端设置，请升级后端。')}</p>}
    <div className="table-wrap"><table className="responsive-table" role="table">
     <thead role="rowgroup"><tr role="row">{columns.map(([key,label])=><th key={key} role="columnheader">{t(label)}</th>)}</tr></thead>
-    <tbody role="rowgroup">{clients.map(raw=>{const setting=settings.get(raw.client_ip);const client={...raw,name:setting?.name||'—',decision:setting?.decision||t('自动')};return <tr role="row" key={client.client_ip}>{columns.map(([key,label])=><td key={key} role="cell" data-label={t(label)}><span className="cell-value">{key==='actions'?<button type="button" aria-label={t('编辑客户端 {client}',{client:client.client_ip})} onClick={()=>setEditing({...setting,ip:client.client_ip,name:setting?.name||'',decision:setting?.decision||''})}>{t('编辑')}</button>:key==='last_seen'?(client[key]?new Date(client[key]).toLocaleString(currentLocale()):'—'):client[key]??'—'}</span></td>)}</tr>})}</tbody>
+    <tbody role="rowgroup">{clients.map(raw=>{const setting=settings.get(raw.client_ip);const client={...raw,name:setting?.name?.trim()||raw.hostname||'—',decision:setting?.decision||t('自动')};return <tr role="row" key={client.client_ip}>{columns.map(([key,label])=><td key={key} role="cell" data-label={t(label)}><span className="cell-value">{key==='actions'?<button type="button" aria-label={t('编辑客户端 {client}',{client:client.client_ip})} onClick={()=>setEditing({...setting,ip:client.client_ip,name:setting?.name||'',decision:setting?.decision||''})}>{t('编辑')}</button>:key==='name'?<>{client.name}{!setting?.name?.trim()&&raw.hostname&&<small className="field-hint">{t('反向查询')}</small>}{!setting?.name?.trim()&&raw.hostname_error&&<small className="field-hint" title={message(raw.hostname_error)}>{t('主机名探测失败')}</small>}</>:key==='last_seen'?(client[key]?new Date(client[key]).toLocaleString(currentLocale()):'—'):client[key]??'—'}</span></td>)}</tr>})}</tbody>
    </table>{!clients.length&&<div className="empty">{t('暂无客户端 DNS 请求')}</div>}</div>
   </section>
   {editing&&<ClientEditor key={editing.ip} client={editing} onClose={()=>setEditing(null)} refresh={refresh} notify={notify}/>}
  </>;
+}
+
+// Reuse existing monitoring names and privacy handling without changing IP identities.
+export function clientDisplaySettings(configs=[],clients=[]){
+ const names=new Map((configs||[]).map(row=>[row.ip,row]));
+ for(const client of clients||[])if(client.hostname&&!names.get(client.client_ip)?.name?.trim())names.set(client.client_ip,{...names.get(client.client_ip),ip:client.client_ip,name:client.hostname});
+ return [...names.values()];
 }

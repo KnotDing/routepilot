@@ -30,3 +30,9 @@ it('keeps failed edits visible and disables editing for unsupported backends',as
  rerender(<ClientsPanel configs={null} snapshot={snapshot}/>);expect(screen.getByText('此后端暂不支持客户端设置，请升级后端。')).toBeInTheDocument();expect(screen.queryByRole('button',{name:'编辑客户端 192.0.2.10'})).toBeNull();expect(screen.getByRole('table')).toBeInTheDocument();
  rerender(<ClientsPanel configs={[]} snapshot={{...snapshot,storage_error:'disk full'}}/>);expect(screen.getByRole('alert')).toHaveTextContent('客户端统计保存失败');expect(screen.getByRole('button',{name:'编辑客户端 192.0.2.10'})).toBeInTheDocument();
 });
+
+it('keeps a detected hostname separate from the editable remark',()=>{
+ render(<ClientsPanel configs={[]} snapshot={{clients:[{client_ip:'192.0.2.10',hostname:'desktop.lan'}]}}/>);
+ fireEvent.click(screen.getByRole('button',{name:'编辑客户端 192.0.2.10'}));
+ expect(screen.getByLabelText('备注名称')).toHaveValue('');
+});
