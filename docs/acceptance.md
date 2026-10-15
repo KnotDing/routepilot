@@ -778,3 +778,5 @@ acceptance was performed. Configuration runtime application is unchanged.
 - 发布前 `env GOCACHE=/Volumes/Code/RoutePilot/.cache/go-build make verify-release` 全部通过：前端 35 文件 / 189 项、Go 全包 race / vet、原生核心与真实 WKWebView、17 页面 / 14 设置分类（1440 / 1120 / 390）、9 项缓存 UI 检查、完整 App / 后台 / CLI 打包与版本 / 资源 / 签名 / DMG 布局 / ZIP / SHA256 校验（源码 `1.0.4-beta.25 / build 107`）。本地原始日志 `artifacts/releases/v1.0.4-beta.25/local-verification.log`；CI 回归另执行版本解析 fuzz。
 - 本轮发布目标为 `v1.0.4-beta.25`（源码 build 107），本地发布检查、打包与双仓库发布证据保存在 `artifacts/releases/v1.0.4-beta.25/`；原有包及二进制备份至 `artifacts/pre-beta25-backup-20261015/`。
 - 未授权安装、升级或重启现用 App / 后台；未做真实局域网 PTR、LAN / Surge / NAT / IPv6 流量及长期资源占用验收。后端菜单检查与窗口 / 会话逻辑验证不代替现用 App 的完整远程登录现场验收。
+
+- 发布后核验完成：`v1.0.4-beta.25` 标签指向 `352a8f82c43038957325910ff68acc2e468650a6`，双仓库 main / 注释标签对象在推送后已核对一致。GitHub 回归 `38690630180`（含 fuzz）和 Release `38690630151` 成功，Gitea `2103` 整体成功复用 GitHub 制品 / 回退跳过。两个 Release 均为非草稿测试版，只有 DMG、ZIP、SHA256SUMS 三附件，六附件下载非空、哈希完全一致；实际 App 与捆绑后台均为 `1.0.4-beta.25 / build 33`，ZIP、代码签名与 DMG 完整性通过。证据为 `artifacts/releases/v1.0.4-beta.25/publication-verification.json`。AGENTS.md 的最近已核验发布与本轮交接已同步最终事实，后续仅文档提交不移动标签。

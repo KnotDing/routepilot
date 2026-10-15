@@ -130,20 +130,15 @@
 - 下一步与依赖：
 ```
 
-## 最近已核验发布（2026-10-12）
+## 最近已核验发布（2026-10-15）
 
-- 最新已发布正式版仍为 `v1.0.3`（`5ca0fd97496776d9949dbe3218d57f982dc0e04f`）；最新已核验测试版为 `v1.0.4-beta.15`，标签指向 `63b1487191cc4a694f601177740fd1358ed977f9`。
-- beta.15 GitHub 回归（run `38232084051`）、GitHub Release（run `38232084606`）成功；Gitea Release（run `2088`）成功复用 GitHub 制品，macOS 回退任务跳过。双仓库发布提交与标签已核对一致；后续仅交接文档提交不移动发布标签。
-- 两个发布页均为 `prerelease=true`、`draft=false`，只有 DMG、ZIP、SHA256SUMS 三项附件，下载非空且两边 SHA256 完全相同。实际包内 App 与后台均为 `1.0.4-beta.15 / build 23`，版本身份与下载哈希已核对。证据位于 `artifacts/releases/v1.0.4-beta.15/publication-verification.json`。
-- 本轮测试版新增大屏实时 / 七天历史统计、按源流向及占比、独立来源占比卡片，隐藏启用前未知来源并排除其分母；修复历史统计维度共享导致保存失败，区分普通与乐观响应缓存，检查更新不预下载并提供安装下载进度。
-- beta.6 新增持久化客户端备注与强制 DIRECT / SURGE / REJECT 策略，以及与 DNS 请求流向并列的「客户端策略流向」。图表使用实际来源与策略请求对，支持实时、历史及单源筛选；不以边际占比推算关联。
-- beta.8 包含软件更新提示简化、检查按钮移到保存旁、分割线移除，以及小流量客户端 / 策略文字重叠修复。图表只增加节点间距与画布高度，节点和流带仍使用实际请求比例。
-- beta.9 移除独立客户端配置卡片，改从列表行编辑。客户端计数、决策、错误、最后活动与淘汰汇总每五秒保存 SQLite 检查点，正常退出保存最终值，重启及配置应用后保留；写入失败显示并自动重试。旧版未落盘数据不倒填。
-- beta.10 将立即安装 / 升级操作与立即检查更新放在保存设置旁的同一行。beta.11 两个流向图默认只显示备注，点击切换 IP；客户端策略图按真实请求展示来源 → 命中策略 → 最终策略，宽度不足时排列在 DNS 图下方。「请求来源占比」改为策略排行样式。导航支持展开、仅图标、完全隐藏和左边缘悬浮，状态仅保存在当前管理界面。
-- beta.12 新增卡片显示与敏感数据保护偏好，App 保存至本机 UserDefaults，浏览器保存至当前站点；原生临时 WebKit 存储不承担偏好持久化。匿名客户端仍按真实身份筛选，IP / 备注 / 策略名称在悬停与明细中同样保护。修复三列节点数不同造成的分段比例尺与中间节点错位。
-- beta.13–15 将未记录最终策略的请求排除出客户端策略图及其分母，容量分组保留未记录类型不混入其余策略；两张流向图的流带支持点击高亮并在图下固定显示精确请求数与占比。Gitea 等待 GitHub 制品的初始时间由 5 分钟缩短为 2 分钟。
-- 验证范围包括前端、相关 Go race / vet、原生检查、响应式 UI、GitHub 完整回归与发布包。未安装或升级现用环境，未验收真实 LAN / NAT / IPv6 客户端流量；历史缺失的来源 / 缓存类型不会倒填。详见 `docs/acceptance.md`。
-- 此节仅为带日期的快照。接手时以 `git status`、`internal/buildinfo/release.json`、远端标签与实际 Release/Actions 为准。
+- 最新已发布正式版为 `v1.0.3`；最新完整核验测试版为 `v1.0.4-beta.25`，注释标签指向 `352a8f82c43038957325910ff68acc2e468650a6`。后续交接文档提交不移动发布标签。
+- beta.25 GitHub 回归 [run 38690630180](https://github.com/KnotDing/routepilot/actions/runs/38690630180) 与 [Release run 38690630151](https://github.com/KnotDing/routepilot/actions/runs/38690630151) 成功；[Gitea run 2103](https://gitea.knotding.com/knot/routepilot/actions/runs/2103) 成功复用 GitHub 制品，macOS 回退任务跳过。发布提交及注释标签对象已核对双仓库一致。
+- [GitHub Release](https://github.com/KnotDing/routepilot/releases/tag/v1.0.4-beta.25) 与 [Gitea 备用 Release](https://gitea.knotding.com/knot/routepilot/releases/tag/v1.0.4-beta.25) 均为 `prerelease=true`、`draft=false`，只有 DMG、ZIP、SHA256SUMS 三项非空附件。六项附件均下载，双仓库 SHA256 完全相同；ZIP、代码签名与 DMG 完整性通过。实际 App 与捆绑后台均为 `1.0.4-beta.25 / build 33`（CI run number），源码 / 本地包 build 为 107，不混为一谈。
+- beta.25 新增默认关闭的客户端主机名反向探测，备注优先且探测结果只作显示；状态栏「打开管理窗口」支持保存后端子菜单，仅本地时直接打开本地。版本细节见 `.gitea/release-notes/v1.0.4-beta.25.md`，测试边界见 `docs/acceptance.md`。
+- 本地 `make verify-release` 全部通过：前端 35 文件 / 189 项、Go 全包 race / vet、原生核心与真实 WKWebView、17 页面 / 14 设置分类、9 项缓存 UI 检查及完整包校验。GitHub 回归另包含版本解析 fuzz。证据为 `artifacts/releases/v1.0.4-beta.25/local-verification.log`、`local-package-verification.json`、`publication-verification.json` 与同目录工作流 / 远端引用记录。
+- 未安装、升级或重启现用 App / 后台；未验收真实 LAN PTR、现用 App 的完整远程登录、LAN / Surge / NAT / IPv6 流量或长期资源占用。既有 `update_dialog.swift` WebKit 并发警告仍存在。
+- 此节为带日期的快照。接手时以 `git status`、`internal/buildinfo/release.json`、远端标签与实际 Release / Actions 为准；下方 beta.15 等旧交接仅为历史记录。
 
 ## 任务交接（2026-10-11）
 
@@ -234,9 +229,9 @@
 ## 任务交接（2026-10-15，v1.0.4-beta.25）
 
 - 目标与验收条件：发布主机名探测及状态栏后端选择测试版；每次测试版发布必须更新本文件并准备交接，核对双仓库提交 / 标签、回归、发布 workflow 与三附件。
-- 当前状态：进行中。目标 `v1.0.4-beta.25`（源码 build 107）；双仓库已核对同一 beta.24 基线 `308abe4`，beta.25 标签未使用。GitHub SSH 22 / 443 间歇关闭，已核对 HTTPS 入口可用；推送时按命令将 GitHub SSH URL 映射到同仓库 HTTPS 并使用已有 gh 凭证助手，仍通过 origin 的双 pushurl 同步，不更改持久远端配置或输出凭证。
-- 已完成与修改文件：PTR 后台探测见 `internal/app/client_hostnames.go`、`app.go`、`internal/config/config.go`、`internal/dnsserver/dispatcher.go`；显示与开关见 `web/src/clients.jsx`、`main.jsx` 及双语；状态栏后端菜单见 `native/management_backends.swift`、`main.swift`、`remote_credentials.swift` 与构建 / 原生测试入口；说明见 `docs/client-settings.md`、`docs/remote-management.md`、`docs/acceptance.md`、`.gitea/release-notes/v1.0.4-beta.25.md`。
-- 验证：实现阶段相关前端 48 项测试、相关 Go 客户端 race / vet、前后端构建、完整原生编译与原生检查通过；发布前 `env GOCACHE=/Volumes/Code/RoutePilot/.cache/go-build make verify-release` 全部通过：前端 35 文件 / 189 项、Go 全包 race / vet、原生核心与真实 WKWebView、17 页面 / 14 设置分类响应式检查、9 项缓存 UI 检查和完整 App / DMG / ZIP / SHA256 包校验（源码 build 107）。未验收真实 LAN PTR、现用 App 的完整远程登录、LAN / Surge / NAT / IPv6 流量或长期资源占用。
-- 已发布：尚未提交或发布 beta.25；上一次已核验发布为 beta.24。不得将本轮代码误认为已在现用环境生效。
-- 保留的无关改动：无；现有全部工作区改动属于本轮两项功能及发布 / 交接要求，未提交构建产物。
-- 下一步与依赖：提交并将 main 与注释标签推送双仓库，核对 GitHub 回归及两个 Release 工作流，下载两边 DMG / ZIP / SHA256SUMS 并检查实际版本；成功后更新本轮交接和最近已核验发布，再提交并双仓库推送。日志 / 制品证据目录 `artifacts/releases/v1.0.4-beta.25/`，旧产物备份 `artifacts/pre-beta25-backup-20261015/`；不安装升级或重启现用环境。
+- 当前状态：已完成。`v1.0.4-beta.25` 已在 GitHub 和 Gitea 完整核验发布；本轮交接更新作为发布后的文档提交同步双仓库，不移动标签。
+- 已完成与修改文件：PTR 后台探测见 `internal/app/client_hostnames.go`、`app.go`、`internal/config/config.go`、`internal/dnsserver/dispatcher.go`；显示与开关见 `web/src/clients.jsx`、`main.jsx` 及双语；状态栏后端菜单见 `native/management_backends.swift`、`main.swift`、`remote_credentials.swift` 与构建 / 原生测试入口；说明见 `docs/client-settings.md`、`docs/remote-management.md`、`docs/acceptance.md`、`.gitea/release-notes/v1.0.4-beta.25.md`。本文件已明确要求每次测试版发布前后更新交接，受阻时记录真实状态和下一步。
+- 验证：`env GOCACHE=/Volumes/Code/RoutePilot/.cache/go-build make verify-release` 全部通过，前端 35 文件 / 189 项、Go 全包 race / vet、原生核心与真实 WKWebView、17 页面 / 14 设置分类响应式检查、9 项缓存 UI 检查和完整 App / DMG / ZIP / SHA256 包校验。GitHub 回归含 fuzz 通过。双仓库下载包 App / 后台均为 `1.0.4-beta.25 / build 33`，本地源码 / 包为 build 107；六附件哈希、ZIP / 签名 / DMG 完整性已核对。未验收范围见上方最近发布说明，不把包校验当成安装或联网验收。
+- 已发布：tag `v1.0.4-beta.25`，发布提交 `352a8f82c43038957325910ff68acc2e468650a6`；GitHub 回归 `38690630180`、Release `38690630151`、Gitea `2103` 成功，Gitea 获取路径成功 / 回退跳过。GitHub: https://github.com/KnotDing/routepilot/releases/tag/v1.0.4-beta.25；Gitea: https://gitea.knotding.com/knot/routepilot/releases/tag/v1.0.4-beta.25。两个页面均为非草稿测试版，各有相同 DMG / ZIP / SHA256SUMS 三附件。
+- 保留的无关改动：无。构建产物 / 原始日志保持在忽略目录 `artifacts/`，不提交；未安装升级或重启现用环境。
+- 下一步与依赖：无未完成的功能或发布事项；后续新任务可随时交接，先核对当前 main 与工作区再实施。GitHub SSH 22 / 443 本次间歇关闭，推送使用按命令的 GitHub URL → HTTPS 改写及已有 gh 凭证助手，保留 origin 的 Gitea / GitHub 两个 pushurl，不修改持久远端配置或输出凭证。继续推送仍须双仓库同步。发布证据目录 `artifacts/releases/v1.0.4-beta.25/`，旧产物备份 `artifacts/pre-beta25-backup-20261015/`；这些本地证据若不在交接机器上，以以上远端 workflow / Release 为核验入口。
