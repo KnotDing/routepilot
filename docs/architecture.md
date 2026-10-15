@@ -20,8 +20,11 @@ Client statistics are collected independently of optional query history. The
 runtime keeps per-client DNS decision/error counts and last-seen time for up to
 4096 client addresses; the least recently seen entry is evicted when full.
 Aggregate counts include evicted entries and feed both the Clients page and
-native status-bar metric choices. These statistics are in-memory and reset when
-the DNS runtime is replaced or restarted.
+native status-bar metric choices. These statistics are shared across DNS runtime replacement and checkpointed to
+SQLite every five seconds and on clean shutdown. See [client settings](client-settings.md).
+Configuration changes follow [module dependencies](configuration-application.md):
+DNS resources and the BGP speaker have separate replacement boundaries, while
+privacy/history and client policies update in place.
 
 ## Policy evidence and deliberately conservative DIRECT
 

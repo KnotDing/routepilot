@@ -152,11 +152,14 @@ type Runtime struct {
 	hosts                                            *localdns.Resolver
 	closeOnce                                        sync.Once
 	closeErr                                         error
+	routingCloseOnce                                 sync.Once
+	routingCloseErr                                  error
 	faultMu                                          sync.RWMutex
 	cancel                                           context.CancelFunc
 	done                                             chan struct{}
 	dispatcher                                       *dnsserver.Dispatcher
-	clientHostnames                                  *clientHostnames
+	clientHostnames                                  atomic.Pointer[clientHostnames]
+	ctx                                              context.Context
 	engine                                           *classifier.Engine
 	adapter                                          *surge.Adapter
 	real                                             *resolver.Real
@@ -388,12 +391,16 @@ func (a *App) Configuration() config.Document {
 	defer a.mu.RUnlock()
 	return a.config.Clone()
 }
-func (a *App) build(d config.Document, saved *decisionCacheSnapshot, responses *responseCacheSnapshot) (rt *Runtime, err error) {
+func (a *App) build(d config.Document, saved *decisionCacheSnapshot, responses *responseCacheSnapshot) (*Runtime, error) {
+	return a.buildRuntime(d, saved, responses, nil, false)
+}
+
+func (a *App) buildRuntime(d config.Document, saved *decisionCacheSnapshot, responses *responseCacheSnapshot, preserved *routing.Manager, syncPeers bool) (rt *Runtime, err error) {
 	if err = d.Validate(); err != nil {
 		return nil, err
 	}
 	ctx, cancel := context.WithCancel(a.ctx)
-	rt = &Runtime{cancel: cancel, done: make(chan struct{}), routingWake: make(chan struct{}, 1), settings: d, started: time.Now(), machine: state.New(d.Settings.Health, d.Settings.General.Mode), health: state.NewHealth(d.Settings.Health.Successes, d.Settings.Health.Failures)}
+	rt = &Runtime{ctx: ctx, cancel: cancel, done: make(chan struct{}), routingWake: make(chan struct{}, 1), settings: d, started: time.Now(), machine: state.New(d.Settings.Health, d.Settings.General.Mode), health: state.NewHealth(d.Settings.Health.Successes, d.Settings.Health.Failures)}
 	failed := true
 	// Error returns assign nil to the named result. Keep the allocated runtime
 	// separately so partial initialization is cleaned up without panicking.
@@ -409,11 +416,17 @@ func (a *App) build(d config.Document, saved *decisionCacheSnapshot, responses *
 			if cleanup.pf != nil {
 				_ = cleanup.pf.Close()
 			}
-			if cleanup.routes != nil {
+			if cleanup.routes != nil && preserved == nil {
 				_ = cleanup.routes.Close(context.Background())
 			}
 			if cleanup.surgeResponses != nil {
 				cleanup.surgeResponses.Close()
+			}
+			if cleanup.real != nil {
+				cleanup.real.Close()
+			}
+			for _, upstream := range cleanup.policyResolvers {
+				upstream.Close()
 			}
 			if cleanup.engine != nil {
 				cleanup.engine.Close()
@@ -453,12 +466,7 @@ func (a *App) build(d config.Document, saved *decisionCacheSnapshot, responses *
 	rt.dispatcher = &dnsserver.Dispatcher{AAAAFallback: s.DNS.AAAAFallback, IPv6Status: rt.adapter, SharedCounters: &a.dnsCounters, Local: rt.hosts, RealIPDomains: rt.adapter, FakeTTLMax: &maxFakeTTL, Classifier: rt.policy, Surge: &observedSurge{SurgeAdapter: rt.adapter, rt: rt}, Gate: rt.machine, FakeIssuer: rt.machine, History: dnsserver.NewHistory(s.Logging.HistoryCapacity, s.Logging.QueryHistory && s.Logging.LogDomains), ClientStatistics: a.clientStatistics}
 	rt.previousQueries.Store(a.dnsCounters.Queries.Load())
 	rt.dispatcher.Monitoring = a.dnsMonitoring
-	rt.dispatcher.ClientPolicies = make(map[netip.Addr]model.Decision)
-	for _, client := range s.DNS.Clients {
-		if client.Decision != "" {
-			rt.dispatcher.ClientPolicies[netip.MustParseAddr(client.IP).Unmap()] = client.Decision
-		}
-	}
+	rt.dispatcher.ClientPolicies = clientPolicies(s.DNS.Clients)
 	for _, p := range s.Surge.FakePrefixes {
 		rt.dispatcher.FakePrefixes = append(rt.dispatcher.FakePrefixes, netip.MustParsePrefix(p))
 	}
@@ -582,11 +590,20 @@ func (a *App) build(d config.Document, saved *decisionCacheSnapshot, responses *
 			}
 		}
 	}
-	rt.routes = routing.New(ctx, d, func(severity, message string) { a.event(severity, "routing", message) })
-	if s.Logging.ProbeHostnames {
-		rt.clientHostnames = newClientHostnames(s.DNS.Clients, net.DefaultResolver.LookupAddr)
-		go rt.clientHostnames.run(ctx, a.clientStatistics)
+	if preserved != nil {
+		// DNS construction has succeeded. Commit peer/route changes only now,
+		// while the previous monitor is stopped and the next has not started.
+		if syncPeers {
+			if err := preserved.SyncPeers(ctx, d); err != nil {
+				return nil, fmt.Errorf("BGP neighbor update failed: %w", err)
+			}
+		}
+		preserved.UpdateDocument(d)
+		rt.routes = preserved
+	} else {
+		rt.routes = routing.New(a.ctx, d, func(severity, message string) { a.event(severity, "routing", message) })
 	}
+	rt.configureClientHostnames(s.Logging.ProbeHostnames, s.DNS.Clients, a.clientStatistics)
 	failed = false
 	go a.monitor(ctx, rt)
 	return rt, nil
@@ -890,25 +907,38 @@ func (a *App) monitor(ctx context.Context, rt *Runtime) {
 }
 
 func (rt *Runtime) close(ctx context.Context, waitTTL bool) error {
-	rt.closeOnce.Do(func() { rt.closeErr = rt.shutdown(ctx, waitTTL) })
+	dnsErr := rt.stopDNS(ctx, waitTTL)
+	rt.routingCloseOnce.Do(func() { rt.routingCloseErr = rt.routes.Close(context.Background()) })
+	return errors.Join(dnsErr, rt.routingCloseErr)
+}
+
+func (rt *Runtime) stopDNS(ctx context.Context, waitTTL bool) error {
+	rt.closeOnce.Do(func() { rt.closeErr = rt.shutdownDNS(ctx, waitTTL) })
 	return rt.closeErr
 }
-func (rt *Runtime) shutdown(ctx context.Context, waitTTL bool) error {
+
+func (rt *Runtime) shutdownDNS(ctx context.Context, waitTTL bool) error {
 	expiry := rt.machine.Stop()
 	rt.cancel()
-	if rt.clientHostnames != nil {
-		<-rt.clientHostnames.done
-	}
+	rt.stopClientHostnames()
 	if rt.server != nil {
 		rt.server.Close()
 	}
 	<-rt.done
 	rt.machine.DrainResponses()
-	if waitTTL && time.Now().Before(expiry) {
+	rt.routingMu.Lock()
+	defer rt.routingMu.Unlock()
+	var routingErr error
+	reconcile := func(keepFake bool) {
+		routeCtx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+		defer cancel()
+		routingErr = errors.Join(routingErr, rt.routes.Reconcile(routeCtx, rt.routes.Desired(false, false, keepFake)))
+	}
+	keepFake := waitTTL && time.Now().Before(expiry)
+	reconcile(keepFake)
+	if keepFake {
 		// DNS listeners are now down: withdraw their Controller/DNS bindings
 		// immediately while keeping previously issued Fake-IP paths until expiry.
-		desired := rt.routes.Desired(false, false, true)
-		_ = rt.routes.Reconcile(context.Background(), desired)
 		// A disconnected management caller does not interrupt safety cleanup.
 		timer := time.NewTimer(time.Until(expiry))
 		select {
@@ -916,9 +946,10 @@ func (rt *Runtime) shutdown(ctx context.Context, waitTTL bool) error {
 		case <-ctx.Done():
 			timer.Stop()
 		}
+		reconcile(false)
 	}
 
-	e := rt.routes.Close(context.Background())
+	e := routingErr
 	if rt.pfLease != nil {
 		if pe := rt.pfLease.Close(); e == nil {
 			e = pe
@@ -951,7 +982,8 @@ func (a *App) activateConfiguration(ctx context.Context, d config.Document) erro
 		return e
 	}
 	old := a.activeConfiguration()
-	if d.Settings.DNS.InterceptionEnabled {
+	impact := configurationChanges(old, d)
+	if impact.DNS && d.Settings.DNS.InterceptionEnabled {
 		// Check access before stopping working DNS. Opening the state device does
 		// not install PF rules; the normal build still owns the eventual lease.
 		pf, e := dnsserver.OpenPF()
@@ -978,70 +1010,30 @@ func (a *App) activateConfiguration(ctx context.Context, d config.Document) erro
 			_ = listener.Close()
 		}
 	}
-	routingChanged := old.Settings.Surge.NextHop4 != d.Settings.Surge.NextHop4 || old.Settings.Surge.NextHop6 != d.Settings.Surge.NextHop6 || !reflect.DeepEqual(old.Settings.Routing, d.Settings.Routing) || !reflect.DeepEqual(old.Settings.BGP, d.Settings.BGP) || !reflect.DeepEqual(old.Peers, d.Peers) || !reflect.DeepEqual(old.Routes, d.Routes)
-	oldRuntime, newRuntime := old, d
-	oldRuntime.Settings.DNS.AAAAFallback = ""
-	newRuntime.Settings.DNS.AAAAFallback = ""
-	oldRuntime.Settings.RemoteBackends = nil
-	newRuntime.Settings.RemoteBackends = nil
-	oldRuntime.Settings.General = config.General{}
-	newRuntime.Settings.General = config.General{}
-	oldRuntime.Settings.Security = config.Security{}
-	newRuntime.Settings.Security = config.Security{}
-	oldRuntime.Settings.Notifications = config.Notifications{}
-	newRuntime.Settings.Notifications = config.Notifications{}
-	oldRuntime.Settings.Updates = config.Updates{}
-	newRuntime.Settings.Updates = config.Updates{}
-	oldRuntime.Settings.Logging.Level = ""
-	newRuntime.Settings.Logging.Level = ""
-	oldRuntime.Settings.Logging.EventRetention = 0
-	newRuntime.Settings.Logging.EventRetention = 0
-	oldRuntime.Settings.Routing = config.Routing{}
-	newRuntime.Settings.Routing = config.Routing{}
-	oldRuntime.Settings.Surge.Restart = config.SurgeRestart{}
-	newRuntime.Settings.Surge.Restart = config.SurgeRestart{}
-	oldRuntime.Settings.Surge.NextHop4 = ""
-	oldRuntime.Settings.Surge.NextHop6 = ""
-	newRuntime.Settings.Surge.NextHop4 = ""
-	newRuntime.Settings.Surge.NextHop6 = ""
-	oldRuntime.Settings.BGP = config.BGP{}
-	newRuntime.Settings.BGP = config.BGP{}
-	oldRuntime.Peers = nil
-	newRuntime.Peers = nil
-	oldRuntime.Routes = nil
-	newRuntime.Routes = nil
-	oldRuntime.RouteFeeds = nil
-	newRuntime.RouteFeeds = nil
-	oldRuntime.Hosts = nil
-	newRuntime.Hosts = nil
-	oldRuntime.Overrides = nil
-	newRuntime.Overrides = nil
-	peerOnlyRoutingChange := !reflect.DeepEqual(old.Peers, d.Peers) &&
-		reflect.DeepEqual(old.Settings.BGP, d.Settings.BGP) &&
-		reflect.DeepEqual(old.Settings.Routing, d.Settings.Routing) &&
-		reflect.DeepEqual(old.Routes, d.Routes) &&
-		old.Settings.Surge.NextHop4 == d.Settings.Surge.NextHop4 &&
-		old.Settings.Surge.NextHop6 == d.Settings.Surge.NextHop6
-	routesOnlyRoutingChange := !reflect.DeepEqual(old.Routes, d.Routes) &&
-		reflect.DeepEqual(old.Peers, d.Peers) &&
-		reflect.DeepEqual(old.Settings.BGP, d.Settings.BGP) &&
-		reflect.DeepEqual(old.Settings.Routing, d.Settings.Routing) &&
-		old.Settings.Surge.NextHop4 == d.Settings.Surge.NextHop4 &&
-		old.Settings.Surge.NextHop6 == d.Settings.Surge.NextHop6
-	if !reflect.DeepEqual(oldRuntime, newRuntime) {
+	if impact.DNS {
 		a.mu.RLock()
 		previous := a.runtime
 		a.mu.RUnlock()
 		// Preserve valid classification decisions across DNS-only restarts. Build
 		// checks the scope, and the monitor verifies Surge's revision before reuse.
 		decisions := previous.decisionSnapshot()
-		if e := previous.close(ctx, true); e != nil {
-			return e
+		var retained *routing.Manager
+		var stopErr error
+		bgpWanted := d.Settings.Routing.UsesBGP() && d.Settings.BGP.Enabled
+		if !impact.BGP && (!bgpWanted || previous.routes.HasBGPSpeaker()) {
+			retained = previous.routes
+			stopErr = previous.stopDNS(ctx, true)
+		} else {
+			stopErr = previous.close(ctx, true)
 		}
 		responses := previous.responseSnapshot(false)
-		next, e := a.build(d, &decisions, &responses)
+		var next *Runtime
+		e := stopErr
+		if e == nil {
+			next, e = a.buildRuntime(d, &decisions, &responses, retained, impact.Peers)
+		}
 		if e != nil {
-			restored, re := a.build(old, &decisions, &responses)
+			restored, re := a.buildRuntime(old, &decisions, &responses, retained, false)
 			if re == nil {
 				a.mu.Lock()
 				a.runtime = restored
@@ -1055,18 +1047,24 @@ func (a *App) activateConfiguration(ctx context.Context, d config.Document) erro
 		a.applied = d
 		a.mu.Unlock()
 	} else {
-		if routingChanged {
+		if impact.Routes {
 			rt := a.runtime
 			rt.routingMu.Lock()
-			canSyncPeers := peerOnlyRoutingChange && (!d.Settings.BGP.Enabled || rt.routes.Status().Enabled)
-			canUpdateRoutes := routesOnlyRoutingChange && (!d.Settings.BGP.Enabled || rt.routes.Status().Enabled)
-			if canSyncPeers {
-				if e := rt.routes.SyncPeers(ctx, d); e != nil {
-					rt.routingMu.Unlock()
-					return fmt.Errorf("BGP neighbor update failed: %w", e)
+			bgpWanted := d.Settings.Routing.UsesBGP() && d.Settings.BGP.Enabled
+			canReuse := !impact.BGP && (!bgpWanted || rt.routes.HasBGPSpeaker())
+			if canReuse {
+				if impact.Gate {
+					if e := rt.suspendRouting(ctx, old.Settings.Routing.Effective().FakeIPBackend == "bgp"); e != nil {
+						rt.routingMu.Unlock()
+						return e
+					}
 				}
-				rt.routingMu.Unlock()
-			} else if canUpdateRoutes {
+				if impact.Peers {
+					if e := rt.routes.SyncPeers(ctx, d); e != nil {
+						rt.routingMu.Unlock()
+						return fmt.Errorf("BGP neighbor update failed: %w", e)
+					}
+				}
 				rt.routes.UpdateDocument(d)
 				rt.routingMu.Unlock()
 				select {
@@ -1074,17 +1072,9 @@ func (a *App) activateConfiguration(ctx context.Context, d config.Document) erro
 				default:
 				}
 			} else {
-				expiry := rt.machine.SuspendRouting()
-				rt.machine.DrainResponses()
-				if old.Settings.Routing.Effective().FakeIPBackend == "bgp" && time.Now().Before(expiry) {
-					timer := time.NewTimer(time.Until(expiry))
-					select {
-					case <-timer.C:
-					case <-ctx.Done():
-						timer.Stop()
-						rt.routingMu.Unlock()
-						return ctx.Err()
-					}
+				if e := rt.suspendRouting(ctx, old.Settings.Routing.Effective().FakeIPBackend == "bgp"); e != nil {
+					rt.routingMu.Unlock()
+					return e
 				}
 				if e := rt.routes.Close(context.Background()); e != nil {
 					rt.routingMu.Unlock()
@@ -1097,6 +1087,14 @@ func (a *App) activateConfiguration(ctx context.Context, d config.Document) erro
 				rt.routingMu.Unlock()
 			}
 		}
+		clientsChanged := !reflect.DeepEqual(old.Settings.DNS.Clients, d.Settings.DNS.Clients)
+		if clientsChanged {
+			a.runtime.dispatcher.SetClientPolicies(clientPolicies(d.Settings.DNS.Clients))
+		}
+		if old.Settings.Logging.ProbeHostnames != d.Settings.Logging.ProbeHostnames || clientsChanged && d.Settings.Logging.ProbeHostnames {
+			a.runtime.configureClientHostnames(d.Settings.Logging.ProbeHostnames, d.Settings.DNS.Clients, a.clientStatistics)
+		}
+		a.runtime.dispatcher.History.Configure(d.Settings.Logging.HistoryCapacity, d.Settings.Logging.QueryHistory && d.Settings.Logging.LogDomains)
 		a.mu.Lock()
 		a.applied = d
 		a.runtime.dispatcher.SetAAAAFallback(d.Settings.DNS.AAAAFallback)
@@ -1150,6 +1148,7 @@ func (a *App) View(ctx context.Context, key string) (any, error) {
 	rt := a.runtime
 	application := a.application
 	mode := a.config.Settings.General.Mode
+	hostnameDeviceOnly := a.applied.Settings.Logging.HostnameDeviceOnly
 	var manager *routing.Manager
 	if rt != nil {
 		manager = rt.routes
@@ -1161,8 +1160,8 @@ func (a *App) View(ctx context.Context, key string) (any, error) {
 	clientStatistics := dnsserver.ClientStatsSnapshot{Clients: []dnsserver.ClientStats{}}
 	if (key == "status" || key == "dns/clients") && rt.dispatcher != nil && rt.dispatcher.ClientStatistics != nil {
 		clientStatistics = rt.dispatcher.ClientStatistics.Snapshot()
-		if rt.clientHostnames != nil {
-			rt.clientHostnames.decorate(&clientStatistics)
+		if names := rt.clientHostnames.Load(); names != nil {
+			names.decorate(&clientStatistics, hostnameDeviceOnly)
 		}
 	}
 	if e := a.clientPersistError.Load(); e != nil {

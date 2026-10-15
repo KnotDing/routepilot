@@ -3,8 +3,25 @@ package dnsserver
 import (
 	"context"
 	"github.com/miekg/dns"
+	"net/netip"
 	"surge-controller/internal/model"
 )
+
+func (d *Dispatcher) SetClientPolicies(policies map[netip.Addr]model.Decision) {
+	copy := make(map[netip.Addr]model.Decision, len(policies))
+	for ip, decision := range policies {
+		copy[ip.Unmap()] = decision
+	}
+	d.clientPolicies.Store(&copy)
+}
+
+func (d *Dispatcher) clientPolicy(ip netip.Addr) model.Decision {
+	policies := d.ClientPolicies
+	if current := d.clientPolicies.Load(); current != nil {
+		policies = *current
+	}
+	return policies[ip.Unmap()]
+}
 
 func (d *Dispatcher) resolveClientPolicy(ctx context.Context, q model.DNSQueryContext, m *dns.Msg, result *model.DecisionResult, decision model.Decision, gate SafetySnapshot) *dns.Msg {
 	result.Decision, result.Confidence, result.Source = decision, model.Certain, "client-policy"

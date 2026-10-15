@@ -10,15 +10,19 @@ import (
 	"testing"
 )
 
-func TestClientPoliciesPersistAndRebuildWithTheSelectedBackend(t *testing.T) {
+func TestClientPoliciesPersistAndHotApplyWithTheSelectedBackend(t *testing.T) {
 	a := fixtureApp(t)
 	path := filepath.Join(a.dir, "c.sqlite")
+	initial := a.runtime
 	d := a.Configuration()
 	d.Settings.DNS.Clients = []config.Client{{ID: "client", IP: "2001:db8::10", Name: "Server", Decision: model.Reject}}
 	if err := a.SaveConfiguration(context.Background(), d); err != nil {
 		t.Fatal(err)
 	}
 	waitConfiguration(t, a, "succeeded")
+	if a.runtime != initial {
+		t.Fatal("client policy change restarted DNS")
+	}
 	q := new(dns.Msg)
 	q.SetQuestion("example.test.", dns.TypeA)
 	if reply := a.runtime.dispatcher.Dispatch(context.Background(), model.DNSQueryContext{ClientIP: netip.MustParseAddr("2001:db8::10")}, q); reply.Rcode != dns.RcodeRefused {

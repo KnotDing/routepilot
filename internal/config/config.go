@@ -108,12 +108,13 @@ type Health struct {
 	ProbeDomain      string `json:"probe_domain"`
 }
 type Logging struct {
-	Level           string `json:"level"`
-	QueryHistory    bool   `json:"query_history"`
-	HistoryCapacity int    `json:"history_capacity"`
-	LogDomains      bool   `json:"log_domains"`
-	EventRetention  int    `json:"event_retention"`
-	ProbeHostnames  bool   `json:"probe_hostnames"`
+	Level              string `json:"level"`
+	QueryHistory       bool   `json:"query_history"`
+	HistoryCapacity    int    `json:"history_capacity"`
+	LogDomains         bool   `json:"log_domains"`
+	EventRetention     int    `json:"event_retention"`
+	ProbeHostnames     bool   `json:"probe_hostnames"`
+	HostnameDeviceOnly bool   `json:"hostname_device_only"`
 }
 type Notifications struct {
 	Anomalies         NotificationAnomalies `json:"anomalies"`

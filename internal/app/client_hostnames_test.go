@@ -32,7 +32,7 @@ func TestClientHostnameProbeCachesSkipsRemarksAndEvicts(t *testing.T) {
 		t.Fatalf("unexpected queries: %v", calls)
 	}
 	snapshot := dnsserver.ClientStatsSnapshot{Clients: []dnsserver.ClientStats{{ClientIP: "192.0.2.2"}, {ClientIP: "192.0.2.3"}}}
-	h.decorate(&snapshot)
+	h.decorate(&snapshot, false)
 	if snapshot.Clients[0].Hostname != "desktop.lan" || snapshot.Clients[1].Hostname != "" || snapshot.Clients[1].HostnameError != "lookup failed" {
 		t.Fatalf("bad display hints: %+v", snapshot)
 	}
@@ -92,7 +92,7 @@ func TestClientHostnameProbeFairBoundAndCancellation(t *testing.T) {
 	}
 	// Reading display hints stays nonblocking while the lookup is in progress.
 	snapshot := clients.Snapshot()
-	h.decorate(&snapshot)
+	h.decorate(&snapshot, false)
 	cancel()
 	select {
 	case <-h.done:
@@ -106,7 +106,7 @@ func TestClientHostnameProbeFairBoundAndCancellation(t *testing.T) {
 
 func TestClientHostnameOptionRuntimeLifecycle(t *testing.T) {
 	a := fixtureApp(t)
-	if a.runtime.clientHostnames != nil {
+	if a.runtime.clientHostnames.Load() != nil {
 		t.Fatal("probing enabled by default")
 	}
 	doc := a.Configuration()
@@ -114,7 +114,7 @@ func TestClientHostnameOptionRuntimeLifecycle(t *testing.T) {
 	if err := a.activateConfiguration(context.Background(), doc); err != nil {
 		t.Fatal(err)
 	}
-	detector := a.runtime.clientHostnames
+	detector := a.runtime.clientHostnames.Load()
 	if detector == nil {
 		t.Fatal("option did not start detector")
 	}
@@ -127,7 +127,7 @@ func TestClientHostnameOptionRuntimeLifecycle(t *testing.T) {
 	default:
 		t.Fatal("disabled detector still running")
 	}
-	if a.runtime.clientHostnames != nil {
+	if a.runtime.clientHostnames.Load() != nil {
 		t.Fatal("disable retained detector")
 	}
 }
@@ -136,23 +136,41 @@ func TestClientHostnameViewsDoNotChangeStatistics(t *testing.T) {
 	a := fixtureApp(t)
 	detector := newClientHostnames(nil, nil)
 	close(detector.done)
-	a.runtime.clientHostnames = detector
+	a.runtime.clientHostnames.Store(detector)
 	// Install a deterministic result without any external DNS traffic.
 	detector.mu.Lock()
 	detector.entries["192.0.2.9"] = clientHostname{name: "desktop.lan", retryAt: time.Now().Add(time.Hour)}
 	detector.mu.Unlock()
 	a.clientStatistics.Record(netip.MustParseAddr("192.0.2.9"), model.Direct, false, time.Now())
-	for _, key := range []string{"status", "dns/clients"} {
-		view, err := a.View(context.Background(), key)
-		if err != nil {
+	rt := a.runtime
+	for _, deviceOnly := range []bool{false, true, false} {
+		doc := a.Configuration()
+		doc.Settings.Logging.HostnameDeviceOnly = deviceOnly
+		if err := a.activateConfiguration(context.Background(), doc); err != nil {
 			t.Fatal(err)
 		}
-		if key == "status" {
-			view = view.(map[string]any)["client_statistics"]
+		if a.runtime != rt || rt.clientHostnames.Load() != detector {
+			t.Fatal("display option replaced runtime or detector")
 		}
-		if view.(dnsserver.ClientStatsSnapshot).Clients[0].Hostname != "desktop.lan" {
-			t.Fatal("hostname missing from", key)
+		want := "desktop.lan"
+		if deviceOnly {
+			want = "desktop"
 		}
+		for _, key := range []string{"status", "dns/clients"} {
+			view, err := a.View(context.Background(), key)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if key == "status" {
+				view = view.(map[string]any)["client_statistics"]
+			}
+			if got := view.(dnsserver.ClientStatsSnapshot).Clients[0].Hostname; got != want {
+				t.Fatalf("%s hostname = %q, want %q", key, got, want)
+			}
+		}
+	}
+	if detector.entries["192.0.2.9"].name != "desktop.lan" {
+		t.Fatal("display option changed cached full name")
 	}
 	if a.clientStatistics.Snapshot().Clients[0].Hostname != "" {
 		t.Fatal("display hint changed persisted client statistics")

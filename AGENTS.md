@@ -184,7 +184,7 @@
 | 任务 | 首读文件 / 关键点 | 关联文件 |
 | --- | --- | --- |
 | 配置字段、默认值、校验 | `internal/config/config.go`（`Document` / `Settings`）；路由、安全、通知、Surge 重启和更新源校验在同目录专题文件 | `internal/database/store.go`；`web/src/form-fields.jsx`；`web/src/main.jsx` 的 `Settings` |
-| 保存慢、配置应用失败、监听变更 | `internal/app/configuration.go`（`SaveConfiguration` / `runConfigurationWorker`）；`app.go` 的 `activateConfiguration` / `Serve` | `internal/api/configuration_apply.go`；`web/src/configuration.js`、`configuration-status.jsx`；`docs/submission-responsiveness.md` |
+| 保存慢、配置应用失败、监听变更 | `internal/app/configuration.go`（`SaveConfiguration` / `runConfigurationWorker`）；`configuration_impact.go`（DNS / BGP / 邻居 / 路由依赖与安全等待）；`app.go` 的 `activateConfiguration` / `Serve` | `internal/api/configuration_apply.go`；`web/src/configuration.js`、`configuration-status.jsx`；`docs/submission-responsiveness.md`、`docs/configuration-application.md` |
 | 耗时操作与进度 | `internal/api/operations.go`（`startOperation`）；检查 `Prefer: respond-async` | `web/src/client.js`、`operation-status.jsx`；`internal/controlclient/client.go` 的 `Request` |
 | DNS 分流、AAAA 回落、Fake-IP 门禁 | `internal/dnsserver/dispatcher.go`（`Dispatch` / `resolveSurge`）；`internal/model/model.go` 定义查询上下文与结果 | `internal/localdns/local.go`；`internal/app/app.go` 的 `policy.Classify`；`internal/state/machine.go` |
 | Surge 策略求值、always-real-ip、Host/IPv6 同步 | `internal/surge/adapter.go`；`api.go` / `cli.go`；`real_ip.go` / `hosts.go` / `ipv6.go` | `internal/classifier/classifier.go`（`Classify` / `evaluate`）；`internal/app/decision_revision.go` |
@@ -235,3 +235,13 @@
 - 已发布：tag `v1.0.4-beta.25`，发布提交 `352a8f82c43038957325910ff68acc2e468650a6`；GitHub 回归 `38690630180`、Release `38690630151`、Gitea `2103` 成功，Gitea 获取路径成功 / 回退跳过。GitHub: https://github.com/KnotDing/routepilot/releases/tag/v1.0.4-beta.25；Gitea: https://gitea.knotding.com/knot/routepilot/releases/tag/v1.0.4-beta.25。两个页面均为非草稿测试版，各有相同 DMG / ZIP / SHA256SUMS 三附件。
 - 保留的无关改动：无。构建产物 / 原始日志保持在忽略目录 `artifacts/`，不提交；未安装升级或重启现用环境。
 - 下一步与依赖：无未完成的功能或发布事项；后续新任务可随时交接，先核对当前 main 与工作区再实施。GitHub SSH 22 / 443 本次间歇关闭，推送使用按命令的 GitHub URL → HTTPS 改写及已有 gh 凭证助手，保留 origin 的 Gitea / GitHub 两个 pushurl，不修改持久远端配置或输出凭证。继续推送仍须双仓库同步。发布证据目录 `artifacts/releases/v1.0.4-beta.25/`，旧产物备份 `artifacts/pre-beta25-backup-20261015/`；这些本地证据若不在交接机器上，以以上远端 workflow / Release 为核验入口。
+
+## 任务交接（2026-10-15，配置按模块应用）
+
+- 目标与验收条件：DNS 设置变更保留未改变的 BGP 会话；BGP 全局设置不重建 DNS；隐私与客户端设置热更新；排查其余设置项并记录必要的跨模块依赖；新增可选的探测主机名域部分截断并一并发布测试版。
+- 当前状态：进行中。用户已授权发布 `v1.0.4-beta.26`（源码 build 108）；包含主机名截断选项的最终 `make verify-release` 已全部通过，准备提交并双仓库推送。
+- 已完成与修改文件：`internal/app/configuration_impact.go` 统一计算 DNS / BGP / 邻居 / 路由依赖，`app.go` 分离生命周期、保持安全排空与失败恢复；`client_hostnames.go` 单独启停 PTR，并依据 `settings.logging.hostname_device_only` 在视图中截断名称，保留完整缓存；`internal/dnsserver/dispatcher.go` 与 `client_policy.go` 原地调整记录和客户端策略；`internal/routing/manager.go` 保护共享配置读取。截断开关在 `internal/config/config.go`、`web/src/main.jsx` 和 `localization/ui-en.json`，默认关闭、随日志分区备份，仅影响探测名称。相关 app / dnsserver / config / 前端测试覆盖热更新、名称恢复、真实隔离 BGP 会话与恢复。分项设置表及边界见 `docs/configuration-application.md`，README、架构、客户端、保存响应和验收说明同步。
+- 验证：`env GOCACHE=/Volumes/Code/RoutePilot/.cache/go-build make verify-release` 最终通过，前端 35 文件 / 189 测试、Go 全包 race / vet、原生核心与真实 WKWebView、17 页面 / 14 分类响应式检查、9 项缓存 UI 和完整 App / DMG / ZIP 包校验（本地 App 与后台 `1.0.4-beta.26 / build 108`）。日志及本地包报告见 `artifacts/releases/v1.0.4-beta.26/`。隔离双 GoBGP 邻居确认 DNS / 缓存修改不改变会话建立时间，独立路由保留；隐私 / 客户端不替换运行实例；监听失败恢复与重试保持 BGP；截断开关不重启探测任务且可从完整缓存恢复名称。未覆盖现用安装升级、真实网关 / PF / LAN / IPv6 及长期运行。
+- 已发布：目标 `v1.0.4-beta.26` 尚未发布；最新完整核验发布仍为上节 `v1.0.4-beta.25`，不把本轮源码行为视作已安装版本行为。版本及说明已准备，正式 skill 安装版本保持 `v1.0.3`。
+- 保留的无关改动：无；本轮开始时工作区干净。保留此前发布包、证据与缓存，未执行会清理它们的 make 入口。
+- 下一步与依赖：提交本次明确文件并双仓库推送 main / 注释标签，等待 GitHub 回归与两个 Release workflow 成功，下载核验六附件和 App / 后台版本，最后补齐本文件并同步双仓库。证据目录 `artifacts/releases/v1.0.4-beta.26/`，旧包及 bin 已备份至 `artifacts/pre-beta26-backup-20261015/`。GoBGP 的路由选择选项为进程级全局变量，隔离测试在重建本地全局 BGP 参数前先关闭远端模拟 speaker，避免同一测试进程的上游竞争；生产后台仍只有一个 speaker。不要为继续此任务重启现用环境。

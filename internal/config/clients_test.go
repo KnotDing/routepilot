@@ -41,10 +41,11 @@ func TestClientHostnameProbeIsOptIn(t *testing.T) {
 	if err := json.Unmarshal([]byte(`{"settings":{"logging":{"level":"info"}}}`), &d); err != nil {
 		t.Fatal(err)
 	}
-	if d.Settings.Logging.ProbeHostnames {
+	if d.Settings.Logging.ProbeHostnames || d.Settings.Logging.HostnameDeviceOnly {
 		t.Fatal("hostname probing must default off")
 	}
 	d.Settings.Logging.ProbeHostnames = true
+	d.Settings.Logging.HostnameDeviceOnly = true
 	encoded, err := json.Marshal(d)
 	if err != nil {
 		t.Fatal(err)
@@ -53,10 +54,10 @@ func TestClientHostnameProbeIsOptIn(t *testing.T) {
 	if err := json.Unmarshal(encoded, &restored); err != nil {
 		t.Fatal(err)
 	}
-	if !restored.Settings.Logging.ProbeHostnames {
+	if !restored.Settings.Logging.ProbeHostnames || !restored.Settings.Logging.HostnameDeviceOnly {
 		t.Fatal("round trip lost hostname setting")
 	}
-	if !d.Clone().Settings.Logging.ProbeHostnames {
+	if !d.Clone().Settings.Logging.ProbeHostnames || !d.Clone().Settings.Logging.HostnameDeviceOnly {
 		t.Fatal("clone lost hostname setting")
 	}
 	if err := d.Validate(); err != nil {

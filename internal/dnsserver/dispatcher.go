@@ -221,26 +221,62 @@ type History struct {
 	mu          sync.Mutex
 	records     []QueryRecord
 	next, count int
-	Enabled     bool
+	enabled     atomic.Bool
+	generation  atomic.Uint64
 }
 
 func NewHistory(size int, enabled bool) *History {
 	if size < 1 {
 		panic("history capacity must be positive")
 	}
-	return &History{records: make([]QueryRecord, size), Enabled: enabled}
+	h := &History{records: make([]QueryRecord, size)}
+	h.enabled.Store(enabled)
+	return h
 }
-func (h *History) add(r QueryRecord) {
-	if !h.Enabled {
-		return
-	}
+func (h *History) add(r QueryRecord, generation uint64) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
+	if !h.enabled.Load() || generation != h.generation.Load() {
+		return
+	}
 	h.records[h.next] = r
 	h.next = (h.next + 1) % len(h.records)
 	if h.count < len(h.records) {
 		h.count++
 	}
+}
+
+// Configure retains the newest entries on resize and clears them on disable.
+// A record being formatted under an earlier setting cannot write back later.
+func (h *History) Configure(size int, enabled bool) {
+	if size < 1 {
+		panic("history capacity must be positive")
+	}
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	if size == len(h.records) && enabled == h.enabled.Load() {
+		return
+	}
+	h.enabled.Store(false)
+	h.generation.Add(1)
+	if !enabled {
+		if size == len(h.records) {
+			clear(h.records)
+		} else {
+			h.records = make([]QueryRecord, size)
+		}
+		h.next, h.count = 0, 0
+		return
+	}
+	if size != len(h.records) {
+		records := make([]QueryRecord, size)
+		count := min(h.count, size)
+		for i := 0; i < count; i++ {
+			records[i] = h.records[(h.next-count+i+len(h.records))%len(h.records)]
+		}
+		h.records, h.count, h.next = records, count, count%size
+	}
+	h.enabled.Store(true)
 }
 func (h *History) Records() []QueryRecord {
 	h.mu.Lock()
@@ -270,6 +306,7 @@ type Dispatcher struct {
 	FakePrefixes     []netip.Prefix
 	ForbiddenClients []netip.Addr
 	ClientPolicies   map[netip.Addr]model.Decision
+	clientPolicies   atomic.Pointer[map[netip.Addr]model.Decision]
 	Counters         Counters
 	SharedCounters   *Counters
 	History          *History
@@ -343,11 +380,15 @@ func (d *Dispatcher) Dispatch(ctx context.Context, q model.DNSQueryContext, m *d
 		if d.ClientStatistics != nil {
 			d.ClientStatistics.Record(q.ClientIP, result.Decision, reply.Rcode == dns.RcodeServerFailure, q.ReceivedAt)
 		}
-		if d.History != nil && d.History.Enabled {
+		if d.History != nil {
+			generation := d.History.generation.Load()
+			if !d.History.enabled.Load() {
+				return
+			}
 			response := summarizeResponse(reply)
 			// Keep the two public slices independent while formatting each RR once.
 			answers := append([]string{}, response.Answers...)
-			d.History.add(QueryRecord{Context: q, Result: result, Latency: time.Since(started), Answers: answers, Rcode: reply.Rcode, ClassificationMS: float64(classificationDuration) / float64(time.Millisecond), ResolverMS: float64(trace.Duration) / float64(time.Millisecond), Resolver: trace.Endpoint, ResponseCacheHit: trace.CacheHit, Response: response, ResolutionError: trace.Error})
+			d.History.add(QueryRecord{Context: q, Result: result, Latency: time.Since(started), Answers: answers, Rcode: reply.Rcode, ClassificationMS: float64(classificationDuration) / float64(time.Millisecond), ResolverMS: float64(trace.Duration) / float64(time.Millisecond), Resolver: trace.Endpoint, ResponseCacheHit: trace.CacheHit, Response: response, ResolutionError: trace.Error}, generation)
 		}
 	}()
 	if m.Response || m.Opcode != dns.OpcodeQuery || len(m.Question) != 1 || m.Question[0].Qclass != dns.ClassINET {
@@ -381,7 +422,7 @@ func (d *Dispatcher) Dispatch(ctx context.Context, q model.DNSQueryContext, m *d
 		counters.Reject.Add(1)
 		return failure(m, dns.RcodeRefused)
 	}
-	if decision, ok := d.ClientPolicies[q.ClientIP.Unmap()]; ok {
+	if decision := d.clientPolicy(q.ClientIP); decision != "" {
 		return d.resolveClientPolicy(ctx, q, m, &result, decision, gate)
 	}
 	aaaaFallback := d.AAAAFallback

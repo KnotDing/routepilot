@@ -15,7 +15,7 @@ RoutePilot 是一款 macOS 状态栏应用：向 Surge 查询分流策略，为 
 - **缩短直连路径：** DIRECT 查询返回真实地址，客户端后续流量由网关直接送往 WAN，不必绕经 Surge；Fake-IP 和下一跳配置为 Surge 的受管理前缀仍按路由经过 Surge。
 - **Surge 故障时保留新连接的直连路径：** RoutePilot 停止发放新的 Fake-IP，后续查询改用独立真实 DNS 解析，让网关可将新连接直连出网（真实 DNS 与 WAN 可用时）。已发放 Fake-IP 在 TTL / 宽限期内仍可能依赖 Surge。
 
-[📦 下载最新版本](https://github.com/KnotDing/routepilot/releases) · [🧪 主机名探测与后端菜单测试版 v1.0.4-beta.25](https://github.com/KnotDing/routepilot/releases/tag/v1.0.4-beta.25) · [Gitea 备用下载](https://gitea.knotding.com/knot/routepilot/releases) · [🚀 快速开始](#quick-start) · [🤖 安装 skill](#agent-skill) · [📚 文档导航](#documentation)
+[📦 下载最新版本](https://github.com/KnotDing/routepilot/releases) · [🧪 配置按模块应用测试版 v1.0.4-beta.26](https://github.com/KnotDing/routepilot/releases/tag/v1.0.4-beta.26) · [Gitea 备用下载](https://gitea.knotding.com/knot/routepilot/releases) · [🚀 快速开始](#quick-start) · [🤖 安装 skill](#agent-skill) · [📚 文档导航](#documentation)
 
 <p align="center">
   <img src="docs/images/management-4k.png" width="100%" alt="RoutePilot App 管理界面 4K 截图">
@@ -145,7 +145,7 @@ DNS 查询不会生成单 IP BGP 路由。Surge 不可用时停止新 Fake-IP、
 
 开启 `optimistic_idle_refresh` 时，待刷新决策会在至少 1 秒没有 DNS 请求、且求值队列空闲时自动刷新，每次一条、每秒最多启动 4 条；新请求到来时取消空闲刷新，实时查询优先。刷新沿用原客户端 IP 与查询类型，并轮流处理条目，避免失败域名阻塞其他决策。乐观响应缓存的空闲刷新也会等待 1 秒无 DNS 请求，每次仅刷新一条，且被新请求取消。
 
-配置校验并保存成功后，页面立即反馈；服务重启、路由调整和安全等待在后台执行。页面另行显示应用进度与失败原因，支持重新应用。**“已保存”与“已生效”分别展示，避免把等待误认为保存失败。**
+配置校验并保存成功后，页面立即反馈；按受影响模块应用配置、路由调整和安全等待在后台执行。日志与隐私、客户端设置可热更新；DNS 配置变更保留未变更的 BGP 会话，BGP 配置更新不重建 DNS。具体分项与必要联动见[配置按模块应用](docs/configuration-application.md)。页面另行显示应用进度与失败原因，支持重新应用。**“已保存”与“已生效”分别展示，避免把等待误认为保存失败。**
 
 📊 **乐观缓存可靠性**：决策缓存页与 DNS 查询页分别显示旧缓存命中请求数、已核对请求数、不一致请求数和不一致率。一次后台刷新会核对刷新前使用同一个旧结果的全部命中请求；刷新失败或尚未核对的请求不作为“一致”样本。响应比较忽略 TTL、请求 ID、记录顺序、域名大小写和 EDNS 传输信息，保留返回码与记录内容的实际变化。总计与分项可靠性计数跨服务重启和缓存实例重建保留，直到手动清理缓存；普通命中等实例计数仍随缓存实例重新开始。
 

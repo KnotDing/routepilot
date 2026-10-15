@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"net"
 	"net/netip"
 	"strings"
 	"surge-controller/internal/config"
@@ -32,6 +33,7 @@ type clientHostnames struct {
 	named   map[string]bool
 	lookup  func(context.Context, string) ([]string, error)
 	done    chan struct{}
+	cancel  context.CancelFunc
 	cursor  int
 }
 
@@ -131,15 +133,41 @@ func (h *clientHostnames) probe(ctx context.Context, clients []dnsserver.ClientS
 	}
 }
 
-func (h *clientHostnames) decorate(snapshot *dnsserver.ClientStatsSnapshot) {
+func (h *clientHostnames) decorate(snapshot *dnsserver.ClientStatsSnapshot, deviceOnly bool) {
 	h.mu.RLock()
 	defer h.mu.RUnlock()
 	now := time.Now()
 	for i := range snapshot.Clients {
 		entry := h.entries[snapshot.Clients[i].ClientIP]
 		if now.Before(entry.retryAt) {
-			snapshot.Clients[i].Hostname = entry.name
+			name := entry.name
+			if deviceOnly {
+				name, _, _ = strings.Cut(name, ".")
+			}
+			snapshot.Clients[i].Hostname = name
 			snapshot.Clients[i].HostnameError = entry.error
 		}
 	}
+}
+
+// Serialized by the app configuration transition; readers use an atomic pointer.
+func (rt *Runtime) stopClientHostnames() {
+	if previous := rt.clientHostnames.Swap(nil); previous != nil {
+		if previous.cancel != nil {
+			previous.cancel()
+		}
+		<-previous.done
+	}
+}
+
+func (rt *Runtime) configureClientHostnames(enabled bool, clients []config.Client, statistics *dnsserver.ClientStatistics) {
+	rt.stopClientHostnames()
+	if !enabled {
+		return
+	}
+	ctx, cancel := context.WithCancel(rt.ctx)
+	names := newClientHostnames(clients, net.DefaultResolver.LookupAddr)
+	names.cancel = cancel
+	rt.clientHostnames.Store(names)
+	go names.run(ctx, statistics)
 }

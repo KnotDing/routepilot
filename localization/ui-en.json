@@ -1,6 +1,8 @@
 {
   "后端切换失败": "Backend switch failed",
   "探测主机名": "Probe hostnames",
+  "截断探测主机名的域部分": "Trim domain suffix from detected hostnames",
+  "开启截断后，device.example.local 仅显示 device；只影响探测名称，不改变手工备注、客户端 IP 或查询策略。": "When trimming is enabled, device.example.local is displayed as device. This only affects detected names; manual remarks, client IPs and query policies remain unchanged.",
   "备注 / 主机名": "Remark / hostname",
   "反向查询": "Reverse lookup",
   "无可用 PTR 记录": "No usable PTR record",

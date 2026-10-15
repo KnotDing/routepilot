@@ -64,11 +64,17 @@ func TestFailedDNSActivationReportsStatusRestoresDNSAndReleasesPartialListener(t
 	d.Settings.DNS.EgressInterface = "lo0"
 	d.Settings.DNS.Source4 = "127.0.0.1"
 	d.Settings.Health.GraceSeconds = 0
+	d.Settings.BGP.Enabled = true
+	d.Settings.BGP.RouterID = "127.0.0.1"
+	d.Settings.BGP.ListenPort = 0
+	d.Settings.Surge.NextHop4 = "127.0.0.1"
+	d.Routes = []config.Route{{ID: "independent", Prefix: "10.20.0.0/16", NextHop: "127.0.0.1", Enabled: true, Binding: "none"}}
 	d.Hosts = []config.Host{{ID: "recovery", Domain: "recovery.test", Match: "exact", Addresses: []string{"203.0.113.7"}, TTL: 60, Enabled: true, Source: "manual"}}
 	if e = a.Apply(context.Background(), d); e != nil {
 		t.Fatal(e)
 	}
 	old := a.Configuration()
+	manager := a.runtime.routes
 	occupied, e := net.Listen("tcp", "127.0.0.1:0")
 	if e != nil {
 		t.Fatal(e)
@@ -90,6 +96,9 @@ func TestFailedDNSActivationReportsStatusRestoresDNSAndReleasesPartialListener(t
 		t.Fatal("configuration save failed", response.Code, response.Body.String())
 	}
 	status := waitConfiguration(t, a, "failed")
+	if a.runtime.routes != manager {
+		t.Fatal("DNS failure recovery replaced BGP")
+	}
 	if !strings.Contains(status.Error, "已恢复原配置") {
 		t.Fatal("activation failure did not explain recovery", status.Error)
 	}
@@ -114,6 +123,9 @@ func TestFailedDNSActivationReportsStatusRestoresDNSAndReleasesPartialListener(t
 		t.Fatal("partial listener leaked or failed update could not be retried", e)
 	}
 	check(d.Settings.DNS.Listeners[0])
+	if a.runtime.routes != manager {
+		t.Fatal("DNS retry replaced BGP")
+	}
 }
 
 func TestUnprivilegedTransparentApplyKeepsRunningRuntime(t *testing.T) {

@@ -66,15 +66,19 @@ it('marks resource requirements and hides irrelevant transport fields',()=>{
 
 it('edits hostname probing in logging and privacy for the selected backend',async()=>{
  const fetch=vi.fn().mockResolvedValue({ok:true,json:async()=>({})});vi.stubGlobal('fetch',fetch);
- render(<Settings settings={{general:{},logging:{level:'info',probe_hostnames:false}}} notify={()=>{}} refresh={()=>{}}/>);
+ render(<Settings settings={{general:{},logging:{level:'info',probe_hostnames:false,hostname_device_only:false}}} notify={()=>{}} refresh={()=>{}}/>);
  fireEvent.click(screen.getByRole('button',{name:'日志与隐私',exact:true}));
  const toggle=screen.getByRole('checkbox',{name:'探测主机名'});
  expect(toggle).not.toBeChecked();
  fireEvent.click(toggle);
  expect(toggle).toBeChecked();
+ const deviceOnly=screen.getByRole('checkbox',{name:'截断探测主机名的域部分'});
+ expect(deviceOnly).not.toBeChecked();
+ fireEvent.click(deviceOnly);
  expect(screen.getByText(/当前后端使用其系统 DNS/)).toBeInTheDocument();
  fireEvent.click(screen.getByRole('button',{name:'保存设置',exact:true}));
  await waitFor(()=>expect(fetch).toHaveBeenCalled());
  expect(fetch.mock.calls[0][0]).toBe('/api/v1/settings');
  expect(JSON.parse(fetch.mock.calls[0][1].body).logging.probe_hostnames).toBe(true);
+ expect(JSON.parse(fetch.mock.calls[0][1].body).logging.hostname_device_only).toBe(true);
 });

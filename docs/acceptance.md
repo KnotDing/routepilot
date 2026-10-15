@@ -780,3 +780,12 @@ acceptance was performed. Configuration runtime application is unchanged.
 - 未授权安装、升级或重启现用 App / 后台；未做真实局域网 PTR、LAN / Surge / NAT / IPv6 流量及长期资源占用验收。后端菜单检查与窗口 / 会话逻辑验证不代替现用 App 的完整远程登录现场验收。
 
 - 发布后核验完成：`v1.0.4-beta.25` 标签指向 `352a8f82c43038957325910ff68acc2e468650a6`，双仓库 main / 注释标签对象在推送后已核对一致。GitHub 回归 `38690630180`（含 fuzz）和 Release `38690630151` 成功，Gitea `2103` 整体成功复用 GitHub 制品 / 回退跳过。两个 Release 均为非草稿测试版，只有 DMG、ZIP、SHA256SUMS 三附件，六附件下载非空、哈希完全一致；实际 App 与捆绑后台均为 `1.0.4-beta.25 / build 33`，ZIP、代码签名与 DMG 完整性通过。证据为 `artifacts/releases/v1.0.4-beta.25/publication-verification.json`。AGENTS.md 的最近已核验发布与本轮交接已同步最终事实，后续仅文档提交不移动标签。
+
+## 2026-10-15：配置按模块应用与主机名域部分截断（beta.26 发布验证）
+
+- 完成所有设置项依赖梳理，应用范围表见 [配置按模块应用](configuration-application.md)。DNS / 缓存 / 健康运行实例与 BGP speaker 分别管理生命周期；日志与隐私、客户端备注与强制策略原地更新。BGP 邻居与手动路由沿用现有实例差量应用。DNS 源地址同时作为启用邻居绑定时仍需联动 BGP，Fake-IP 门禁、响应排空、TTL 和路由健康绑定不绕过。
+- 隔离真实 GoBGP 双邻居验证：隐私与客户端修改不替换 DNS 或 BGP；DNS 超时、缓存容量以及同时修改 DNS 和手动路由时，BGP 会话建立时间保持不变，未绑定健康的手动前缀保留；BGP 全局 ASN 修改保留 DNS 实例。DNS 监听启用失败后恢复与重试均保留原 BGP 管理实例。另覆盖记录扩缩容、关闭清理及拒绝旧代写回、并发记录调整和 Fake-IP 响应排空 / TTL 等待。
+- `npm --prefix web run build` 通过；`env GOCACHE=/Volumes/Code/RoutePilot/.cache/go-build go test -race ./... -count=1 -timeout 180s` 全包通过（含 integration）；同一 GOCACHE 下 `go vet ./...`、`go build ./...` 通过。原始前端构建、针对性 race 与完整 race 日志在 `artifacts/configuration-application-2026-10-15/`。测试使用临时数据库、随机本地端口和隔离邻居，未操作现用后台。
+- 新增日志与隐私选项 `hostname_device_only`，默认关闭，开启后客户端列表与大屏只显示探测名称第一个点之前的设备名。完整缓存保留，关闭后恢复完整显示；不改变手工备注、客户端身份或策略，不重启 DNS / BGP / PTR 任务。针对性 app / config race 与前端 3 文件 / 17 测试通过，覆盖开关保存、中英文文案、视图热更新与恢复以及 BGP 会话保持。
+- `env GOCACHE=/Volumes/Code/RoutePilot/.cache/go-build make verify-release` 最终全部通过，包含新增截断选项：前端 35 文件 / 189 测试、Go 全包 race / vet、原生核心与真实 WKWebView、17 页面 / 14 设置分类（1440 / 1120 / 390）、9 项缓存 UI 检查、完整 App / 后台 / CLI 打包与版本 / 资源 / 签名 / DMG 布局 / ZIP / SHA256 校验。本地 App 与后台均为 `1.0.4-beta.26 / build 108`。
+- 发布证据保存在 `artifacts/releases/v1.0.4-beta.26/`，旧包 / bin 备份在 `artifacts/pre-beta26-backup-20261015/`。最新已核验发布仍是 beta.25；准备提交并推送本轮版本。未安装升级现用环境，未验收真实网关 RIB / FIB、PF、LAN / IPv6 或长期运行。

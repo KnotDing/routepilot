@@ -115,6 +115,8 @@ func Definitions(d config.Document) []bgp.Advertisement {
 	return rows
 }
 func (m *Manager) Desired(controller, dns, surge bool) []bgp.Advertisement {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
 	s := m.document.Settings
 	r := s.Routing.Effective()
 	out := []bgp.Advertisement{}
@@ -144,7 +146,9 @@ func (m *Manager) Reconcile(ctx context.Context, desired []bgp.Advertisement) er
 	if m.bgp == nil {
 		return nil
 	}
+	m.mu.RLock()
 	r := m.document.Settings.Routing.Effective()
+	m.mu.RUnlock()
 	for _, row := range desired {
 		if row.Kind == "fake-ip" && r.FakeIPBackend != "bgp" || row.Kind == "dns-interception" && r.DNSBackend != "bgp" {
 			return errors.New("external static routes cannot be sent to BGP")
@@ -177,12 +181,16 @@ func (m *Manager) SyncPeers(ctx context.Context, d config.Document) error {
 // The app holds routingMu while calling this and the next reconciliation adds
 // or withdraws only the changed paths from the existing BGP session.
 func (m *Manager) UpdateDocument(d config.Document) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
 	m.document = d.Clone()
 }
 
 func (m *Manager) Refresh(ctx context.Context) (bool, error) {
 	var err error
+	m.mu.RLock()
 	s := bgp.Status{Limit: m.document.Settings.BGP.RouteLimit, Peers: []bgp.PeerStatus{}, Routes: []bgp.Advertisement{}}
+	m.mu.RUnlock()
 	if m.bgp != nil {
 		_, err = m.bgp.Refresh(ctx)
 		s = m.bgp.Status()
@@ -316,6 +324,9 @@ func (m *Manager) ActiveStatus() Status {
 	v.Routes = rows
 	return v
 }
+
+// The first health snapshot may precede Refresh; it is not resource ownership.
+func (m *Manager) HasBGPSpeaker() bool { return m.bgp != nil }
 func (m *Manager) Close(ctx context.Context) error {
 	if m.bgp != nil {
 		return m.bgp.Close(ctx)
