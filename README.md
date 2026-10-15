@@ -15,7 +15,7 @@ RoutePilot 是一款 macOS 状态栏应用：向 Surge 查询分流策略，为 
 - **缩短直连路径：** DIRECT 查询返回真实地址，客户端后续流量由网关直接送往 WAN，不必绕经 Surge；Fake-IP 和下一跳配置为 Surge 的受管理前缀仍按路由经过 Surge。
 - **Surge 故障时保留新连接的直连路径：** RoutePilot 停止发放新的 Fake-IP，后续查询改用独立真实 DNS 解析，让网关可将新连接直连出网（真实 DNS 与 WAN 可用时）。已发放 Fake-IP 在 TTL / 宽限期内仍可能依赖 Surge。
 
-[📦 下载最新版本](https://github.com/KnotDing/routepilot/releases) · [🧪 配置按模块应用测试版 v1.0.4-beta.26](https://github.com/KnotDing/routepilot/releases/tag/v1.0.4-beta.26) · [Gitea 备用下载](https://gitea.knotding.com/knot/routepilot/releases) · [🚀 快速开始](#quick-start) · [🤖 安装 skill](#agent-skill) · [📚 文档导航](#documentation)
+[📦 下载最新版本](https://github.com/KnotDing/routepilot/releases) · [🧪 多管理窗口测试版 v1.0.4-beta.27](https://github.com/KnotDing/routepilot/releases/tag/v1.0.4-beta.27) · [Gitea 备用下载](https://gitea.knotding.com/knot/routepilot/releases) · [🚀 快速开始](#quick-start) · [🤖 安装 skill](#agent-skill) · [📚 文档导航](#documentation)
 
 <p align="center">
   <img src="docs/images/management-4k.png" width="100%" alt="RoutePilot App 管理界面 4K 截图">
@@ -177,9 +177,11 @@ Webhook JSON 包含 `title`、`body`、`state`、`components` 和 `at`，不包�
 
 **设置 → Surge → Surge 异常重启** 可选 HTTP API、Surge DNS、指定策略组或节点作为恢复依据。支持连续失败次数、异常持续时间、启动宽限、冷却期与每小时上限，通过 CLI 的 `restart-engine` 重启引擎。此功能需主动启用，重启会中断 Surge 现有连接。
 
-## 🌍 本地、远程，一个管理窗口
+## 🌍 多窗口管理本地与远程后端
 
 在**侧栏底部**查看连接、添加或切换远程后端、退出登录；手机端从导航抽屉进入。状态、配置、查询与缓存操作都发往当前选中的服务。本地与远端分别使用正式版和 Beta 时，版本差异显示为普通信息提示，并保留版本与构建编号；同渠道不一致或无法确认版本时仍显示更新警告。
+
+App 状态栏的**打开管理窗口**可分别打开本地和多个远程后端；已有相同目标的窗口会直接唤起。各窗口独立保存连接、登录会话和未保存的编辑，标题显示后端名称与地址；窗口内切换后端只影响当前页面，关闭一个窗口后其他窗口继续工作。已保存凭证可供各窗口独立登录，本机 App 偏好仍共享。详见[远程管理](docs/remote-management.md)。
 
 远程服务需开启认证，并将本地 Controller 的出口地址加入允许的管理网段。**支持 HTTP 和 HTTPS，TLS 可选**；使用 HTTPS 时证书须受本机信任。后端网段限制与 macOS 本地网络权限分别管理。
 

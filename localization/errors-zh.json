@@ -363,6 +363,7 @@
   "Bundled backend version does not match its App metadata": "内置后台的版本与 App 版本信息不一致",
   "Update assistant is still running": "更新助手仍在运行，暂无法移除",
   "remote backend address changed; reconnect before signing in": "远程后端地址已变更，请重新连接后登录",
+  "remote backend address changed; reconnect before continuing": "远程后端地址已变更，请重新连接后继续操作",
   "AAAA fallback must be surge, block or upstream": "AAAA 回落必须为沿用规则、拦截或上游查询",
   "Surge IPv6 setting could not be read": "无法读取 Surge IPv6 配置",
   "Surge IPv6 setting is unavailable": "Surge IPv6 配置不可用",

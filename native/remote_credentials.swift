@@ -15,53 +15,48 @@ extension AppDelegate {
         return scheme + "://" + (host.contains(":") ? "[" + host + "]" : host) + ":" + String(port)
     }
     private func credentialPage(_ view: WKWebView, base: URL) -> Bool {
-        guard webView === view, let page = view.url else { return false }
+        guard managementPages.page(for: view)?.base == base, let page = view.url else { return false }
         return page.scheme == base.scheme && page.host == base.host && page.port == base.port && client.base == base
     }
-    func recordManagementSelection(_ values: [String: String]) {
+    func recordManagementSelection(_ values: [String: String], from view: WKWebView) {
+        guard let page = managementPages.page(for: view) else { return }
         guard let id = values["backendID"] else { return }
-        if id.isEmpty { UserDefaults.standard.removeObject(forKey: "managementBackend"); return }
+        if id.isEmpty {
+            page.backend = nil; page.updateTitle()
+            persistManagementSelection(page)
+            configurePreferenceSeed(view.configuration.userContentController)
+            return
+        }
         guard (1...64).contains(id.count), id.allSatisfy({ $0.isASCII && ($0.isLetter || $0.isNumber || $0 == "-" || $0 == "_") }),
               let address = values["backendURL"], credentialOrigin(address) != nil else { return }
         // The page resolves this ID and address against current profiles before
         // restoration; this stores a selection, never credentials or sessions.
-        UserDefaults.standard.set(["id": id, "url": address], forKey: "managementBackend")
+        page.backend = managementBackends.first { $0.id == id && $0.url == address } ?? ManagementBackend(id: id, name: address, url: address)
+        page.updateTitle()
+        configurePreferenceSeed(view.configuration.userContentController)
+        persistManagementSelection(page)
+    }
+    func persistManagementSelection(_ page: ManagementPage) {
+        guard managementPages.active === page else { return }
+        if let selection = page.selection { UserDefaults.standard.set(selection, forKey: "managementBackend") }
+        else { UserDefaults.standard.removeObject(forKey: "managementBackend") }
         UserDefaults.standard.synchronize()
+    }
+    func preferredManagementBackend() -> ManagementBackend? {
+        guard let saved = UserDefaults.standard.dictionary(forKey: "managementBackend") as? [String: String],
+              let id = saved["id"], let address = saved["url"], credentialOrigin(address) != nil else { return nil }
+        return managementBackends.first { $0.id == id && $0.url == address } ?? ManagementBackend(id: id, name: address, url: address)
     }
     @objc func openManagementBackend(_ sender: NSMenuItem) {
         guard let id = sender.representedObject as? String else { return }
         let selected = managementBackends.first { $0.id == id }
         guard id.isEmpty || selected != nil else { return }
-        let previous = UserDefaults.standard.dictionary(forKey: "managementBackend") as? [String: String]
-        let changed = (previous?["id"] ?? "") != id || (previous?["url"] ?? "") != (selected?.url ?? "")
-        recordManagementSelection(["backendID": id, "backendURL": selected?.url ?? ""])
-        if changed {
-            remoteNotificationGeneration += 1
-            remoteNotificationWatch = nil
-        }
-        let existingView = webView
-        openManagement()
-        guard changed, let view = existingView, webView === view else { return }
-        configurePreferenceSeed(view.configuration.userContentController)
-        let base = client.base
-        // A new window restores the selected profile from the preference seed.
-        // Reused windows also need their session selection replaced before reload.
-        Task { @MainActor [weak self] in
-            guard let self, self.credentialPage(view, base: base) else { return }
-            do {
-                _ = try await view.callAsyncJavaScript("""
-                    if (id) sessionStorage.setItem('routepilot.backend', id);
-                    else sessionStorage.removeItem('routepilot.backend');
-                    """, arguments: ["id": id], in: nil, contentWorld: .page)
-                guard self.credentialPage(view, base: base) else { return }
-                view.reload()
-            } catch {
-                self.alert("后端切换失败", error.localizedDescription)
-            }
-        }
+        if let selected { UserDefaults.standard.set(["id": id, "url": selected.url], forKey: "managementBackend") }
+        else { UserDefaults.standard.removeObject(forKey: "managementBackend") }
+        openManagement(backend: selected)
     }
-    func handleLocalCredentials(_ values: [String: String]) async {
-        guard let view = webView, let requestID = values["requestID"], (1...80).contains(requestID.count),
+    func handleLocalCredentials(_ values: [String: String], from view: WKWebView) async {
+        guard let requestID = values["requestID"], (1...80).contains(requestID.count),
               requestID.allSatisfy({ $0.isASCII && ($0.isLetter || $0.isNumber || $0 == "-") }) else { return }
         let base = client.base, selectedStore = CredentialVault.storage
         var reply: [String: Any] = ["requestID": requestID]
@@ -78,7 +73,6 @@ extension AppDelegate {
             guard credentialPage(view, base: base) else { return }
             if reply["missing"] == nil {
                 for cookie in loginClient.session.configuration.httpCookieStorage?.cookies(for: base) ?? [] {
-                    client.session.configuration.httpCookieStorage?.setCookie(cookie)
                     await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
                         view.configuration.websiteDataStore.httpCookieStore.setCookie(cookie) { continuation.resume() }
                     }
@@ -103,8 +97,8 @@ extension AppDelegate {
               let json = String(data: data, encoding: .utf8) else { return }
         _ = try? await view.evaluateJavaScript("window.dispatchEvent(new CustomEvent('routepilot-credentials-result',{detail:" + json + "}));")
     }
-    func handleRemoteCredentials(_ values: [String: String]) async {
-        guard let view = webView, let action = values["action"], ["save", "login", "forget"].contains(action),
+    func handleRemoteCredentials(_ values: [String: String], from view: WKWebView) async {
+        guard let action = values["action"], ["save", "login", "forget"].contains(action),
               let requestID = values["requestID"], (1...80).contains(requestID.count), requestID.allSatisfy({ $0.isASCII && ($0.isLetter || $0.isNumber || $0 == "-") }),
               let id = values["backendID"], (1...64).contains(id.count), id.allSatisfy({ $0.isASCII && ($0.isLetter || $0.isNumber || $0 == "-" || $0 == "_") }),
               let address = values["backendURL"], let origin = credentialOrigin(address) else { return }

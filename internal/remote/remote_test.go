@@ -25,6 +25,42 @@ func TestRelayAllowsOnlyPostForDurableVersionSkip(t *testing.T) {
 	}
 }
 
+func TestRelayBindsReadsAndMutationsToSelectedOrigin(t *testing.T) {
+	var calls atomic.Int64
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		calls.Add(1)
+		if r.Header.Get("X-RoutePilot-Expected-Backend") != "" {
+			t.Error("local binding header forwarded upstream")
+		}
+		_, _ = io.WriteString(w, `{}`)
+	}))
+	defer upstream.Close()
+	configured := upstream.URL
+	m := New(func() []config.Backend { return []config.Backend{{ID: "remote", URL: configured}} })
+	defer m.transport.CloseIdleConnections()
+	for _, tc := range []struct{ method, path string }{{"GET", "status"}, {"PUT", "settings"}, {"POST", "dns/cache/flush"}, {"GET", "operations/status?id=job"}, {"POST", "login"}} {
+		for _, changed := range []bool{false, true} {
+			configured = upstream.URL
+			if changed {
+				configured = "http://127.0.0.1:1"
+			}
+			r := httptest.NewRequest(tc.method, prefix+"remote/"+tc.path, strings.NewReader(`{}`))
+			r.AddCookie(&http.Cookie{Name: "controller_session", Value: "isolated-browser"})
+			r.Header.Set("X-RoutePilot-Expected-Backend", upstream.URL)
+			w := httptest.NewRecorder()
+			before := calls.Load()
+			m.ServeHTTP(w, r)
+			if changed {
+				if w.Code != http.StatusConflict || calls.Load() != before {
+					t.Fatalf("%s %s reached changed origin: %d", tc.method, tc.path, w.Code)
+				}
+			} else if w.Code != http.StatusOK || calls.Load() <= before {
+				t.Fatalf("selected origin rejected: %s %s: %d", tc.method, tc.path, w.Code)
+			}
+		}
+	}
+}
+
 func openBrowser(t *testing.T, base string) *browser {
 	t.Helper()
 	jar, _ := cookiejar.New(nil)

@@ -1,10 +1,10 @@
-let csrf='',backend='',generation=0;
+let csrf='',backend='',backendURL='',generation=0;
 const pending=new Set();
 export function setCSRF(value){if(!backend)csrf=value||''}
 export function setLocalCSRF(value){csrf=value||''}
 export function isRemote(){return Boolean(backend)}
-export function selectBackend(id=''){
- backend=id;generation++;
+export function selectBackend(id='',url=''){
+ backend=id;backendURL=url;generation++;
  for(const controller of pending)controller.abort();pending.clear();
 }
 async function fetchJSON(url,method,body,selected,extraHeaders={}){
@@ -23,11 +23,12 @@ const deferredPaths=new Set(['bgp/routes/import-url','dns/hosts/import-surge','r
 let operationSequence=0;
 export async function request(path,method='GET',body,headers){
  const revision=generation,base='/api/v1/'+(backend?'management/relay/'+encodeURIComponent(backend)+'/':'');
+ const scopedHeaders=backend&&backendURL?{'X-RoutePilot-Expected-Backend':backendURL}:{};
  const deferred=deferredPaths.has(path),token=deferred?String(++operationSequence):'';
  const update=phase=>window.dispatchEvent(new CustomEvent('routepilot-operation',{detail:{token,path,phase}}));
  if(deferred)update('submitting');
  try{
-  const value=await fetchJSON(base+path,method,body,true,{...(deferred?{Prefer:'respond-async'}:{}),...headers});
+  const value=await fetchJSON(base+path,method,body,true,{...(deferred?{Prefer:'respond-async'}:{}),...headers,...scopedHeaders});
   if(!deferred||!value.operation)return value;
   const id=value.operation.id;
   if(typeof id!=='string'||!id)throw new Error('后台任务编号缺失，请刷新后确认');
@@ -35,7 +36,7 @@ export async function request(path,method='GET',body,headers){
   const started=Date.now();
   while(true){
    if(revision!==generation)throw new DOMException('管理后端已切换','AbortError');
-   const job=await fetchJSON(base+'operations/status?id='+encodeURIComponent(id),'GET',undefined,true);
+   const job=await fetchJSON(base+'operations/status?id='+encodeURIComponent(id),'GET',undefined,true,scopedHeaders);
    if(job.id!==id)throw new Error('后台任务状态不匹配，请刷新后确认');
    if(job.state==='succeeded')return job.result;
    if(job.state==='failed')throw new Error(job.error||'后台任务失败');

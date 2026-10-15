@@ -143,26 +143,28 @@ func (m *Manager) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		failure(w, 422, "invalid remote backend origin")
 		return
 	}
-	// Bind credential submissions to the address the client actually selected.
-	// A concurrent profile edit must not forward saved passwords to a new host.
-	if r.Method == "POST" && parts[1] == "login" {
-		if expected := r.Header.Get("X-RoutePilot-Expected-Backend"); expected != "" {
-			selected, e := config.BackendURL(expected)
-			origin := func(u *url.URL) string {
-				port := u.Port()
-				if port == "" {
-					if u.Scheme == "https" {
-						port = "443"
-					} else {
-						port = "80"
-					}
+	// Bind every opted-in request to the selected origin. Concurrent profile
+	// edits must not redirect a different window's reads, mutations or passwords.
+	if expected := r.Header.Get("X-RoutePilot-Expected-Backend"); expected != "" {
+		selected, e := config.BackendURL(expected)
+		origin := func(u *url.URL) string {
+			port := u.Port()
+			if port == "" {
+				if u.Scheme == "https" {
+					port = "443"
+				} else {
+					port = "80"
 				}
-				return u.Scheme + "://" + strings.ToLower(u.Hostname()) + ":" + port
 			}
-			if e != nil || origin(selected) != origin(target) {
-				failure(w, 409, "remote backend address changed; reconnect before signing in")
-				return
+			return u.Scheme + "://" + strings.ToLower(u.Hostname()) + ":" + port
+		}
+		if e != nil || origin(selected) != origin(target) {
+			message := "remote backend address changed; reconnect before continuing"
+			if r.Method == "POST" && parts[1] == "login" {
+				message = "remote backend address changed; reconnect before signing in"
 			}
+			failure(w, 409, message)
+			return
 		}
 	}
 

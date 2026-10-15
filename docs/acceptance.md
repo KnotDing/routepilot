@@ -789,3 +789,13 @@ acceptance was performed. Configuration runtime application is unchanged.
 - 新增日志与隐私选项 `hostname_device_only`，默认关闭，开启后客户端列表与大屏只显示探测名称第一个点之前的设备名。完整缓存保留，关闭后恢复完整显示；不改变手工备注、客户端身份或策略，不重启 DNS / BGP / PTR 任务。针对性 app / config race 与前端 3 文件 / 17 测试通过，覆盖开关保存、中英文文案、视图热更新与恢复以及 BGP 会话保持。
 - `env GOCACHE=/Volumes/Code/RoutePilot/.cache/go-build make verify-release` 最终全部通过，包含新增截断选项：前端 35 文件 / 189 测试、Go 全包 race / vet、原生核心与真实 WKWebView、17 页面 / 14 设置分类（1440 / 1120 / 390）、9 项缓存 UI 检查、完整 App / 后台 / CLI 打包与版本 / 资源 / 签名 / DMG 布局 / ZIP / SHA256 校验。本地 App 与后台均为 `1.0.4-beta.26 / build 108`。
 - 发布核验完成：标签 `v1.0.4-beta.26` 指向 `70ddfedf3108ed421be3e408593e0ae9e9d7b233`，双仓库 main / 注释标签对象已核对一致。GitHub 回归 `38696844640`（含 fuzz）与 Release `38696844858` 成功；Gitea `2104` 整体成功复用 GitHub 制品，回退跳过。两个 Release 均为非草稿测试版，各有 DMG / ZIP / SHA256SUMS 三附件，六附件下载非空、SHA256 完全一致；包内 App 与后台均为 `1.0.4-beta.26 / build 34`，ZIP、签名与 DMG 完整性通过。证据为 `artifacts/releases/v1.0.4-beta.26/publication-verification.json`，旧包 / bin 备份在 `artifacts/pre-beta26-backup-20261015/`。AGENTS.md 已更新最新发布及最终交接，后续文档提交不移动标签。未安装升级现用环境，未验收真实网关 RIB / FIB、PF、LAN / IPv6 或长期运行。
+
+## 2026-10-15：多个管理窗口（beta.27 发布验证）
+
+- 状态栏逐后端打开独立窗口，相同 ID 与地址的窗口直接唤起并恢复最小化；标题显示连接名称和地址。每个窗口拥有独立的 WebKit 非持久存储、本地登录会话、CSRF、页面后端选择和可见性事件，不复用状态栏客户端的 Cookie。已保存凭证沿用原有流程独立登录，本机 App 偏好共享但逐窗口保留后端种子。
+- 原生 JS bridge 按 `message.webView` 寻找来源窗口，登录和保存结果只回到来源页面；关闭来源后丢弃未完成回调。关闭或最小化一个窗口不改变其他窗口，最后一个窗口关闭后继续后台运行。管理监听改变或恢复时，重新加载各窗口并保留其后端选择。后台通知独立绑定窗口会话，避免一个窗口退出影响其他连接，并在新窗口接续后清理同一后端的旧关闭窗口监控。
+- 新请求客户端为远程读取、写入与异步任务轮询携带选中地址，后台中继核对配置中的实际目标，地址改变返回 409。既有登录凭证地址保护保留；旧调用未携带绑定头时保持兼容。普通浏览器标签页的同站点 Cookie 共享规则不变。
+- `sh scripts/test_native.sh` 最终整套通过，包括使用真实 AppDelegate / WKWebView 和现有 `web/src/client.js` 的新多窗口验收。隔离 loopback HTTP fixture 验证三个窗口分别访问本地 / 远端 A / 远端 B，Cookie 和 CSRF 独立、后台窗口登录回复不串页、保留未保存编辑、偏好广播不覆盖选择、最小化 / 关闭 / 重开与管理入口迁移。测试构建关闭生产入口和实际凭证 / 偏好种子，不启动现用后台或更新助手。
+- `npm --prefix web test` 35 文件 / 190 项通过，`npm --prefix web run build` 通过；`env GOCACHE=/Volumes/Code/RoutePilot/.cache/go-build go test -race ./internal/remote ./internal/api -count=1 -timeout 90s` 通过，同一 GOCACHE 下 `go vet ./internal/remote ./internal/api` 与 `go build ./...` 通过。按 `scripts/build_app.sh` 的完整 Swift 源码清单，以 macOS 13 目标编译并链接原生可执行文件通过。日志见 `artifacts/multiple-management-windows-2026-10-15/`，既有 `update_dialog.swift` WebKit 并发警告仍存在。
+- 发布前 `env GOCACHE=/Volumes/Code/RoutePilot/.cache/go-build make verify-release` 全部通过：前端 35 文件 / 190 项，Go 全包 race / vet，原生核心 / 真实 WKWebView / 多窗口隔离，17 页面 / 14 分类响应式检查（1440 / 1120 / 390），9 项缓存 UI 和完整 App / 后台 / CLI / DMG / ZIP 校验。本地包 App 与后台均为 `1.0.4-beta.27 / build 109`，签名、版本、资源、哈希与 DMG 布局通过。
+- 尚未提交 / 推送本轮版本，最新完整核验发布仍为 beta.26。发布证据目录为 `artifacts/releases/v1.0.4-beta.27/`，旧包与 bin 保存在 `artifacts/pre-beta27-backup-20261015/`。未安装或重启现用环境，未连接真实远程后端或验收实际钥匙串登录、升级、长期多窗口资源占用及现场网络路径。

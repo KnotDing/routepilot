@@ -16,6 +16,7 @@ struct AppFailure: LocalizedError {
 final class ControllerClient {
     var base: URL
     var csrf = ""
+    var expectedBackend: String?
     let session: URLSession
     init(_ base: URL, cookieStorage: HTTPCookieStorage? = nil) {
         self.base = base
@@ -31,6 +32,7 @@ final class ControllerClient {
         request.httpMethod = method
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         if method != "GET" { request.setValue(csrf, forHTTPHeaderField: "X-CSRF-Token") }
+        if let expectedBackend { request.setValue(expectedBackend, forHTTPHeaderField: "X-RoutePilot-Expected-Backend") }
         if let body = body { request.httpBody = try JSONSerialization.data(withJSONObject: body) }
         let (data, response) = try await session.data(for: request)
         guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
@@ -55,8 +57,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
     var statusMenuOpen = false
     var menuBrandImage: NSImage?
     var statusIconAnimator: StatusBarIconAnimator?
-    var window: NSWindow?
-    var webView: WKWebView?
+    let managementPages = ManagementPages()
+    var window: NSWindow? { managementPages.active?.window }
+    var webView: WKWebView? { managementPages.active?.view }
     var child: Process?
     var logHandle: FileHandle?
     var timer: Timer?
@@ -90,8 +93,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
     }
     var notificationHealth: [[String: Any]] = []
 	var backendFailures = 0
-    var remoteNotificationWatch: RemoteNotificationWatch?
-    var remoteNotificationGeneration = 0
+    var remoteNotificationWatches: [String: RemoteNotificationWatch] = [:]
     var notificationAuthorizationPending = false
     var refreshingRemoteNotifications = false
     var lastError = "正在连接…"
@@ -236,7 +238,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
                 do {
                     try await refreshFromBackend()
                     UserDefaults.standard.set(recovery.absoluteString, forKey: "backendURL")
-                    if let webView { webView.load(URLRequest(url: recovery)) }
+                    migrateManagementBase(to: recovery)
                     updateToolTip()
                     rebuildMenu()
                     return
@@ -425,15 +427,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
         if let versionWarning { statusItem.button?.toolTip? += "\n" + L(versionWarning) }
     }
     func userContentController(_ userContentController: WKUserContentController, didReceive message: WKScriptMessage) {
+        guard let sourceView = message.webView, let sourcePage = managementPages.page(for: sourceView),
+              sourcePage.view.configuration.userContentController === userContentController, sourcePage.base == client.base else { return }
+        let webView = sourceView
         let origin = message.frameInfo.securityOrigin
-        let trusted = message.frameInfo.isMainFrame && origin.protocol == client.base.scheme && origin.host == client.base.host?.trimmingCharacters(in: CharacterSet(charactersIn: "[]")) && origin.port == client.base.port
+        let trusted = message.frameInfo.isMainFrame && origin.protocol == sourcePage.base.scheme && origin.host == client.base.host?.trimmingCharacters(in: CharacterSet(charactersIn: "[]")) && origin.port == client.base.port
         if message.name == "routepilotPreferences" {
             guard trusted, let values = message.body as? [String: Any] else { return }
             func reply(_ ok: Bool, extra: [String: Any] = [:]) {
                 guard let id = values["_requestID"] as? String, id.count <= 64,
                       let data = try? JSONSerialization.data(withJSONObject: extra.merging(["requestID": id, "ok": ok]) { _, value in value }),
                       let json = String(data: data, encoding: .utf8) else { return }
-                webView?.evaluateJavaScript("window.dispatchEvent(new CustomEvent('routepilot-preferences-saved',{detail:" + json + "}));", completionHandler: nil)
+                webView.evaluateJavaScript("window.dispatchEvent(new CustomEvent('routepilot-preferences-saved',{detail:" + json + "}));", completionHandler: nil)
             }
             guard let data = try? JSONSerialization.data(withJSONObject: values),
                   var preferences = try? JSONDecoder().decode(AppPreferences.self, from: data), preferences.statusBar.valid, preferences.monitoring.valid else { reply(false); return }
@@ -444,7 +449,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
             preferences.automation = previous.automation
             AppPreferences.current = preferences
             updateToolTip()
-            configurePreferenceSeed(userContentController)
+            refreshManagementPreferences()
             reply(true)
             Task {
                 if preferences.desktopNotifications && !previous.desktopNotifications {
@@ -464,7 +469,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
                 if let error { result["error"] = error }
                 guard let data = try? JSONSerialization.data(withJSONObject: result), let json = String(data: data, encoding: .utf8) else { return }
                 let value = configured ? "true" : "false"
-                webView?.evaluateJavaScript("window.routepilotNativePreferences=window.routepilotNativePreferences||{};window.routepilotNativePreferences.githubAccessTokenConfigured=\(value);window.dispatchEvent(new CustomEvent('routepilot-github-token-saved',{detail:" + json + "}));", completionHandler: nil)
+                webView.evaluateJavaScript("window.routepilotNativePreferences=window.routepilotNativePreferences||{};window.routepilotNativePreferences.githubAccessTokenConfigured=\(value);window.dispatchEvent(new CustomEvent('routepilot-github-token-saved',{detail:" + json + "}));", completionHandler: nil)
             }
             do {
                 switch action {
@@ -476,7 +481,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
                 default:
                     return
                 }
-                configurePreferenceSeed(userContentController)
+                refreshManagementPreferences()
                 reply(true)
             } catch {
                 reply(false, error: error.localizedDescription)
@@ -496,26 +501,35 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
         }
         if message.name == "routepilotServiceHealth" {
             guard trusted, let values = message.body as? [String: Any] else { return }
-            if values["clear"] as? Bool == true { remoteNotificationGeneration += 1; remoteNotificationWatch = nil; return }
+            if values["clear"] as? Bool == true { clearRemoteNotification(for: sourcePage); return }
             guard let scope = values["scope"] as? String, scope.count <= 512,
                   let health = values["health"] as? [[String: Any]], let settings = values["settings"] as? [String: Any] else { return }
+            guard let selected = sourcePage.backend, selected.id == values["backendID"] as? String, selected.url == scope else { return }
             serviceNotifications.observe(scope: scope, health: health, settings: settings)
-            if let id = values["backendID"] as? String, !id.isEmpty, id.count <= 64, id.allSatisfy({ $0.isASCII && ($0.isLetter || $0.isNumber || $0 == "_" || $0 == "-") }), let webView {
-                if let watch = remoteNotificationWatch, watch.id == id && watch.scope == scope {
+            if let id = values["backendID"] as? String, !id.isEmpty, id.count <= 64, id.allSatisfy({ $0.isASCII && ($0.isLetter || $0.isNumber || $0 == "_" || $0 == "-") }) {
+                let watchKey = sourcePage.notificationID
+                sourcePage.notificationKey = watchKey
+                if let watch = remoteNotificationWatches[watchKey], watch.id == id && watch.scope == scope {
                     watch.settings = settings; watch.health = health.filter { component in
                         let name = component["name"] as? String ?? ""
                         return name != "Management connection" && !name.hasPrefix("DNS cache mismatch ") && name != "DNS request burst" && name != "DNS sustained requests"
                     }
                 } else {
                     let base = client.base
-                    remoteNotificationGeneration += 1
-                    let generation = remoteNotificationGeneration
+                    sourcePage.notificationGeneration += 1
+                    let generation = sourcePage.notificationGeneration
                     webView.configuration.websiteDataStore.httpCookieStore.getAllCookies { [weak self] cookies in
-                        Task { @MainActor in
-                            guard let self, self.client.base == base, self.remoteNotificationGeneration == generation,
+                        Task { @MainActor [weak self, weak sourcePage] in
+                            guard let self, let sourcePage, self.managementPages.page(for: webView) === sourcePage, self.client.base == base, sourcePage.notificationGeneration == generation,
                                   let cookie = cookies.first(where: { $0.name == "controller_session" && $0.domain.trimmingCharacters(in: CharacterSet(charactersIn: ".[]")) == base.host?.trimmingCharacters(in: CharacterSet(charactersIn: "[]")) }) else { return }
-                            self.remoteNotificationWatch = RemoteNotificationWatch(id: id, scope: scope, base: base, cookie: cookie, settings: settings)
-                            self.remoteNotificationWatch?.health = health.filter { $0["name"] as? String != "Management connection" }
+                            // Replace closed-page monitoring for this backend once a
+                            // fresh page has its own authenticated session.
+                            let retired = self.remoteNotificationWatches.filter { key, watch in
+                                watch.id == id && watch.scope == scope && !self.managementPages.pages.contains { $0.notificationKey == key }
+                            }.map { $0.key }
+                            for key in retired { self.remoteNotificationWatches[key] = nil }
+                            self.remoteNotificationWatches[watchKey] = RemoteNotificationWatch(id: id, scope: scope, base: base, cookie: cookie, settings: settings)
+                            self.remoteNotificationWatches[watchKey]?.health = health.filter { $0["name"] as? String != "Management connection" }
                         }
                     }
                 }
@@ -524,9 +538,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
         }
         if message.name == "routepilotCredentials" {
             if trusted, let values = message.body as? [String: String], values["action"] != nil {
-                if values["action"] == "local-login" { Task { await handleLocalCredentials(values) }; return }
-                if values["action"] == "select" { recordManagementSelection(values); return }
-                Task { await handleRemoteCredentials(values) }
+                if values["action"] == "local-login" { Task { await handleLocalCredentials(values, from: sourceView) }; return }
+                if values["action"] == "select" { recordManagementSelection(values, from: sourceView); return }
+                Task { await handleRemoteCredentials(values, from: sourceView) }
                 return
             }
             let host = client.base.host?.trimmingCharacters(in: CharacterSet(charactersIn: "[]"))
@@ -545,7 +559,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
               NativeText.acceptsLocale(locale, mainFrame: message.frameInfo.isMainFrame, scheme: origin.protocol, host: origin.host, port: origin.port, backend: client.base) else { return }
         UserDefaults.standard.set(locale, forKey: "uiLanguage")
         configureLanguageSeed(userContentController)
-        window?.title = L("RoutePilot · DNS 和路由控制器")
+        for page in managementPages.pages { page.updateTitle(); configureLanguageSeed(page.view.configuration.userContentController) }
         installApplicationMenu()
         updateToolTip()
         rebuildMenu()
@@ -563,7 +577,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
               let json = String(data: data, encoding: .utf8) else { return }
         // Update only the available checks, preserving unsaved preference edits.
         let source = "window.routepilotNativePreferences=window.routepilotNativePreferences||{};window.routepilotNativePreferences.statusBarHealth=" + json + ";window.dispatchEvent(new Event('routepilot-statusbar-health-changed'));"
-        webView?.evaluateJavaScript(source, completionHandler: nil)
+        for page in managementPages.pages { page.view.evaluateJavaScript(source, completionHandler: nil) }
     }
     func publishReleaseUpdateStatus() {
         let status: [String: Any] = [
@@ -580,19 +594,29 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
         guard let data = try? JSONSerialization.data(withJSONObject: status),
               let json = String(data: data, encoding: .utf8) else { return }
         let source = "window.routepilotNativePreferences=window.routepilotNativePreferences||{};Object.assign(window.routepilotNativePreferences,\(json));window.dispatchEvent(new Event('routepilot-preferences-changed'));"
-        webView?.evaluateJavaScript(source, completionHandler: nil)
+        for page in managementPages.pages { page.view.evaluateJavaScript(source, completionHandler: nil) }
     }
     func configurePreferenceSeed(_ controller: WKUserContentController) {
         let marker = "/* RoutePilot preferences */"
         let scripts = controller.userScripts.filter { !$0.source.hasPrefix(marker) }
         controller.removeAllUserScripts()
         scripts.forEach { controller.addUserScript($0) }
-        guard let data = try? JSONEncoder().encode(AppPreferences.current),
+        #if ROUTEPILOT_NATIVE_TEST
+        let currentPreferences = AppPreferences()
+        #else
+        let currentPreferences = AppPreferences.current
+        #endif
+        guard let data = try? JSONEncoder().encode(currentPreferences),
               var preferences = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { return }
         preferences.removeValue(forKey: "automation")
         preferences["statusBarHealth"] = notificationHealth.compactMap { $0["name"] as? String }
+        #if ROUTEPILOT_NATIVE_TEST
+        preferences["assistantReady"] = false
+        preferences["githubAccessTokenConfigured"] = false
+        #else
         preferences["assistantReady"] = UpdateAssistant.configured
         preferences["githubAccessTokenConfigured"] = GitHubAccessTokenVault.isConfigured
+        #endif
         preferences["updateAvailable"] = availableRelease != nil
         preferences["updateVersion"] = availableRelease?.tagName ?? ""
         preferences["updateDownloading"] = releaseDownloadInProgress
@@ -604,41 +628,43 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
         preferences["updateAutomationError"] = releaseAutomationError
         preferences["remoteCredentialsSupported"] = true
         preferences["localCredentialsSupported"] = true
-        preferences["managementBackend"] = UserDefaults.standard.dictionary(forKey: "managementBackend")
+        if let selection = managementPages.page(for: controller)?.selection { preferences["managementBackend"] = selection }
+        else { preferences["managementBackend"] = NSNull() }
         guard let seed = try? JSONSerialization.data(withJSONObject: preferences), let json = String(data: seed, encoding: .utf8) else { return }
         let source = marker + "window.routepilotNativePreferences=" + json + ";window.dispatchEvent(new Event('routepilot-preferences-changed'));"
         controller.addUserScript(WKUserScript(source: source, injectionTime: .atDocumentStart, forMainFrameOnly: true))
-        webView?.evaluateJavaScript(source, completionHandler: nil)
+        managementPages.page(for: controller)?.view.evaluateJavaScript(source, completionHandler: nil)
     }
     func refreshRemoteNotifications() async {
-        guard !refreshingRemoteNotifications, !quitting, !stopping, AppPreferences.current.desktopNotifications,
-              let watch = remoteNotificationWatch else { return }
-        if window?.isVisible == true && window?.isMiniaturized != true { return }
+        guard !refreshingRemoteNotifications, !quitting, !stopping, AppPreferences.current.desktopNotifications else { return }
         refreshingRemoteNotifications = true
         defer { refreshingRemoteNotifications = false }
-        let path = "management/relay/" + watch.id + "/"
-        do {
-            let health = try await watch.client.call(path + "health") as? [[String: Any]] ?? []
-            let notificationStatus = try await watch.client.call(path + "status") as? [String: Any] ?? [:]
-            let settings = try await watch.client.call(path + "settings") as? [String: Any] ?? [:]
-            let peers = try await watch.client.call(path + "bgp/peers") as? [[String: Any]] ?? []
-            guard remoteNotificationWatch === watch else { return }
-            let routing = settings["routing"] as? [String: Any] ?? [:]
-            let mode = routing["mode"] as? String ?? "bgp"
-            let usesBGP = mode == "bgp" || mode == "hybrid" && (routing["fake_ip_backend"] as? String == "bgp" || routing["dns_backend"] as? String == "bgp")
-            let bgpEnabled = usesBGP && (settings["bgp"] as? [String: Any])?["enabled"] as? Bool == true
-            let active = Set(peers.filter { bgpEnabled && $0["enabled"] as? Bool == true }.compactMap { ($0["address"] as? String).map { "BGP peer " + $0 } })
-            watch.health = health.filter { !($0["name"] as? String ?? "").hasPrefix("BGP peer ") || active.contains($0["name"] as? String ?? "") }
-            watch.settings = settings["notifications"] as? [String: Any] ?? [:]
-            watch.failures = 0
-            serviceNotifications.observe(scope: watch.scope, health: watch.health + (notificationStatus["notification_alerts"] as? [[String: Any]] ?? []) + [["name": "Management connection", "state": "UP"]], settings: watch.settings)
-        } catch let failure as AppFailure where failure.statusCode == 401 || failure.statusCode == 403 || failure.statusCode == 404 {
-            if remoteNotificationWatch === watch { remoteNotificationWatch = nil }
-        } catch {
-            guard remoteNotificationWatch === watch else { return }
-            watch.failures += 1
-            if watch.failures >= 3 {
-                serviceNotifications.observe(scope: watch.scope, health: watch.health + [["name": "Management connection", "state": "DOWN"]], settings: watch.settings)
+        for (key, watch) in remoteNotificationWatches {
+            if managementPages.pages.contains(where: { $0.notificationKey == key && $0.window.isVisible && !$0.window.isMiniaturized }) { continue }
+            let path = "management/relay/" + watch.id + "/"
+            do {
+                let health = try await watch.client.call(path + "health") as? [[String: Any]] ?? []
+                let notificationStatus = try await watch.client.call(path + "status") as? [String: Any] ?? [:]
+                let settings = try await watch.client.call(path + "settings") as? [String: Any] ?? [:]
+                let peers = try await watch.client.call(path + "bgp/peers") as? [[String: Any]] ?? []
+                guard remoteNotificationWatches[key] === watch else { continue }
+                let routing = settings["routing"] as? [String: Any] ?? [:]
+                let mode = routing["mode"] as? String ?? "bgp"
+                let usesBGP = mode == "bgp" || mode == "hybrid" && (routing["fake_ip_backend"] as? String == "bgp" || routing["dns_backend"] as? String == "bgp")
+                let bgpEnabled = usesBGP && (settings["bgp"] as? [String: Any])?["enabled"] as? Bool == true
+                let active = Set(peers.filter { bgpEnabled && $0["enabled"] as? Bool == true }.compactMap { ($0["address"] as? String).map { "BGP peer " + $0 } })
+                watch.health = health.filter { !($0["name"] as? String ?? "").hasPrefix("BGP peer ") || active.contains($0["name"] as? String ?? "") }
+                watch.settings = settings["notifications"] as? [String: Any] ?? [:]
+                watch.failures = 0
+                serviceNotifications.observe(scope: watch.scope, health: watch.health + (notificationStatus["notification_alerts"] as? [[String: Any]] ?? []) + [["name": "Management connection", "state": "UP"]], settings: watch.settings)
+            } catch let failure as AppFailure where failure.statusCode == 401 || failure.statusCode == 403 || failure.statusCode == 404 || failure.statusCode == 409 {
+                if remoteNotificationWatches[key] === watch { remoteNotificationWatches[key] = nil }
+            } catch {
+                guard remoteNotificationWatches[key] === watch else { continue }
+                watch.failures += 1
+                if watch.failures >= 3 {
+                    serviceNotifications.observe(scope: watch.scope, health: watch.health + [["name": "Management connection", "state": "DOWN"]], settings: watch.settings)
+                }
             }
         }
     }
@@ -782,7 +808,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
     func saveNotificationPreferences(_ preferences: AppPreferences) {
         AppPreferences.current = preferences
         serviceNotifications.reset()
-        if let controller = webView?.configuration.userContentController { configurePreferenceSeed(controller) }
+        refreshManagementPreferences()
         rebuildMenu()
     }
     @objc func toggleDesktopNotifications() {
@@ -907,7 +933,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
         stopping = true
         Task {
             defer { stopping = false; rebuildMenu() }
-            do { try await UpdateAssistant.enable(); if let controller = webView?.configuration.userContentController { configurePreferenceSeed(controller) } }
+            do { try await UpdateAssistant.enable(); refreshManagementPreferences() }
             catch { alert("更新助手未启用", error.localizedDescription) }
         }
     }
@@ -924,7 +950,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
             defer { stopping = false; rebuildMenu() }
             do {
                 try await UpdateAssistant.disable()
-                if let controller = webView?.configuration.userContentController { configurePreferenceSeed(controller) }
+                refreshManagementPreferences()
             } catch { alert("更新助手未停用", error.localizedDescription) }
         }
     }
@@ -951,7 +977,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
         defer { progress.close(); releaseDownloadInProgress = false; releaseInstallPhase = ""; publishReleaseUpdateStatus() }
         do {
             if !UpdateAssistant.configured { try await UpdateAssistant.enable() }
-            if let controller = webView?.configuration.userContentController { configurePreferenceSeed(controller) }
+            refreshManagementPreferences()
             let assistant = try await UpdateAssistant.request("status")
             if (assistant.protocolVersion ?? 0) < 3 {
                 label.stringValue = L("正在升级更新助手…")
@@ -1061,66 +1087,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
             } catch { alert("登录失败", error.localizedDescription) }
         }
     }
-    @objc func openManagement() {
-        // A visible management window needs a regular application's menu bar.
-        // Return to accessory mode when it closes so background operation keeps
-        // the original menu-bar-only behavior.
-        NSApp.setActivationPolicy(.regular)
-        if window == nil {
-            let configuration = WKWebViewConfiguration()
-            configuration.websiteDataStore = .nonPersistent()
-            configuration.userContentController.add(self, name: "routepilotLocale")
-            configuration.userContentController.add(self, name: "routepilotCredentials")
-            configuration.userContentController.add(self, name: "routepilotPreferences")
-            configuration.userContentController.add(self, name: "routepilotGitHubToken")
-            configuration.userContentController.add(self, name: "routepilotServiceHealth")
-            configuration.userContentController.add(self, name: "routepilotUpdateAction")
-            configureLanguageSeed(configuration.userContentController)
-            configurePreferenceSeed(configuration.userContentController)
-            let view = WKWebView(frame: .zero, configuration: configuration)
-            view.navigationDelegate = self
-            view.uiDelegate = self
-            let panel = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 1150, height: 780), styleMask: [.titled, .closable, .miniaturizable, .resizable], backing: .buffered, defer: false)
-            panel.title = L("RoutePilot · DNS 和路由控制器")
-            panel.minSize = NSSize(width: 420, height: 480)
-            panel.level = .normal
-            panel.collectionBehavior = [.fullScreenPrimary]
-            panel.contentView = view; panel.delegate = self; panel.isReleasedWhenClosed = false
-            // AppKit persists the normal window frame across app restarts and
-            // adjusts restored frames for the screens currently available.
-            ManagementWindowFrame.restore(panel)
-            window = panel; webView = view
-            let cookies = client.session.configuration.httpCookieStorage?.cookies(for: client.base) ?? []
-            let group = DispatchGroup()
-            for cookie in cookies { group.enter(); view.configuration.websiteDataStore.httpCookieStore.setCookie(cookie) { group.leave() } }
-            group.notify(queue: .main) { view.load(URLRequest(url: self.client.base)) }
-        }
-        NSApp.activate(ignoringOtherApps: true)
-        window?.makeKeyAndOrderFront(nil)
-        if !smoke { ManagementWindowFrame.isOpen = true }
-    }
-    func windowWillClose(_ notification: Notification) {
-        guard let closed = notification.object as? NSWindow, closed === window else { return }
-        ManagementWindowFrame.remember(closed)
-        if !smoke && !quitting { ManagementWindowFrame.isOpen = false }
-        if let webView { ManagementWebViewLifecycle.release(webView, from: closed) }
-        self.webView = nil
-        window = nil
-        NSApp.setActivationPolicy(.accessory)
-    }
-    func windowDidMiniaturize(_ notification: Notification) { setManagementWindowVisible(false) }
-    func windowDidDeminiaturize(_ notification: Notification) { setManagementWindowVisible(true) }
-    private func setManagementWindowVisible(_ visible: Bool) {
-        let value = visible ? "true" : "false"
-        webView?.evaluateJavaScript("window.dispatchEvent(new CustomEvent('routepilot-window-visibility',{detail:{visible:\(value)}}))")
-    }
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { false }
-    func trustedDialog(_ frame: WKFrameInfo) -> Bool {
+    func trustedDialog(_ frame: WKFrameInfo, in view: WKWebView) -> Bool {
+        guard let page = managementPages.page(for: view), page.base == client.base else { return false }
         let origin = frame.securityOrigin
-        return frame.isMainFrame && origin.protocol == client.base.scheme && origin.host == client.base.host?.trimmingCharacters(in: CharacterSet(charactersIn: "[]")) && origin.port == client.base.port
+        return frame.isMainFrame && origin.protocol == page.base.scheme && origin.host == page.base.host?.trimmingCharacters(in: CharacterSet(charactersIn: "[]")) && origin.port == page.base.port
     }
     func webView(_ webView: WKWebView, runJavaScriptConfirmPanelWithMessage message: String, initiatedByFrame frame: WKFrameInfo, completionHandler: @escaping (Bool) -> Void) {
-        guard trustedDialog(frame) else { completionHandler(false); return }
+        guard trustedDialog(frame, in: webView) else { completionHandler(false); return }
         let dialog = NSAlert(); dialog.messageText = L("确认管理操作")
         dialog.informativeText = (frame.request.url?.host ?? "RoutePilot") + "\n\n" + message
         dialog.addButton(withTitle: L("确认")); dialog.addButton(withTitle: L("取消"))
@@ -1129,7 +1103,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
         else { completionHandler(dialog.runModal() == .alertFirstButtonReturn) }
     }
     func webView(_ webView: WKWebView, runJavaScriptAlertPanelWithMessage message: String, initiatedByFrame frame: WKFrameInfo, completionHandler: @escaping () -> Void) {
-        guard trustedDialog(frame) else { completionHandler(); return }
+        guard trustedDialog(frame, in: webView) else { completionHandler(); return }
         let dialog = NSAlert(); dialog.messageText = "RoutePilot"
         dialog.informativeText = (frame.request.url?.host ?? "RoutePilot") + "\n\n" + message
         dialog.addButton(withTitle: L("确定"))
@@ -1137,21 +1111,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
         else { _ = dialog.runModal(); completionHandler() }
     }
     func webView(_ webView: WKWebView, decidePolicyFor navigationAction: WKNavigationAction, decisionHandler: @escaping (WKNavigationActionPolicy) -> Void) {
-        guard let url = navigationAction.request.url else { decisionHandler(.cancel); return }
+        guard let page = managementPages.page(for: webView), let url = navigationAction.request.url else { decisionHandler(.cancel); return }
         if navigationAction.shouldPerformDownload {
-            let page = webView.url
-            let trustedPage = page?.host == client.base.host && page?.port == client.base.port && page?.scheme == client.base.scheme
+            let current = webView.url
+            let trustedPage = current?.host == page.base.host && current?.port == page.base.port && current?.scheme == page.base.scheme
             if trustedPage && (url.scheme == "blob" || url.host == client.base.host && url.port == client.base.port && url.scheme == client.base.scheme) {
                 decisionHandler(.download)
             } else { decisionHandler(.cancel) }
             return
         }
         // Never navigate the privileged control surface to an unrelated web origin.
-        if url.scheme == client.base.scheme && url.host == client.base.host && url.port == client.base.port { decisionHandler(.allow); return }
+        if url.scheme == page.base.scheme && url.host == page.base.host && url.port == page.base.port { decisionHandler(.allow); return }
         // A successful management setting change redirects to its new loopback listener.
         if navigationAction.targetFrame?.isMainFrame == true, let changed = validURL(url.absoluteString) {
             client = ControllerClient(changed)
             if !smoke { UserDefaults.standard.set(changed.absoluteString, forKey: "backendURL") }
+            migrateManagementBase(to: changed, navigating: webView)
             decisionHandler(.allow); return
         }
         decisionHandler(.cancel)
@@ -1226,7 +1201,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
             else {
                 client = ControllerClient(client.base)
                 UserDefaults.standard.set(client.base.absoluteString, forKey: "backendURL")
-                window?.close(); window = nil; webView = nil
+                for page in managementPages.pages { page.window.close() }
                 alert("网络服务已安装", "服务随 macOS 启动；退出状态栏 APP 后仍继续运行。")
             }
             reconnect()
@@ -1346,6 +1321,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
     }
 }
 
+#if !ROUTEPILOT_NATIVE_TEST
 @main
 struct RoutePilot {
     @MainActor static func main() {
@@ -1369,3 +1345,5 @@ struct RoutePilot {
         withExtendedLifetime(delegate) {}
     }
 }
+
+#endif

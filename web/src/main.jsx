@@ -283,16 +283,16 @@ export function App(){const t=useT();
    try{
     const session=await localSessionWithCredentials();if(cancelled)return;
     const selected=await savedBackend(session);if(cancelled)return;
-    selectBackend(selected?.id||'');rememberManagementBackend(selected);setBackend(selected);setRevision(v=>v+1);setLocalSession(session);
+    selectBackend(selected?.id||'',selected?.url||'');rememberManagementBackend(selected);setBackend(selected);setRevision(v=>v+1);setLocalSession(session);
    }catch(e){if(!cancelled){setError(e.message);if(++attempts<6)timer=setTimeout(bootstrap,3000)}}
   };
   bootstrap();return()=>{cancelled=true;clearTimeout(timer)};
  },[]);
  useEffect(()=>{let reconnecting=false,cancelled=false,timer;const expired=async()=>{
   if(reconnecting||cancelled)return;clearTimeout(timer);reconnecting=true;window.webkit?.messageHandlers?.routepilotServiceHealth?.postMessage({clear:true});selectBackend('');setBackend(null);setLocalSession(null);setManage(false);setError('');
-  try{const session=await localSessionWithCredentials(),selected=await savedBackend(session);if(cancelled)return;selectBackend(selected?.id||'');setBackend(selected);setRevision(v=>v+1);setLocalSession(session)}catch(e){if(!cancelled){setError(e.message);if(nativeApp()&&(e.retryable||!e.status||e.status>=500))timer=setTimeout(expired,3000)}}finally{reconnecting=false}
+  try{const session=await localSessionWithCredentials(),selected=await savedBackend(session);if(cancelled)return;selectBackend(selected?.id||'',selected?.url||'');setBackend(selected);setRevision(v=>v+1);setLocalSession(session)}catch(e){if(!cancelled){setError(e.message);if(nativeApp()&&(e.retryable||!e.status||e.status>=500))timer=setTimeout(expired,3000)}}finally{reconnecting=false}
  };window.addEventListener('routepilot-local-session-expired',expired);return()=>{cancelled=true;clearTimeout(timer);window.removeEventListener('routepilot-local-session-expired',expired)}},[]);
- const switchTo=next=>{window.webkit?.messageHandlers?.routepilotServiceHealth?.postMessage({clear:true});selectBackend(next?.id||'');setBackend(next);setRevision(v=>v+1);setManage(false);rememberManagementBackend(next);if(next)sessionStorage.setItem('routepilot.backend',next.id);else sessionStorage.removeItem('routepilot.backend')};
+ const switchTo=next=>{window.webkit?.messageHandlers?.routepilotServiceHealth?.postMessage({clear:true});selectBackend(next?.id||'',next?.url||'');setBackend(next);setRevision(v=>v+1);setManage(false);rememberManagementBackend(next);if(next)sessionStorage.setItem('routepilot.backend',next.id);else sessionStorage.removeItem('routepilot.backend')};
  if(!localSession)return <div className="login"><h1>RoutePilot</h1><p>{t(window.routepilotNativePreferences?.localCredentialsSupported?'正在恢复已保存的登录状态…':'正在连接本地管理服务…')}</p>{error&&<p role="alert" className="error">{message(error)}</p>}<button onClick={()=>location.reload()}>{t('重新连接')}</button></div>;
  return <>{error&&<div role="alert" className="notice error">{message(error)}</div>}<Workspace key={revision} backend={backend} onLocalSession={session=>{setLocalSession(session);if(session.authenticated)setError('')}} onManage={localSession.authenticated?()=>setManage(true):undefined}/>{manage&&<Backends active={backend} onSelect={switchTo} onClose={()=>setManage(false)}/>}</>;
 }

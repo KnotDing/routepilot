@@ -3,6 +3,7 @@ import AppKit
 // Notifications reference the main App's connection type. This standalone test
 // never creates a connection or invokes the restart/notification workflow.
 final class ControllerClient {
+    var expectedBackend: String?
     let session = URLSession(configuration: .ephemeral)
     init(_ base: URL) {}
 }

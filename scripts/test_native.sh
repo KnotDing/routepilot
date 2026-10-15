@@ -24,3 +24,21 @@ compile ui -framework AppKit -framework WebKit native/test_support.swift native/
 .cache/native-tests/ui "$(pwd)/web/dist-native" > .cache/native-tests/ui.log 2>&1
 cat .cache/native-tests/ui.log
 grep -q "^PASS native UI:" .cache/native-tests/ui.log
+
+# Exercise the production AppDelegate with isolated loopback HTML/API fixtures.
+# The test build excludes the App entry point and real preference/vault seeds.
+set -eu
+python3 - <<'PYCOMPILE'
+import pathlib,re,subprocess
+line=next(row for row in pathlib.Path('scripts/build_app.sh').read_text().splitlines() if row.startswith('xcrun swiftc -parse-as-library'))
+sources=re.findall(r'native/[a-z_]+\.swift',line)
+command=['xcrun','swiftc','-parse-as-library','-swift-version','5','-D','ROUTEPILOT_NATIVE_TEST','-module-cache-path','.cache/swift-module']
+for framework in ['AppKit','WebKit','ServiceManagement','UserNotifications']:command+=['-framework',framework]
+subprocess.run(command+sources+['native/management_windows_test.swift','-o','.cache/native-tests/management-windows'],check=True)
+PYCOMPILE
+fixture_port=$(mktemp .cache/native-tests/management-port.XXXXXX)
+python3 native/management_windows_fixture.py "$fixture_port" &
+fixture_pid=$!
+trap 'kill "$fixture_pid" 2>/dev/null || true; rm -f "$fixture_port"' EXIT HUP INT TERM
+while [ ! -s "$fixture_port" ]; do kill -0 "$fixture_pid"; sleep 0.1; done
+.cache/native-tests/management-windows "$(cat "$fixture_port")" --smoke-test

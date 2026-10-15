@@ -122,6 +122,7 @@ final class RemoteNotificationWatch {
     init(id: String, scope: String, base: URL, cookie: HTTPCookie, settings: [String: Any]) {
         self.id = id; self.scope = scope; self.settings = settings
         self.client = ControllerClient(base)
+        self.client.expectedBackend = scope
         self.client.session.configuration.httpCookieStorage?.setCookie(cookie)
     }
 }
