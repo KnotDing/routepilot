@@ -78,7 +78,7 @@
 | `make fuzz` | 版本解析 fuzz |
 | `make package package-check` | 构建完整 App，验证版本、资源、签名、DMG/ZIP 和 SHA256SUMS |
 
-完整升级包含 App、管理页面、CLI 和网络服务。发布不再附带独立后台安装包。手动拖放替换 App 不保证常驻后台同步更新；在线更新需继续遵守正在使用 App 时确认重启、仅后台运行时通知后自动重启的约定。
+完整升级包含 App、管理页面、CLI 和网络服务。发布不再附带独立后台安装包。手动拖放替换 App 不保证常驻后台同步更新；在线更新默认遵守正在使用 App 时确认重启、仅后台运行时通知后自动重启的约定；远程升级完成后，允许管理端通过单独二次确认的“强制重启远程 App”覆盖远端等待，不再次重启网络后台。
 
 ## 发布约定
 
@@ -203,7 +203,7 @@
 | 登录、管理 IP 白名单、反向代理 | `internal/security/security.go`（`Wrap`）；`client_ip.go`；`internal/config/management_security.go` | `internal/controlclient/access.go`；`web/src/credentials.js`、`backends.jsx`；`native/credentials.swift`、`remote_credentials.swift`；`docs/remote-management.md` |
 | 远程连接与接口兼容 | `internal/remote/remote.go` 的接口允许列表与中继；`web/src/client.js` 的 `request` / `requestOptional` / `selectBackend` | `web/src/backends.jsx`、`version-notice.jsx`；`Workspace` 的页面请求与登录恢复 |
 | 检查版本、更新源、自动下载/安装与跳过版本 | `internal/config/config.go` 的 `Updates.UpdateSource`；`internal/softwareupdate/update.go`（`Check` / `StartForChannel` / 版本比较）；`internal/softwareupdate/worker.go` 保留已选来源；`internal/api/update_scheduler.go` | `web/src/main.jsx` 的 `Settings`、`app-preferences.jsx`、`backend-update.jsx`（持久挂载更新器 / 检查按钮 portal）、`form-fields.jsx`；`native/release_updater.swift`；`native/credentials.swift` 的 `GitHubAccessTokenVault` 保存本机 App 的 GitHub token；`update_dialog.swift`、`update_assistant.swift` |
-| 完整升级、回滚、远端 App 重启 | `internal/softwareupdate/application.go`、`worker.go`、`app_restart.go`；`agent.go`（更新助手）、`download_progress.go`（实际下载字节采样） | `native/remote_update_restart.swift`、`installer.swift`；`internal/security/update_sessions.go`；凭证与管理窗口恢复 |
+| 完整升级、回滚、远端 App 重启 | `internal/softwareupdate/application.go`、`worker.go`、`app_restart.go`（`ForceRestartApp` / 取消旧助手与 GUI 交接）；`agent.go`（更新助手）、`download_progress.go`（实际下载字节采样） | `native/remote_update_restart.swift`、`installer.swift`；`internal/security/update_sessions.go`；凭证与管理窗口恢复 |
 | CLI / skill 开关、安装目标与冲突 | `internal/api/automation.go`；`internal/appautomation/automation.go`（目标后端的桌面用户 helper） | `native/automation.swift`；`web/src/automation-settings.jsx`；`scripts/install_cli.sh` / `install_skill.sh`；`skills/routepilot-control/` |
 | 状态栏菜单、动画与指标 | `native/main.swift` 的 `rebuildMenu` / `refreshFromBackend`；`status_icon.swift`、`status_preferences.swift` | `web/src/status-bar-settings.jsx`；`internal/app/surge_recovery.go` 的请求速率采样 |
 | 窗口尺寸、重开页面与 JS bridge | `native/main.swift` 的管理窗口与 `userContentController`；`window_frame.swift`；`monitoring_preferences.swift`（大屏显示偏好） | `web/src/credentials.js`、`app-preferences.jsx`、`window-visibility.js` |

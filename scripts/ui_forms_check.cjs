@@ -7,7 +7,9 @@ const fixture=Function(source.slice(source.indexOf('const settings='),source.ind
  const browser=await chromium.launch({headless:true});
  try{
  const page=await browser.newPage({viewport:{width:1440,height:1000},locale:'zh-CN',colorScheme:'light',reducedMotion:'reduce'});
- let crowdedPolicyFlows=false,sourceNames=false,monitorDimensions=false;
+ let crowdedPolicyFlows=false,sourceNames=false,monitorDimensions=false,remoteAppPending=false,appRestartPhase='awaiting_confirmation';
+ const appRestartRequests=[];
+ const release=JSON.parse(fs.readFileSync('internal/buildinfo/release.json','utf8'));
  const monitoringQueries=[];
  const sourceRemark='住院楼二层护理站工作电脑用于观察实时解析策略与最终出口名称';
  const errors=[];page.on('pageerror',e=>errors.push(e.message));
@@ -20,6 +22,11 @@ const fixture=Function(source.slice(source.indexOf('const settings='),source.ind
    let value=fixture(path);
    if(path==='management/backends')value=[{id:'preview',name:'远程预览',url:'http://192.0.2.1:1055'}];
    if(path==='updates/check')value={app_current:'0.4.16',current:'0.4.17',latest:'v0.4.18',available:true,supported:true,phase:'idle',release_notes:'## 界面优化\n\n- **Markdown** 渲染更新说明。\n- 紧凑排列开关选项。\n\n查看 [项目发布](https://gitea.knotding.com/knot/routepilot/releases)。\n\n<script>window.untrustedRelease=true</script>\n\n![image](https://example.invalid/image.png)'};
+   if(remoteAppPending&&['updates/check','updates/status','updates/restart-app'].includes(path)){
+    if(path==='updates/restart-app'){appRestartRequests.push(route.request().postDataJSON());appRestartPhase='restarting'}
+    value={current:release.version,app_current:release.version,latest:'v'+release.version,target:'v'+release.version,available:false,supported:true,phase:'succeeded',app_restart:appRestartPhase,app_restart_force_supported:true};
+   }
+   if(remoteAppPending&&path==='status')value={...value,software:{version:release.version,build:release.build}};
    if(path==='dns/clients')value={...value,clients:[{client_ip:'192.0.2.10',queries:12,direct:12,surge:0,reject:0,unknown:0,errors:0,last_seen:new Date().toISOString()}],stats:{...value.stats,clients:1,queries:12,direct:12}};
    if(path==='settings')value={...value,cache:{...value.cache,optimistic:false,optimistic_responses:false},notifications:{enabled:true,surge:true,bgp:true,dns:true,controller:true,recovery:true,cooldown_seconds:300,webhook_url:'',webhook_configured:false,errors:[]}};
    if(path==='settings'&&sourceNames)value={...value,dns:{...value.dns,clients:[{id:'named',ip:'192.0.2.10',name:sourceRemark,decision:''}]}};
@@ -220,6 +227,25 @@ const fixture=Function(source.slice(source.indexOf('const settings='),source.ind
  }
  await page.setViewportSize({width:1440,height:1000});await page.evaluate(()=>document.documentElement.dataset.theme='dark');await page.screenshot({path:out+'/update-web-dark.png',fullPage:true});
  await dialog.getByRole('button',{name:'稍后升级',exact:true}).click();await page.getByRole('dialog').waitFor({state:'hidden'});
+ remoteAppPending=true;await page.reload();await page.getByRole('button',{name:'强制重启远程 App',exact:true}).waitFor();
+ for(const width of [1440,390]){
+  await page.setViewportSize({width,height:1000});await check('remote App reminder '+width);
+  const reminder=page.locator('.app-restart-notice');
+  if(!(await reminder.evaluate(el=>!el.classList.contains('notice')&&getComputedStyle(el).backgroundColor==='rgba(0, 0, 0, 0)'&&getComputedStyle(el).borderTopStyle==='none')))throw Error('Pending App restart still uses a warning banner');
+  await reminder.screenshot({path:out+'/remote-app-reminder-'+width+'.png'});
+  await page.getByRole('button',{name:'强制重启远程 App',exact:true}).click();
+  const restart=page.getByRole('dialog',{name:'强制重启远程 App',exact:true});
+  await restart.getByText(/网络后台、DNS 和 BGP 继续运行/).waitFor();await check('force App restart dialog '+width);
+  if(!(await restart.getByRole('button',{name:'取消',exact:true}).evaluate(el=>el===document.activeElement)))throw Error('Forced App restart did not default focus to Cancel');
+  await page.screenshot({path:out+'/force-app-restart-'+width+'.png',fullPage:true});
+  await restart.getByRole('button',{name:'取消',exact:true}).click();
+ }
+ if(appRestartRequests.length)throw Error('Cancel submitted an App restart');
+ await page.getByRole('button',{name:'强制重启远程 App',exact:true}).click();
+ await page.getByRole('dialog',{name:'强制重启远程 App',exact:true}).getByRole('button',{name:'确认强制重启',exact:true}).click();
+ await page.getByRole('dialog').waitFor({state:'hidden'});
+ if(appRestartRequests.length!==1||appRestartRequests[0].version!=='v'+release.version)throw Error('Wrong App restart target or duplicate request');
+ remoteAppPending=false;
  monitorDimensions=true;await page.setViewportSize({width:1440,height:1000});await page.evaluate(()=>{sessionStorage.removeItem('routepilot.backend')});await page.reload();await page.getByRole('heading',{level:1,name:'仪表盘',exact:true}).waitFor();await go('大屏监控');await page.getByRole('button',{name:'筛选域名：example.test',exact:true}).waitFor();await page.locator('.monitor-domain-shares').getByText(/域名统计起点/).waitFor();
  for(const width of [1440,390]){
   await page.setViewportSize({width,height:1000});await check('monitor filters '+width);
@@ -231,7 +257,7 @@ const fixture=Function(source.slice(source.indexOf('const settings='),source.ind
  await page.waitForFunction(()=>document.querySelector('.monitor-metrics')?.textContent.includes('筛选完成请求3'));if(!monitoringQueries.some(query=>{const params=new URLSearchParams(query);return ['source','destination','policy','final_policy','domain','response_code'].every(key=>params.get(key))}))throw Error('Combined monitoring filters were not sent together');
  await page.getByRole('button',{name:'历史数据',exact:true}).click();await page.getByText('窗口末处理中',{exact:true}).waitFor();if(!(await page.locator('.monitor-metrics').textContent()).includes('筛选完成请求3'))throw Error('Historical monitoring ignores combined filters');
  if(errors.length)throw Error(errors.join('\n'));
- fs.writeFileSync(out+'/verification.json',JSON.stringify({passed:true,widths:[1440,1120,390],pages:pages.length,categories:categories.length,flowWidths:[1440,3840,2100,1440],equalParallelHeights:true,liveHeightReduction:true,combinedMonitoringFilters:true,compactSourceDomainRows:true,inlineFilterNames:true,errors},null,2));
+ fs.writeFileSync(out+'/verification.json',JSON.stringify({passed:true,widths:[1440,1120,390],pages:pages.length,categories:categories.length,flowWidths:[1440,3840,2100,1440],equalParallelHeights:true,liveHeightReduction:true,combinedMonitoringFilters:true,compactSourceDomainRows:true,inlineFilterNames:true,quietAppRestartReminder:true,confirmedRemoteAppRestart:true,errors},null,2));
  console.log(JSON.stringify({passed:true,pages:pages.length,categories:categories.length,widths:[1440,1120,390],screenshots:out}));
  }finally{await browser.close()}
 })().catch(e=>{console.error(e);process.exitCode=1});

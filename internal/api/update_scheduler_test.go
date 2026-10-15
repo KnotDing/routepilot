@@ -217,3 +217,51 @@ func TestCancelledCheckStillPersistsItsFailure(t *testing.T) {
 		t.Fatal("lost the cancelled check's persistent outcome", status)
 	}
 }
+
+type appRestartStub struct {
+	*updateStub
+	restarted int
+	version   string
+	err       error
+}
+
+func (u *appRestartStub) ForceRestartApp(version string) (softwareupdate.Status, error) {
+	u.restarted++
+	u.version = version
+	return softwareupdate.Status{Phase: "succeeded", AppRestart: "restarting"}, u.err
+}
+func TestForceAppRestartAPIAuthenticationAndVersion(t *testing.T) {
+	a, updates := updateFixture(t)
+	restart := &appRestartStub{updateStub: updates}
+	a.SoftwareUpdates = restart
+	call := func(method, body string) *httptest.ResponseRecorder {
+		w := httptest.NewRecorder()
+		a.Handler().ServeHTTP(w, httptest.NewRequest(method, "/api/v1/updates/restart-app", strings.NewReader(body)))
+		return w
+	}
+	doc := a.Service.(*routeService)
+	doc.doc.Settings.Security.Authentication = false
+	if w := call("POST", `{"version":"v9.0.0"}`); w.Code != 403 || restart.restarted != 0 {
+		t.Fatal(w.Code, w.Body.String())
+	}
+	doc.doc.Settings.Security.Authentication = true
+	for _, body := range []string{`{"version":3}`, `{"version":"v9.0.0","command":"anything"}`} {
+		if w := call("POST", body); w.Code != 400 || restart.restarted != 0 {
+			t.Fatal(w.Code, w.Body.String())
+		}
+	}
+	if w := call("GET", ""); w.Code != 404 || restart.restarted != 0 {
+		t.Fatal(w.Code, w.Body.String())
+	}
+	if w := call("POST", `{"version":"v9.0.0"}`); w.Code != 202 || restart.restarted != 1 || restart.version != "v9.0.0" || updates.starts != 0 {
+		t.Fatal(w.Code, w.Body.String())
+	}
+	restart.err = errors.New("stale update")
+	if w := call("POST", `{"version":"v8.0.0"}`); w.Code != 409 {
+		t.Fatal(w.Code, w.Body.String())
+	}
+	a.SoftwareUpdates = updates
+	if w := call("POST", `{"version":"v9.0.0"}`); w.Code != 501 {
+		t.Fatal(w.Code, w.Body.String())
+	}
+}

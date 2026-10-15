@@ -1282,5 +1282,10 @@
   "域名统计起点：{time}；升级前缺失的明细不倒填。": "Domain statistics since {time}. Missing details from before the upgrade are not backfilled.",
   "部分请求因暂存容量或存储故障未保留域名，单独计入未记录域名。": "Requests whose domains could not be retained due to buffering limits or storage failure are counted separately as unrecorded domains.",
   "此范围使用旧版组合明细，超出容量的域名无法还原。": "This range uses legacy combination details. Domains lost beyond its capacity cannot be recovered.",
-  "组合明细覆盖 {recorded} / {total} 个请求，具体条件筛选仅统计这些明细；独立域名排行不受此限制。": "Combination details cover {recorded} of {total} requests. Specific filters use only these details; independent domain rankings are unaffected."
+  "组合明细覆盖 {recorded} / {total} 个请求，具体条件筛选仅统计这些明细；独立域名排行不受此限制。": "Combination details cover {recorded} of {total} requests. Specific filters use only these details; independent domain rankings are unaffected.",
+  "强制重启远程 App": "Force restart remote App",
+  "确认强制重启": "Confirm force restart",
+  "将关闭并重新打开远端 {name} 的 App，无需远端用户确认。未保存的管理页面内容可能丢失；网络后台、DNS 和 BGP 继续运行。": "Close and reopen the App on {name} without confirmation from the remote user. Unsaved management page edits may be lost. The network service, DNS and BGP will keep running.",
+  "管理端已确认强制重启 App，即将关闭并重新打开管理窗口。网络服务继续运行。": "The management client confirmed a forced App restart. The management window will close and reopen. The network service will keep running.",
+  "远程后端已是最新版本，可继续正常管理。": "The remote backend is up to date and can be managed normally."
 }

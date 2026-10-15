@@ -10,6 +10,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"syscall"
 	"time"
 
 	"surge-controller/internal/buildinfo"
@@ -21,6 +22,96 @@ type appRestartStatus struct {
 	Target string `json:"target"`
 	Phase  string `json:"phase"`
 	Error  string `json:"error,omitempty"`
+}
+
+type appRestartOperations struct {
+	read  func() appRestartStatus
+	write func(appRestartStatus) error
+	run   func(context.Context, time.Time, bool, func(string, string))
+}
+
+func (m *Manager) appRestartForceBusy() bool {
+	m.appRestartMu.Lock()
+	defer m.appRestartMu.Unlock()
+	return m.appRestartForced
+}
+
+// ForceRestartApp only completes the GUI handoff for the installed update. The
+// caller supplies the confirmed version, never a process, user, path or command.
+func (m *Manager) ForceRestartApp(version string) (Status, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	s := m.snapshot()
+	if !m.supported {
+		return s, errors.New(m.reason)
+	}
+	if m.running || m.appRestartForceBusy() || s.Phase != "succeeded" || version != s.Target || version != "v"+s.Current || s.AppCurrent != s.Current || s.UpdatedAt.IsZero() || (s.AppRestart != "awaiting_confirmation" && s.AppRestart != "deferred" && s.AppRestart != "failed") {
+		return s, errors.New("Refresh update status before forcing the remote App to restart")
+	}
+	if err := m.beginAppRestart(s.Target, s.UpdatedAt, true); err != nil {
+		return s, err
+	}
+	return m.snapshot(), nil
+}
+
+// Supersede the waiting helper, then join it before starting a forced handoff.
+// Generation checks prevent late output from an old dialog overwriting status.
+func (m *Manager) beginAppRestart(target string, before time.Time, force bool) error {
+	m.appRestartMu.Lock()
+	defer m.appRestartMu.Unlock()
+	phase := "checking"
+	if force {
+		phase = "restarting"
+	}
+	if err := m.appOps.write(appRestartStatus{Target: target, Phase: phase}); err != nil {
+		return err
+	}
+	previous := m.appRestartDone
+	if m.appRestartCancel != nil {
+		m.appRestartCancel()
+	}
+	ctx, cancel := context.WithCancel(m.ctx)
+	if force {
+		cancel()
+		ctx, cancel = context.WithTimeout(m.ctx, 2*time.Minute)
+	}
+	done := make(chan struct{})
+	m.appRestartCancel, m.appRestartDone = cancel, done
+	m.appRestartID++
+	id := m.appRestartID
+	m.appRestartForced = force
+	go func() {
+		defer cancel()
+		defer close(done)
+		defer func() {
+			m.appRestartMu.Lock()
+			defer m.appRestartMu.Unlock()
+			if m.appRestartID == id {
+				if errors.Is(ctx.Err(), context.DeadlineExceeded) {
+					_ = m.appOps.write(appRestartStatus{Target: target, Phase: "failed", Error: "Remote App restart timed out; reopen RoutePilot on the remote Mac"})
+				}
+				m.appRestartForced = false
+			}
+		}()
+		if previous != nil {
+			select {
+			case <-previous:
+			case <-ctx.Done():
+				return
+			}
+		}
+		if ctx.Err() != nil {
+			return
+		}
+		m.appOps.run(ctx, before, force, func(phase, message string) {
+			m.appRestartMu.Lock()
+			defer m.appRestartMu.Unlock()
+			if m.appRestartID == id && ctx.Err() == nil {
+				_ = m.appOps.write(appRestartStatus{Target: target, Phase: phase, Error: message})
+			}
+		})
+	}()
+	return nil
 }
 
 func readAppRestart() appRestartStatus {
@@ -90,14 +181,16 @@ func (m *Manager) reconcileAppRestart(update Status, restart appRestartStatus) {
 			return
 		}
 		clear, running := appsReopened(string(output), update.UpdatedAt)
-		if !clear || readAppRestart() != restart || readState().Target != update.Target {
+		m.appRestartMu.Lock()
+		defer m.appRestartMu.Unlock()
+		if !clear || m.appOps.read() != restart || m.ops.read().Target != update.Target {
 			return
 		}
 		phase := "not_running"
 		if running {
 			phase = "restarted"
 		}
-		_ = writeJSON(appRestartFile, appRestartStatus{Target: restart.Target, Phase: phase})
+		_ = m.appOps.write(appRestartStatus{Target: restart.Target, Phase: phase})
 	}()
 }
 
@@ -118,7 +211,9 @@ func (m *Manager) resumeRemoteApp(initial Status) {
 			}
 			if s.Phase == "succeeded" {
 				if appVersion(ctx) == buildinfo.Current().Version {
-					m.restartRemoteApp(initial.Target, initial.UpdatedAt)
+					if err := m.beginAppRestart(initial.Target, initial.UpdatedAt, false); err != nil {
+						_ = m.appOps.write(appRestartStatus{Target: initial.Target, Phase: "failed", Error: err.Error()})
+					}
 				} else {
 					_ = writeJSON(appRestartFile, appRestartStatus{Target: initial.Target, Phase: "failed", Error: "Cannot validate the updated App; reopen RoutePilot on the remote Mac"})
 				}
@@ -152,11 +247,9 @@ func appSessionUIDs(output string) []int {
 	return uids
 }
 
-func (m *Manager) restartRemoteApp(target string, before time.Time) {
-	report := func(phase, message string) { _ = writeJSON(appRestartFile, appRestartStatus{target, phase, message}) }
-	report("checking", "")
-	ctx, cancel := context.WithTimeout(m.ctx, 10*time.Second)
-	output, err := exec.CommandContext(ctx, "/bin/ps", "-axo", "pid=,uid=,comm=").Output()
+func (m *Manager) restartRemoteApp(ctx context.Context, before time.Time, force bool, report func(string, string)) {
+	inspectCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	output, err := exec.CommandContext(inspectCtx, "/bin/ps", "-axo", "pid=,uid=,comm=").Output()
 	cancel()
 	if err != nil {
 		report("failed", "Cannot inspect the remote App session; reopen RoutePilot on the remote Mac")
@@ -168,7 +261,7 @@ func (m *Manager) restartRemoteApp(target string, before time.Time) {
 		return
 	}
 	// Fixed installed bundle only. No client-supplied path, UID or command.
-	if applicationsOwned() != nil || privateOwned(appTarget, true) != nil || command(m.ctx, "/usr/bin/codesign", "--verify", "--deep", "--strict", appTarget) != nil {
+	if applicationsOwned() != nil || privateOwned(appTarget, true) != nil || command(ctx, "/usr/bin/codesign", "--verify", "--deep", "--strict", appTarget) != nil {
 		report("failed", "Cannot validate the updated App; reopen RoutePilot on the remote Mac")
 		return
 	}
@@ -176,12 +269,15 @@ func (m *Manager) restartRemoteApp(target string, before time.Time) {
 	// It notifies first, asks if the management window is in use, and quits only
 	// the exact installed RoutePilot instances after approval.
 	var mu sync.Mutex
+	var wg sync.WaitGroup
 	sessions := make(map[int]appRestartStatus, len(uids))
 	for _, uid := range uids {
 		sessions[uid] = appRestartStatus{Phase: "checking"}
 	}
 	for _, uid := range uids {
+		wg.Add(1)
 		go func(uid int) {
+			defer wg.Done()
 			update := func(phase, message string) {
 				mu.Lock()
 				defer mu.Unlock()
@@ -197,21 +293,58 @@ func (m *Manager) restartRemoteApp(target string, before time.Time) {
 					}
 				}
 			}
-			if err := m.restartAppSession(uid, before, update); err != nil {
+			if err := m.restartAppSession(ctx, uid, before, force, update); err != nil {
 				update("failed", err.Error())
 			}
 		}(uid)
 	}
+	wg.Wait()
 }
 
-func (m *Manager) restartAppSession(uid int, before time.Time, report func(string, string)) error {
+func cancelAppRestartCommand(cmd *exec.Cmd) {
+	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+	cmd.Cancel = func() error {
+		if err := syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL); err != nil {
+			if errors.Is(err, syscall.ESRCH) {
+				return os.ErrProcessDone
+			}
+			return err
+		}
+		return nil
+	}
+}
+
+func (m *Manager) restartAppSession(ctx context.Context, uid int, before time.Time, force bool, report func(string, string)) error {
 	user := strconv.Itoa(uid)
-	if command(m.ctx, "/bin/launchctl", "print", "gui/"+user) != nil {
+	if command(ctx, "/bin/launchctl", "print", "gui/"+user) != nil {
 		return errors.New("Remote App user session is unavailable; reopen RoutePilot on the remote Mac")
 	}
 	// asuser adopts the bootstrap namespace, not Unix credentials; sudo drops
 	// those before the AppKit helper is started. Neither operation prompts.
-	cmd := exec.CommandContext(m.ctx, "/bin/launchctl", "asuser", user, "/usr/bin/sudo", "-n", "-H", "-u", "#"+user, appTarget+"/Contents/MacOS/RoutePilot", "--finish-remote-update", "--restart-before", strconv.FormatFloat(float64(before.UnixNano())/1e9, 'f', 9, 64))
+	args := []string{"asuser", user, "/usr/bin/sudo", "-n", "-H", "-u", "#" + user, appTarget + "/Contents/MacOS/RoutePilot", "--finish-remote-update", "--restart-before", strconv.FormatFloat(float64(before.UnixNano())/1e9, 'f', 9, 64)}
+	if force {
+		args = append(args, "--force-app-restart")
+	}
+	cmd := exec.CommandContext(ctx, "/bin/launchctl", args...)
+	// Cancel the entire helper process group, including sudo's child, so an
+	// unattended modal cannot later approve a second relaunch.
+	cancelAppRestartCommand(cmd)
+	// EOF also stops the unprivileged helper if sudo gives it a separate group,
+	// or the backend exits while a remote confirmation dialog is open.
+	stdin, err := cmd.StdinPipe()
+	if err != nil {
+		return err
+	}
+	defer stdin.Close()
+	finished := make(chan struct{})
+	defer close(finished)
+	go func() {
+		select {
+		case <-ctx.Done():
+			_ = stdin.Close()
+		case <-finished:
+		}
+	}()
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {
 		return err

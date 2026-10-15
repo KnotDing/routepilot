@@ -750,3 +750,13 @@ acceptance was performed. Configuration runtime application is unchanged.
 - 完整本地 `env GOCACHE=/Volumes/Code/RoutePilot/.cache/go-build make verify-release` 通过：前端 35 文件 / 181 测试、Go 全包 race / vet、原生核心与真实 WKWebView、17 页面 / 14 设置分类响应式检查、九项分组缓存检查、完整 App 打包及版本 / 资源 / 签名 / DMG / ZIP / SHA256 校验。源码身份为 `1.0.4-beta.22 / build 104`；旧产物已备份。相同 GOCACHE 的 `make fuzz` 通过，执行 203,978 次。
 - 本地原始日志：`artifacts/releases/v1.0.4-beta.22/local-verification.log`、`fuzz.log`；双仓库 Actions、Release 类型、附件下载 / 哈希和实际包版本的发布后证据保存至该目录的 `publication-verification.json`，CI build 按对应 Actions run number 核验，不要求与源码 build 相同。
 - 未安装、升级或重启现用环境；会话恢复使用模拟原生桥接与隔离后端验证，未做真实运行中的 App / 后台重启验收。未做真实 LAN / Surge / NAT / IPv6 流量及长期资源占用验收。
+
+## 2026-10-15：远程 App 强制重启与轻量提示（beta.23 发布验证）
+
+- 远程后端升级完成、仅图形 App 尚未重启时，管理页面改用普通灰色提示，说明可继续管理；不再显示黄色升级告警，App 重启失败也不作为网络后台失败报告。等待确认 / 稍后 / 失败状态每 30 秒查询一次，实际重启时每 2 秒查询。
+- 支持此能力的后端在等待远端确认、稍后或失败状态提供“强制重启远程 App”。本端二次确认后，固定版本请求异步执行 GUI 交接；取消并等待旧助手退出，拒绝重复操作和与安装并发，保留按用户会话降权、固定 App 路径、代码签名与启动时间边界。已手动重开的新进程不被终止，原本关闭的 App 不会被启动。强制操作先正常退出，无响应时终止匹配的旧 App；网络服务不再次重启。请求持久化失败不取消旧助手，超时明确失败并允许重试。
+- `npm --prefix web test`：35 文件 / 185 测试通过；最终文案微调后 `npm --prefix web test -- src/backend-update.test.jsx` 17 项通过。`npm --prefix web run build` 与 `env GOCACHE=/Volumes/Code/RoutePilot/.cache/go-build go build ./...` 通过。相同 GOCACHE 的 `go test -race ./internal/softwareupdate ./internal/api ./internal/remote -timeout 120s` 和三包 `go vet` 通过，覆盖取消旧助手 / 旧输出隔离、重复操作、安装互斥、状态与版本校验、持久化失败、子进程组退出、认证及中继 POST 限制。
+- `sh scripts/test_native.sh` 通过，包括精确进程路径 / 启动时间 / 助手排除，以及主线程被阻塞时仍收到管道取消；完整生产 Swift 源码 `xcrun swiftc -typecheck ...` 通过。现有 `update_dialog.swift` 的 WebKit 并发警告仍存在。
+- `node scripts/ui_forms_check.cjs` 通过 17 页面 / 14 设置分类及 1440、1120、390 px 检查；新增远程轻提示的透明背景 / 无告警边框、手机确认框、取消默认焦点及准确单次提交验证。截图与结果位于 `artifacts/ui-forms/remote-app-reminder-*.png`、`force-app-restart-*.png` 和 `verification.json`；使用模拟 API，不连接实际后端。
+- 发布前 `env GOCACHE=/Volumes/Code/RoutePilot/.cache/go-build make package package-check` 通过，覆盖完整 App / 后台 / CLI、版本、资源、签名、DMG 布局、ZIP 和 SHA256SUMS；旧产物与二进制已备份至 `artifacts/pre-beta23-backup-20261015/`。版本更新后前端升级 / 版本提示 / 全量翻译三文件共 39 项检查通过；包日志为 `artifacts/releases/v1.0.4-beta.23/package.log`。
+- 实现阶段未提交、未发布或重启现用 App / 后台；本轮获授权发布测试版 `v1.0.4-beta.23`（源码 build 105），发布后工作流与双仓库附件证据保存至 `artifacts/releases/v1.0.4-beta.23/`。未授权安装升级现用环境。自动化验证不代替真实多用户远程桌面下的关闭、重开及通知验收；旧版后端不提供强制重启按钮。

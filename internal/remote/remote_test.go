@@ -248,3 +248,9 @@ func TestClientSettingsRelayOnlyAllowsResourceOperations(t *testing.T) {
 		t.Fatal("unsupported client operation allowed")
 	}
 }
+
+func TestRelayAllowsOnlyPostForForcedAppRestart(t *testing.T) {
+	if !allowed("updates/restart-app", "POST") || allowed("updates/restart-app", "GET") || allowed("updates/restart-app", "DELETE") {
+		t.Fatal("App restart relay policy is incorrect")
+	}
+}

@@ -291,6 +291,31 @@ func (a *API) serve(w http.ResponseWriter, r *http.Request) {
 			} else {
 				write(w, 200, a.updateStatus(r.Context()))
 			}
+		case path == "updates/restart-app" && r.Method == "POST":
+			if !a.Service.Configuration().Settings.Security.Authentication {
+				fail(w, 403, errors.New("Enable management authentication before restarting the remote App"))
+				return
+			}
+			restarter, ok := a.SoftwareUpdates.(interface {
+				ForceRestartApp(string) (softwareupdate.Status, error)
+			})
+			if !ok {
+				fail(w, 501, errors.New("This backend does not support forcing the remote App to restart"))
+				return
+			}
+			var body struct {
+				Version string `json:"version"`
+			}
+			if err := decode(w, r, &body); err != nil {
+				fail(w, 400, err)
+				return
+			}
+			status, err := restarter.ForceRestartApp(body.Version)
+			if err != nil {
+				fail(w, 409, err)
+			} else {
+				write(w, 202, status)
+			}
 		case path == "updates/install" && r.Method == "POST":
 			if !a.Service.Configuration().Settings.Security.Authentication {
 				fail(w, 403, errors.New("Enable management authentication before online backend updates"))

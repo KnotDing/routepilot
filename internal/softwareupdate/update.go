@@ -38,26 +38,27 @@ const (
 )
 
 type Status struct {
-	Supported       bool      `json:"supported"`
-	Reason          string    `json:"reason,omitempty"`
-	Current         string    `json:"current"`
-	AppCurrent      string    `json:"app_current,omitempty"`
-	Latest          string    `json:"latest,omitempty"`
-	ReleaseNotes    string    `json:"release_notes,omitempty"`
-	Available       bool      `json:"available"`
-	Phase           string    `json:"phase"`
-	Target          string    `json:"target,omitempty"`
-	Error           string    `json:"error,omitempty"`
-	CheckedAt       time.Time `json:"checked_at,omitempty"`
-	UpdatedAt       time.Time `json:"updated_at,omitempty"`
-	AppRestart      string    `json:"app_restart,omitempty"`
-	AppRestartError string    `json:"app_restart_error,omitempty"`
-	SkippedVersion  string    `json:"skipped_version,omitempty"`
-	CheckError      string    `json:"check_error,omitempty"`
-	AutomationError string    `json:"automation_error,omitempty"`
-	NextRetryAt     time.Time `json:"next_retry_at,omitempty"`
-	DownloadBytes   int64     `json:"download_bytes,omitempty"`
-	DownloadTotal   int64     `json:"download_total,omitempty"`
+	Supported                bool      `json:"supported"`
+	Reason                   string    `json:"reason,omitempty"`
+	Current                  string    `json:"current"`
+	AppCurrent               string    `json:"app_current,omitempty"`
+	Latest                   string    `json:"latest,omitempty"`
+	ReleaseNotes             string    `json:"release_notes,omitempty"`
+	Available                bool      `json:"available"`
+	Phase                    string    `json:"phase"`
+	Target                   string    `json:"target,omitempty"`
+	Error                    string    `json:"error,omitempty"`
+	CheckedAt                time.Time `json:"checked_at,omitempty"`
+	UpdatedAt                time.Time `json:"updated_at,omitempty"`
+	AppRestart               string    `json:"app_restart,omitempty"`
+	AppRestartError          string    `json:"app_restart_error,omitempty"`
+	AppRestartForceSupported bool      `json:"app_restart_force_supported,omitempty"`
+	SkippedVersion           string    `json:"skipped_version,omitempty"`
+	CheckError               string    `json:"check_error,omitempty"`
+	AutomationError          string    `json:"automation_error,omitempty"`
+	NextRetryAt              time.Time `json:"next_retry_at,omitempty"`
+	DownloadBytes            int64     `json:"download_bytes,omitempty"`
+	DownloadTotal            int64     `json:"download_total,omitempty"`
 }
 type release struct {
 	Tag        string `json:"tag_name"`
@@ -71,24 +72,30 @@ type release struct {
 	Source string `json:"-"`
 }
 type Manager struct {
-	mu              sync.Mutex
-	checkMu         sync.Mutex
-	ctx             context.Context
-	standardService bool
-	supported       bool
-	reason          string
-	running         bool
-	latest          release
-	checkedAt       time.Time
-	checkedBeta     bool
-	checkedSource   string
-	source          string
-	checkError      string
-	beforeRestart   func() error
-	appRestartOnce  sync.Once
-	appReconcileMu  sync.Mutex
-	appReconcileAt  time.Time
-	ops             updateOperations
+	mu               sync.Mutex
+	checkMu          sync.Mutex
+	ctx              context.Context
+	standardService  bool
+	supported        bool
+	reason           string
+	running          bool
+	latest           release
+	checkedAt        time.Time
+	checkedBeta      bool
+	checkedSource    string
+	source           string
+	checkError       string
+	beforeRestart    func() error
+	appRestartOnce   sync.Once
+	appReconcileMu   sync.Mutex
+	appReconcileAt   time.Time
+	appRestartMu     sync.Mutex
+	appRestartCancel context.CancelFunc
+	appRestartDone   chan struct{}
+	appRestartID     uint64
+	appRestartForced bool
+	appOps           appRestartOperations
+	ops              updateOperations
 }
 
 type updateOperations struct {
@@ -106,6 +113,7 @@ func New(ctx context.Context, database string, beforeRestart func() error) *Mana
 		pid: workerPID, prepare: prepare, appVersion: func() string { return appVersion(ctx) },
 	}}
 	m.standardService = runtime.GOOS == "darwin" && os.Geteuid() == 0 && filepath.Clean(database) == "/var/db/surge-controller/controller.sqlite"
+	m.appOps = appRestartOperations{read: readAppRestart, write: func(s appRestartStatus) error { return writeJSON(appRestartFile, s) }, run: m.restartRemoteApp}
 	m.reason = supportReason(database)
 	m.supported = m.reason == ""
 	return m
@@ -278,8 +286,9 @@ func (m *Manager) snapshot() Status {
 	s.ReleaseNotes = m.latest.Body
 	s.CheckError = m.checkError
 	if m.supported {
+		s.AppRestartForceSupported = true
 		s.AppCurrent = m.ops.appVersion()
-		if restart := readAppRestart(); restart.Target == s.Target {
+		if restart := m.appOps.read(); restart.Target == s.Target {
 			s.AppRestart, s.AppRestartError = restart.Phase, restart.Error
 			m.reconcileAppRestart(s, restart)
 		}
@@ -398,7 +407,7 @@ func (m *Manager) startForSource(version string, includeBeta *bool, source strin
 		return m.snapshot(), errors.New(m.reason)
 	}
 	previous := m.ops.read()
-	if m.running || m.ops.pid() > 0 || active(previous.Phase) && time.Since(previous.UpdatedAt) < 10*time.Minute {
+	if m.running || m.appRestartForceBusy() || m.ops.pid() > 0 || active(previous.Phase) && time.Since(previous.UpdatedAt) < 10*time.Minute {
 		return m.snapshot(), errors.New("A backend update is already in progress")
 	}
 	if includeBeta != nil && *includeBeta != m.checkedBeta || source != "" && source != m.checkedSource || version != m.latest.Tag || !applicationUpdateAvailable(version, buildinfo.Current().Version, m.ops.appVersion()) || time.Since(m.checkedAt) > 10*time.Minute {

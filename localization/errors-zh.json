@@ -458,5 +458,9 @@
   "invalid monitoring response code": "监控响应码无效",
   "monitoring filters are unsupported": "此后端暂不支持多条件监控筛选",
   "monitoring request dimensions regressed": "监控请求维度计数回退",
-  "monitoring dimensions are unavailable for this history range": "此时段尚未采集组合筛选维度，无法按这些条件统计"
+  "monitoring dimensions are unavailable for this history range": "此时段尚未采集组合筛选维度，无法按这些条件统计",
+  "Refresh update status before forcing the remote App to restart": "请刷新升级状态后再强制重启远程 App",
+  "Enable management authentication before restarting the remote App": "请先启用管理认证，再重启远程 App",
+  "This backend does not support forcing the remote App to restart": "当前后端不支持强制重启远程 App",
+  "Remote App restart timed out; reopen RoutePilot on the remote Mac": "远端 App 重启超时，请重试或在远端手动重新打开"
 }

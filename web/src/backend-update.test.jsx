@@ -80,9 +80,9 @@ it('upgrades the complete application even when only the installed App is old',a
 it('continues checking failed App restart state until a manual relaunch clears it',async()=>{
  vi.useFakeTimers();const onReady=vi.fn();request.mockResolvedValue({...available,available:false,phase:'succeeded',app_restart:'failed',app_restart_error:'Remote App did not quit; reopen RoutePilot on the remote Mac'});mount(onReady);
  await act(async()=>{await Promise.resolve()});expect(screen.getByText('远端 App 未能重启，请在远端手动重新打开')).toBeInTheDocument();
- await act(async()=>vi.advanceTimersByTimeAsync(4000));expect(onReady).not.toHaveBeenCalled();
+ await act(async()=>vi.advanceTimersByTimeAsync(30000));expect(onReady).not.toHaveBeenCalled();
  request.mockResolvedValue({...available,available:false,phase:'succeeded',app_restart:'restarted'});
- await act(async()=>vi.advanceTimersByTimeAsync(2000));expect(onReady).toHaveBeenCalledTimes(1);expect(screen.queryByLabelText('远程软件更新')).not.toBeInTheDocument();
+ await act(async()=>vi.advanceTimersByTimeAsync(30000));expect(onReady).toHaveBeenCalledTimes(1);expect(screen.queryByLabelText('远程软件更新')).not.toBeInTheDocument();
  const count=request.mock.calls.length;await act(async()=>vi.advanceTimersByTimeAsync(6000));expect(request.mock.calls.length).toBe(count);
 });
 
@@ -91,4 +91,48 @@ it('shows download bytes from the selected backend without a second install requ
  mount();await waitFor(()=>expect(screen.getByRole('progressbar')).toHaveAttribute('value','50'));
  expect(screen.getByRole('button',{name:'升级远程应用'})).toBeDisabled();
  expect(request).toHaveBeenCalledTimes(1);
+});
+
+const pendingApp={...available,available:false,phase:'succeeded',target:'v0.5.2',app_restart:'awaiting_confirmation',app_restart_force_supported:true};
+it('uses a neutral reminder for a completed backend update with a pending App restart',async()=>{
+ request.mockResolvedValue(pendingApp);mount();
+ const panel=await screen.findByLabelText('远程软件更新');
+ expect(panel).toHaveClass('app-restart-notice');expect(panel).not.toHaveClass('notice');
+ expect(screen.getByText('远程后端已是最新版本，可继续正常管理。')).toBeInTheDocument();
+ expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+ expect(screen.queryByText('远程软件升级已完成')).not.toBeInTheDocument();
+ expect(screen.queryByRole('button',{name:'升级远程应用'})).not.toBeInTheDocument();
+});
+it('requires explicit local confirmation and restarts only the selected remote App',async()=>{
+ request.mockResolvedValue(pendingApp);mount();
+ fireEvent.click(await screen.findByRole('button',{name:'强制重启远程 App'}));
+ let dialog=screen.getByRole('dialog');expect(within(dialog).getByText(/网络后台、DNS 和 BGP 继续运行/)).toBeInTheDocument();
+ fireEvent.click(within(dialog).getByRole('button',{name:'取消'}));
+ expect(request).toHaveBeenCalledTimes(1);
+ fireEvent.click(screen.getByRole('button',{name:'强制重启远程 App'}));
+ dialog=screen.getByRole('dialog');
+ let finish;request.mockImplementation(()=>new Promise(resolve=>{finish=resolve}));
+ fireEvent.click(within(dialog).getByRole('button',{name:'确认强制重启'}));
+ expect(within(dialog).getByRole('button',{name:'确认强制重启'})).toBeDisabled();
+ expect(request).toHaveBeenLastCalledWith('updates/restart-app','POST',{version:'v0.5.2'});
+ await act(async()=>finish({...pendingApp,app_restart:'restarting'}));
+ expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+ expect(screen.queryByRole('button',{name:'强制重启远程 App'})).not.toBeInTheDocument();
+ expect(request.mock.calls.some(([path])=>path==='updates/install')).toBe(false);
+});
+it('keeps forced-restart failures visible for retry',async()=>{
+ request.mockResolvedValue({...pendingApp,app_restart:'deferred'});mount();
+ fireEvent.click(await screen.findByRole('button',{name:'强制重启远程 App'}));
+ request.mockRejectedValue(new Error('Remote App user session is unavailable; reopen RoutePilot on the remote Mac'));
+ fireEvent.click(within(screen.getByRole('dialog')).getByRole('button',{name:'确认强制重启'}));
+ expect(await within(screen.getByRole('dialog')).findByRole('alert')).toHaveTextContent(/远端|Remote/);
+ expect(within(screen.getByRole('dialog')).getByRole('button',{name:'确认强制重启'})).toBeEnabled();
+});
+it('does not offer a forced App restart for old backends or a local connection',async()=>{
+ request.mockResolvedValue({...pendingApp,app_restart_force_supported:undefined});mount();
+ await screen.findByText('远端 App 正在使用，等待远端用户确认重启');
+ expect(screen.queryByRole('button',{name:'强制重启远程 App'})).not.toBeInTheDocument();
+ cleanup();request.mockResolvedValue(pendingApp);render(<BackendUpdate capable software={{version:'0.5.2'}}/>);
+ await screen.findByText('App 正在使用，等待该 Mac 的用户确认重启');
+ expect(screen.queryByRole('button',{name:'强制重启远程 App'})).not.toBeInTheDocument();
 });

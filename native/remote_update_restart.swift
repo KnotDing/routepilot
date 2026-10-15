@@ -10,9 +10,12 @@ enum RemoteUpdateRestart {
     static let installedPath = "/Applications/RoutePilot.app"
 
     static func matches(_ app: NSRunningApplication, before: Date) -> Bool {
-        guard app.processIdentifier != getpid(), !app.isTerminated,
-              app.launchDate.map({ $0 < before }) ?? true,
-              let path = app.executableURL?.path else { return false }
+        matchesProcess(pid: app.processIdentifier, terminated: app.isTerminated, launched: app.launchDate,
+                       path: app.executableURL?.path, before: before)
+    }
+
+    static func matchesProcess(pid: pid_t, terminated: Bool, launched: Date?, path: String?, before: Date, helperPID: pid_t = getpid()) -> Bool {
+        guard pid != helperPID, !terminated, let launched, launched < before, let path else { return false }
         return path == installedPath + "/Contents/MacOS/RoutePilot"
             || (path.hasPrefix("/Applications/.RoutePilot-update-") && path.hasSuffix("/previous.app/Contents/MacOS/RoutePilot"))
     }
@@ -62,6 +65,17 @@ enum RemoteUpdateRestart {
         }
     }
 
+    static func backendLifetime(fileDescriptor: Int32 = STDIN_FILENO, onEnd: @escaping @Sendable () -> Void = { _exit(0) }) -> DispatchSourceRead {
+        let source = DispatchSource.makeReadSource(fileDescriptor: fileDescriptor, queue: .global())
+        source.setEventHandler {
+            var byte: UInt8 = 0
+            let count = Darwin.read(fileDescriptor, &byte, 1)
+            if count == 0 || (count < 0 && errno != EINTR && errno != EAGAIN) { onEnd() }
+        }
+        source.resume()
+        return source
+    }
+
     static func run() async {
         guard getuid() != 0, Bundle.main.bundleURL.path == installedPath,
               let index = CommandLine.arguments.firstIndex(of: "--restart-before"), index + 1 < CommandLine.arguments.count,
@@ -69,6 +83,11 @@ enum RemoteUpdateRestart {
             report("failed", "Invalid remote App restart request")
             return
         }
+        // The backend owns the input pipe. Cancel a superseded confirmation
+        // even while NSAlert is running its nested modal loop.
+        let lifetime = backendLifetime()
+        defer { lifetime.cancel() }
+        let force = CommandLine.arguments.contains("--force-app-restart")
         let before = Date(timeIntervalSince1970: seconds)
         var apps = applications(before: before)
         guard !apps.isEmpty else { report("not_running"); return }
@@ -76,16 +95,16 @@ enum RemoteUpdateRestart {
         let version = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? ""
         DesktopNotifications.shared.prepare()
         let authorization = await UNUserNotificationCenter.current().notificationSettings()
-        if authorization.authorizationStatus == .notDetermined { _ = await DesktopNotifications.shared.authorize() }
+        if !force && authorization.authorizationStatus == .notDetermined { _ = await DesktopNotifications.shared.authorize() }
         await DesktopNotifications.shared.send(title: L("RoutePilot 已更新至 {version}", ["version": version]),
-            body: L(wasInUse ? "管理窗口正在使用，请在远端确认是否重启 App。网络服务已更新。" : "App 正在后台运行，即将自动重启以加载新版本。网络服务已更新。"),
+            body: L(force ? "管理端已确认强制重启 App，即将关闭并重新打开管理窗口。网络服务继续运行。" : wasInUse ? "管理窗口正在使用，请在远端确认是否重启 App。网络服务已更新。" : "App 正在后台运行，即将自动重启以加载新版本。网络服务已更新。"),
             identifier: "routepilot:remote-update:" + version)
         // Allow the notification to appear and recheck in case the user opened
         // the window during the handoff. Confirmation has no automatic approval.
         try? await Task.sleep(nanoseconds: 2_000_000_000)
         apps = applications(before: before)
         guard !apps.isEmpty else { report("not_running"); return }
-        if wasInUse || inUse(apps) {
+        if !force && (wasInUse || inUse(apps)) {
             report("awaiting_confirmation")
             let alert = NSAlert()
             alert.messageText = L("远端应用已更新")
@@ -101,15 +120,19 @@ enum RemoteUpdateRestart {
         guard !apps.isEmpty else { report("not_running"); return }
         let reopenManagement = managementOpen(apps)
         report("restarting")
-        for app in apps where !app.terminate() {
+        for app in apps where !app.terminate() && (!force || !app.forceTerminate()) {
             report("failed", "Remote App refused to quit; reopen RoutePilot on the remote Mac")
             return
         }
         let deadline = Date().addingTimeInterval(35)
+        let forceAfter = Date().addingTimeInterval(3)
         while apps.contains(where: { !$0.isTerminated }) {
             guard Date() < deadline else {
                 report("failed", "Remote App did not quit; reopen RoutePilot on the remote Mac")
                 return
+            }
+            if force && Date() >= forceAfter {
+                for app in apps where !app.isTerminated { _ = app.forceTerminate() }
             }
             try? await Task.sleep(nanoseconds: 250_000_000)
         }
