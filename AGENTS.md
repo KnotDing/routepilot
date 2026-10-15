@@ -132,13 +132,13 @@
 
 ## 最近已核验发布（2026-10-15）
 
-- 最新已发布正式版为 `v1.0.3`；最新完整核验测试版为 `v1.0.4-beta.25`，注释标签指向 `352a8f82c43038957325910ff68acc2e468650a6`。后续交接文档提交不移动发布标签。
-- beta.25 GitHub 回归 [run 38690630180](https://github.com/KnotDing/routepilot/actions/runs/38690630180) 与 [Release run 38690630151](https://github.com/KnotDing/routepilot/actions/runs/38690630151) 成功；[Gitea run 2103](https://gitea.knotding.com/knot/routepilot/actions/runs/2103) 成功复用 GitHub 制品，macOS 回退任务跳过。发布提交及注释标签对象已核对双仓库一致。
-- [GitHub Release](https://github.com/KnotDing/routepilot/releases/tag/v1.0.4-beta.25) 与 [Gitea 备用 Release](https://gitea.knotding.com/knot/routepilot/releases/tag/v1.0.4-beta.25) 均为 `prerelease=true`、`draft=false`，只有 DMG、ZIP、SHA256SUMS 三项非空附件。六项附件均下载，双仓库 SHA256 完全相同；ZIP、代码签名与 DMG 完整性通过。实际 App 与捆绑后台均为 `1.0.4-beta.25 / build 33`（CI run number），源码 / 本地包 build 为 107，不混为一谈。
-- beta.25 新增默认关闭的客户端主机名反向探测，备注优先且探测结果只作显示；状态栏「打开管理窗口」支持保存后端子菜单，仅本地时直接打开本地。版本细节见 `.gitea/release-notes/v1.0.4-beta.25.md`，测试边界见 `docs/acceptance.md`。
-- 本地 `make verify-release` 全部通过：前端 35 文件 / 189 项、Go 全包 race / vet、原生核心与真实 WKWebView、17 页面 / 14 设置分类、9 项缓存 UI 检查及完整包校验。GitHub 回归另包含版本解析 fuzz。证据为 `artifacts/releases/v1.0.4-beta.25/local-verification.log`、`local-package-verification.json`、`publication-verification.json` 与同目录工作流 / 远端引用记录。
-- 未安装、升级或重启现用 App / 后台；未验收真实 LAN PTR、现用 App 的完整远程登录、LAN / Surge / NAT / IPv6 流量或长期资源占用。既有 `update_dialog.swift` WebKit 并发警告仍存在。
-- 此节为带日期的快照。接手时以 `git status`、`internal/buildinfo/release.json`、远端标签与实际 Release / Actions 为准；下方 beta.15 等旧交接仅为历史记录。
+- 最新已发布正式版为 `v1.0.3`；最新完整核验测试版为 `v1.0.4-beta.26`，标签指向 `70ddfedf3108ed421be3e408593e0ae9e9d7b233`，注释标签对象为 `3cb6c5b165ba9d01c23afc36c10469ef20183086`。后续交接文档提交不移动发布标签。
+- beta.26 GitHub 回归 [run 38696844640](https://github.com/KnotDing/routepilot/actions/runs/38696844640) 与 [Release run 38696844858](https://github.com/KnotDing/routepilot/actions/runs/38696844858) 成功；[Gitea run 2104](https://gitea.knotding.com/knot/routepilot/actions/runs/2104) 成功复用 GitHub 制品，macOS 回退任务跳过。发布提交及注释标签对象已核对双仓库一致。
+- [GitHub Release](https://github.com/KnotDing/routepilot/releases/tag/v1.0.4-beta.26) 与 [Gitea 备用 Release](https://gitea.knotding.com/knot/routepilot/releases/tag/v1.0.4-beta.26) 均为 `prerelease=true`、`draft=false`，只有 DMG、ZIP、SHA256SUMS 三项非空附件。六项附件均下载，双仓库 SHA256 完全相同；ZIP、代码签名与 DMG 完整性通过。实际 App 与捆绑后台均为 `1.0.4-beta.26 / build 34`（CI run number），源码 / 本地包 build 为 108，不混为一谈。
+- beta.26 按依赖应用配置：DNS / 缓存 / 健康设置变更保留未改动的 BGP speaker 与邻居会话，BGP 全局修改保留 DNS；隐私、客户端策略及备注热更新。新增默认关闭的「截断探测主机名的域部分」，只显示设备名，保留完整缓存并可即时恢复。必要的源地址绑定、安全门禁和 TTL 联动仍保留。细节见 `.gitea/release-notes/v1.0.4-beta.26.md`、`docs/configuration-application.md` 与 `docs/acceptance.md`。
+- 本地 `make verify-release` 全部通过：前端 35 文件 / 189 项、Go 全包 race / vet、原生核心与真实 WKWebView、17 页面 / 14 设置分类、9 项缓存 UI 检查及完整包校验。GitHub 回归另包含版本解析 fuzz。证据为 `artifacts/releases/v1.0.4-beta.26/local-verification.log`、`local-package-verification.json`、`publication-verification.json` 与同目录工作流 / 远端引用记录。
+- 未安装、升级或重启现用 App / 后台；未验收真实网关 RIB / FIB、LAN PTR、PF / LAN / Surge / NAT / IPv6 流量或长期资源占用。既有 `update_dialog.swift` WebKit 并发警告仍存在。
+- 此节为带日期的快照。接手时以 `git status`、`internal/buildinfo/release.json`、远端标签与实际 Release / Actions 为准；下方 beta.25 / beta.15 等旧交接仅为历史记录。
 
 ## 任务交接（2026-10-11）
 
@@ -236,12 +236,12 @@
 - 保留的无关改动：无。构建产物 / 原始日志保持在忽略目录 `artifacts/`，不提交；未安装升级或重启现用环境。
 - 下一步与依赖：无未完成的功能或发布事项；后续新任务可随时交接，先核对当前 main 与工作区再实施。GitHub SSH 22 / 443 本次间歇关闭，推送使用按命令的 GitHub URL → HTTPS 改写及已有 gh 凭证助手，保留 origin 的 Gitea / GitHub 两个 pushurl，不修改持久远端配置或输出凭证。继续推送仍须双仓库同步。发布证据目录 `artifacts/releases/v1.0.4-beta.25/`，旧产物备份 `artifacts/pre-beta25-backup-20261015/`；这些本地证据若不在交接机器上，以以上远端 workflow / Release 为核验入口。
 
-## 任务交接（2026-10-15，配置按模块应用）
+## 任务交接（2026-10-15，v1.0.4-beta.26）
 
 - 目标与验收条件：DNS 设置变更保留未改变的 BGP 会话；BGP 全局设置不重建 DNS；隐私与客户端设置热更新；排查其余设置项并记录必要的跨模块依赖；新增可选的探测主机名域部分截断并一并发布测试版。
-- 当前状态：进行中。用户已授权发布 `v1.0.4-beta.26`（源码 build 108）；包含主机名截断选项的最终 `make verify-release` 已全部通过，准备提交并双仓库推送。
+- 当前状态：已完成。`v1.0.4-beta.26` 已在 GitHub 与 Gitea 完整核验发布；本轮最终交接文档作为发布后的提交同步双仓库，不移动发布标签。
 - 已完成与修改文件：`internal/app/configuration_impact.go` 统一计算 DNS / BGP / 邻居 / 路由依赖，`app.go` 分离生命周期、保持安全排空与失败恢复；`client_hostnames.go` 单独启停 PTR，并依据 `settings.logging.hostname_device_only` 在视图中截断名称，保留完整缓存；`internal/dnsserver/dispatcher.go` 与 `client_policy.go` 原地调整记录和客户端策略；`internal/routing/manager.go` 保护共享配置读取。截断开关在 `internal/config/config.go`、`web/src/main.jsx` 和 `localization/ui-en.json`，默认关闭、随日志分区备份，仅影响探测名称。相关 app / dnsserver / config / 前端测试覆盖热更新、名称恢复、真实隔离 BGP 会话与恢复。分项设置表及边界见 `docs/configuration-application.md`，README、架构、客户端、保存响应和验收说明同步。
 - 验证：`env GOCACHE=/Volumes/Code/RoutePilot/.cache/go-build make verify-release` 最终通过，前端 35 文件 / 189 测试、Go 全包 race / vet、原生核心与真实 WKWebView、17 页面 / 14 分类响应式检查、9 项缓存 UI 和完整 App / DMG / ZIP 包校验（本地 App 与后台 `1.0.4-beta.26 / build 108`）。日志及本地包报告见 `artifacts/releases/v1.0.4-beta.26/`。隔离双 GoBGP 邻居确认 DNS / 缓存修改不改变会话建立时间，独立路由保留；隐私 / 客户端不替换运行实例；监听失败恢复与重试保持 BGP；截断开关不重启探测任务且可从完整缓存恢复名称。未覆盖现用安装升级、真实网关 / PF / LAN / IPv6 及长期运行。
-- 已发布：目标 `v1.0.4-beta.26` 尚未发布；最新完整核验发布仍为上节 `v1.0.4-beta.25`，不把本轮源码行为视作已安装版本行为。版本及说明已准备，正式 skill 安装版本保持 `v1.0.3`。
-- 保留的无关改动：无；本轮开始时工作区干净。保留此前发布包、证据与缓存，未执行会清理它们的 make 入口。
-- 下一步与依赖：提交本次明确文件并双仓库推送 main / 注释标签，等待 GitHub 回归与两个 Release workflow 成功，下载核验六附件和 App / 后台版本，最后补齐本文件并同步双仓库。证据目录 `artifacts/releases/v1.0.4-beta.26/`，旧包及 bin 已备份至 `artifacts/pre-beta26-backup-20261015/`。GoBGP 的路由选择选项为进程级全局变量，隔离测试在重建本地全局 BGP 参数前先关闭远端模拟 speaker，避免同一测试进程的上游竞争；生产后台仍只有一个 speaker。不要为继续此任务重启现用环境。
+- 已发布：`v1.0.4-beta.26`，发布提交 `70ddfedf3108ed421be3e408593e0ae9e9d7b233`，注释标签对象 `3cb6c5b165ba9d01c23afc36c10469ef20183086` 已双仓库核对。GitHub 回归 `38696844640`（含 fuzz）与 Release `38696844858` 成功；Gitea `2104` 成功复用 GitHub 制品 / 回退跳过。两边均为非草稿测试版，只有 DMG / ZIP / SHA256SUMS 三附件，六附件非空且哈希一致，App 与后台均为 `1.0.4-beta.26 / build 34`；ZIP、代码签名、DMG 校验通过。GitHub: https://github.com/KnotDing/routepilot/releases/tag/v1.0.4-beta.26；Gitea: https://gitea.knotding.com/knot/routepilot/releases/tag/v1.0.4-beta.26。正式 skill 安装版本保持 `v1.0.3`。
+- 保留的无关改动：无；本轮开始时仅有本次待发布改动。旧包 / bin 备份后执行发布构建，历史证据与缓存保留；未安装或重启现用环境。
+- 下一步与依赖：无未完成的实现或发布事项；后续可随时交接。先核对工作区与远端，继续提交仍须双仓库同步；GitHub SSH 不稳定时沿用前节按命令的 HTTPS 改写和已有 gh 凭证助手，不输出凭证。证据目录 `artifacts/releases/v1.0.4-beta.26/`，旧包及 bin 已备份至 `artifacts/pre-beta26-backup-20261015/`。GoBGP 的路由选择选项为进程级全局变量，隔离测试在重建本地全局 BGP 参数前先关闭远端模拟 speaker，避免同一测试进程的上游竞争；生产后台仍只有一个 speaker。不要为继续此任务重启现用环境。
