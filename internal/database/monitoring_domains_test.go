@@ -113,6 +113,17 @@ func TestDomainRankingOutlivesCombinationCapacityAndPersists(t *testing.T) {
 	if err != nil || stats.Completed != 9210 || rows[0].Queries != 2010 || !stats.StartedAt.Equal(at) {
 		t.Fatal("restart lost domain counts/start", stats, err)
 	}
+	// A read-only check misses restore regressions: the next checkpoint must
+	// also commit, including its independent domain batch and history delta.
+	save(14, true)
+	history, err = s.DNSMonitoringHistory(ctx, at, at.Add(time.Minute), "")
+	if err != nil || history.Summary.Completed != 9210 || history.Summary.DomainStatistics == nil || history.Summary.DomainStatistics.Completed != 9210 || history.Summary.Domains[0].Queries != 2010 {
+		t.Fatal("history did not resume saving after full-capacity restore", history.Summary.DomainStatistics, err)
+	}
+	retained, err := s.DNSMonitoringFilteredHistory(ctx, at, at.Add(time.Minute), dnsserver.MonitoringFilter{Domain: "host-999.test"})
+	if err != nil || retained.Summary.Completed != 1 {
+		t.Fatal("historical merge lost an already retained correlation", retained.Summary.Completed, err)
+	}
 }
 
 func TestDomainBatchRollsBackWithMonitoringAndKeepsRetry(t *testing.T) {

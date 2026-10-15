@@ -89,6 +89,31 @@ func observationRows(counts map[DNSObservationKey]DNSObservation) []DNSObservati
 	})
 	return rows
 }
+
+// Overflow is an extra aggregate, not one of the retained correlations. Its
+// position in a saved/sorted snapshot must never evict a previously known key.
+func addObservation(counts map[DNSObservationKey]DNSObservation, row DNSObservation) {
+	key := row.DNSObservationKey
+	if key.Other {
+		key = DNSObservationKey{Other: true}
+	}
+	n, exists := counts[key]
+	if !exists && !key.Other {
+		retained := len(counts)
+		if _, overflow := counts[DNSObservationKey{Other: true}]; overflow {
+			retained--
+		}
+		if retained >= monitoringObservationCapacity {
+			key = DNSObservationKey{Other: true}
+			n = counts[key]
+		}
+	}
+	n.DNSObservationKey = key
+	n.Queries += row.Queries
+	n.LatencyMS += row.LatencyMS
+	counts[key] = n
+}
+
 func differenceObservations(current, previous []DNSObservation) ([]DNSObservation, error) {
 	old := map[DNSObservationKey]DNSObservation{}
 	now := map[DNSObservationKey]DNSObservation{}
@@ -118,15 +143,7 @@ func addObservations(dst, src []DNSObservation) []DNSObservation {
 	counts := map[DNSObservationKey]DNSObservation{}
 	for _, list := range [][]DNSObservation{dst, src} {
 		for _, row := range list {
-			key := row.DNSObservationKey
-			if _, ok := counts[key]; !ok && len(counts) >= monitoringObservationCapacity {
-				key = DNSObservationKey{Other: true}
-			}
-			n := counts[key]
-			n.DNSObservationKey = key
-			n.Queries += row.Queries
-			n.LatencyMS += row.LatencyMS
-			counts[key] = n
+			addObservation(counts, row)
 		}
 	}
 	return observationRows(counts)

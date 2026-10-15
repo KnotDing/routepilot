@@ -261,3 +261,66 @@ func TestIndependentDomainsRemainExactAcrossConcurrentSavesAndReads(t *testing.T
 		t.Error(err)
 	}
 }
+
+func TestMonitoringFullCheckpointRecoveryClearsPersistenceError(t *testing.T) {
+	ctx := context.Background()
+	store, err := database.Open(filepath.Join(t.TempDir(), "private", "monitoring.sqlite"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	a := &App{store: store, dnsMonitoring: dnsserver.NewMonitoring(dnsserver.DNSMonitoringSnapshot{})}
+	if err = a.saveDNSMonitoring(a.dnsMonitoring.Snapshot()); err != nil {
+		t.Fatal(err)
+	}
+	ip := netip.MustParseAddr("192.0.2.1")
+	for i := 0; i < 4103; i++ {
+		a.dnsMonitoring.BeginSource(ip)
+		a.dnsMonitoring.FinishQuerySource(ip, fmt.Sprintf("host-%d.test", i), false, model.DecisionResult{Decision: model.Direct}, "real", "NOERROR", time.Millisecond)
+	}
+	saved := a.dnsMonitoring.Snapshot()
+	if err = a.saveDNSMonitoring(saved); err != nil {
+		t.Fatal(err)
+	}
+	// Model the old restore bug explicitly. It loses the last sorted detail to
+	// overflow while preserving total requests; the integrity guard must reject it.
+	broken := saved
+	broken.Observations = append([]dnsserver.DNSObservation(nil), saved.Observations...)
+	lost := broken.Observations[len(broken.Observations)-1]
+	broken.Observations = broken.Observations[:len(broken.Observations)-1]
+	if !broken.Observations[0].Other || lost.Other {
+		t.Fatal("fixture did not fill detail capacity")
+	}
+	broken.Observations[0].Queries += lost.Queries
+	broken.Observations[0].LatencyMS += lost.LatencyMS
+	a.dnsMonitoring = dnsserver.NewMonitoring(broken)
+	if err = a.saveDNSMonitoring(a.dnsMonitoring.Snapshot()); err == nil || !strings.Contains(err.Error(), "monitoring request dimensions regressed") {
+		t.Fatal("real regression was hidden", err)
+	}
+	if a.monitoringHistoryStatus()["storage_error"] != "monitoring request dimensions regressed" {
+		t.Fatal("persistence failure not exposed")
+	}
+	var checkpoint dnsserver.DNSMonitoringSnapshot
+	if err = store.LoadStatistics(ctx, "dns_monitoring", &checkpoint); err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(checkpoint.Observations, saved.Observations) {
+		t.Fatal("failed save changed the authoritative checkpoint")
+	}
+	// The fixed restore recovers from the intact checkpoint without deleting any
+	// historical data. A successful save must clear the management-page warning.
+	a.dnsMonitoring = dnsserver.NewMonitoring(checkpoint)
+	a.dnsMonitoring.BeginSource(ip)
+	a.dnsMonitoring.FinishQuerySource(ip, lost.Domain, false, model.DecisionResult{Decision: model.Direct}, "real", "NOERROR", time.Millisecond)
+	if err = a.saveDNSMonitoring(a.dnsMonitoring.Snapshot()); err != nil {
+		t.Fatal("restored checkpoint still cannot save", err)
+	}
+	if a.monitoringHistoryStatus()["storage_error"] != "" {
+		t.Fatal("successful save left a stale warning")
+	}
+	from := saved.ObservedAt.Truncate(time.Minute).Add(-time.Minute)
+	history, err := store.DNSMonitoringHistory(ctx, from, from.Add(3*time.Minute), "")
+	if err != nil || history.Summary.Completed != 4104 {
+		t.Fatal("recovery lost or duplicated history", history.Summary.Completed, err)
+	}
+}

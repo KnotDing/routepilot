@@ -120,15 +120,7 @@ func newMonitoring(saved DNSMonitoringSnapshot, trackSources bool, policyCapacit
 		MonitoringDimensionStart(&m.state, now)
 		m.observations = map[DNSObservationKey]DNSObservation{}
 		for _, row := range saved.Observations {
-			key := row.DNSObservationKey
-			if _, ok := m.observations[key]; !ok && len(m.observations) >= monitoringObservationCapacity {
-				key = DNSObservationKey{Other: true}
-			}
-			n := m.observations[key]
-			n.DNSObservationKey = key
-			n.Queries += row.Queries
-			n.LatencyMS += row.LatencyMS
-			m.observations[key] = n
+			addObservation(m.observations, row)
 		}
 		m.sources = map[string]*Monitoring{}
 		if len(saved.Sources) == 0 && saved.Received > 0 {
@@ -223,14 +215,7 @@ func (m *Monitoring) FinishQuerySource(ip netip.Addr, domain string, intercepted
 		domain = MonitoringDomain(domain)
 		m.recordDomain(source, domain)
 		key := DNSObservationKey{Source: source, Domain: domain, Ingress: ingress, Destination: destination, Policy: result.Policy, FinalPolicy: result.FinalPolicy, Decision: string(decision), ResponseCode: rcode}
-		if _, ok := m.observations[key]; !ok && len(m.observations) >= monitoringObservationCapacity {
-			key = DNSObservationKey{Other: true}
-		}
-		n := m.observations[key]
-		n.DNSObservationKey = key
-		n.Queries++
-		n.LatencyMS += float64(latency) / float64(time.Millisecond)
-		m.observations[key] = n
+		addObservation(m.observations, DNSObservation{DNSObservationKey: key, Queries: 1, LatencyMS: float64(latency) / float64(time.Millisecond)})
 	}
 }
 

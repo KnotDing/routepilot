@@ -760,3 +760,12 @@ acceptance was performed. Configuration runtime application is unchanged.
 - `node scripts/ui_forms_check.cjs` 通过 17 页面 / 14 设置分类及 1440、1120、390 px 检查；新增远程轻提示的透明背景 / 无告警边框、手机确认框、取消默认焦点及准确单次提交验证。截图与结果位于 `artifacts/ui-forms/remote-app-reminder-*.png`、`force-app-restart-*.png` 和 `verification.json`；使用模拟 API，不连接实际后端。
 - 发布前 `env GOCACHE=/Volumes/Code/RoutePilot/.cache/go-build make package package-check` 通过，覆盖完整 App / 后台 / CLI、版本、资源、签名、DMG 布局、ZIP 和 SHA256SUMS；旧产物与二进制已备份至 `artifacts/pre-beta23-backup-20261015/`。版本更新后前端升级 / 版本提示 / 全量翻译三文件共 39 项检查通过；包日志为 `artifacts/releases/v1.0.4-beta.23/package.log`。
 - 实现阶段未提交、未发布或重启现用 App / 后台；本轮获授权发布测试版 `v1.0.4-beta.23`（源码 build 105），发布后工作流与双仓库附件证据保存至 `artifacts/releases/v1.0.4-beta.23/`。未授权安装升级现用环境。自动化验证不代替真实多用户远程桌面下的关闭、重开及通知验收；旧版后端不提供强制重启按钮。
+
+## 2026-10-15：满容量监控明细恢复导致历史保存失败（beta.24 发布验证）
+
+- 复现旧版故障：记录 4096 个不同关联并产生溢出后，排序后的溢出汇总排在具体明细之前。恢复与历史合并把该汇总占为一个明细名额，导致最后一个原有明细被并入溢出；下一次差量检查持续返回 `monitoring request dimensions regressed`，事务回滚，页面持续报告保存失败。新增两项针对性测试在修改前分别复现计数回退和溢出误吸收一条原有明细。
+- 采集、恢复和历史合并共用容量规则：保留最多 4096 条具体关联，溢出汇总单独保留，已有身份的数量、耗时与具体条件过滤在恢复后不减少。未放宽计数回退校验、未删除检查点或历史；正常事务成功后使用已有逻辑清除管理页存储错误。
+- 覆盖三次 JSON 保存 / 恢复、溢出项先后顺序、已保留身份继续累计、新身份继续进入溢出，以及真实 SQLite 关闭 / 重开后继续提交域名批次与历史增量、重试不重复、历史条件过滤。App 测试模拟旧版挤掉明细后保存失败，确认事务保留原检查点、错误对外可见，再从完整检查点恢复并验证后续保存清除告警、累计历史没有少计或重复。
+- `env GOCACHE=/Volumes/Code/RoutePilot/.cache/go-build go test -race ./internal/dnsserver ./internal/database ./internal/app -count=1 -timeout 180s` 三包通过；相同三包 `go vet`、`npm --prefix web run build`、`go build ./...` 通过。前端与原生源码未修改，未重复运行 UI 或 Swift 测试。
+- 发布前 `env GOCACHE=/Volumes/Code/RoutePilot/.cache/go-build make package package-check` 通过，覆盖完整 App / 后台 / CLI、版本、资源、签名、DMG 布局、ZIP 与 SHA256SUMS；旧产物备份至 `artifacts/pre-beta24-backup-20261015/`，包日志为 `artifacts/releases/v1.0.4-beta.24/package.log`。版本更新后的升级、版本提示和全量翻译三文件共 39 项测试通过。
+- 实现阶段未提交、发布、安装、重启现用后台或读取现用数据库。本轮获授权发布 `v1.0.4-beta.24`（源码 build 106），双仓库工作流、附件和版本核验证据保存至 `artifacts/releases/v1.0.4-beta.24/`。已保存检查点与历史可保留；旧版失败期间尚未落盘的请求无法保证跨进程重启恢复，不能补造已丢失的请求关联。修复需随新版后台更新生效。
