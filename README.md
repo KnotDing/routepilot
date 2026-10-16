@@ -15,12 +15,26 @@ RoutePilot 是一款 macOS 状态栏应用：向 Surge 查询分流策略，为 
 - **缩短直连路径：** DIRECT 查询返回真实地址，客户端后续流量由网关直接送往 WAN，不必绕经 Surge；Fake-IP 和下一跳配置为 Surge 的受管理前缀仍按路由经过 Surge。
 - **Surge 故障时保留新连接的直连路径：** RoutePilot 停止发放新的 Fake-IP，后续查询改用独立真实 DNS 解析，让网关可将新连接直连出网（真实 DNS 与 WAN 可用时）。已发放 Fake-IP 在 TTL / 宽限期内仍可能依赖 Surge。
 
-[📦 下载最新版本](https://github.com/KnotDing/routepilot/releases) · [🧪 自动 IPv4 下一跳测试版 v1.0.4-beta.28](https://github.com/KnotDing/routepilot/releases/tag/v1.0.4-beta.28) · [Gitea 备用下载](https://gitea.knotding.com/knot/routepilot/releases) · [🚀 快速开始](#quick-start) · [🤖 安装 skill](#agent-skill) · [📚 文档导航](#documentation)
+[📦 下载最新版本](https://github.com/KnotDing/routepilot/releases) · [v1.0.4 正式版](https://github.com/KnotDing/routepilot/releases/tag/v1.0.4) · [Gitea 备用下载](https://gitea.knotding.com/knot/routepilot/releases) · [🚀 快速开始](#quick-start) · [🤖 安装 skill](#agent-skill) · [📚 文档导航](#documentation)
 
 <p align="center">
   <img src="docs/images/management-4k.png" width="100%" alt="RoutePilot App 管理界面 4K 截图">
 </p>
 <p align="center"><sub>管理界面预览 · 3840 × 2160 · 页面中的指标、地址和事件均为虚构示例数据</sub></p>
+
+## v1.0.4 更新
+
+本次正式版汇总自 v1.0.3 以来的全部 28 个测试版，主要增加：
+
+- 大屏监控与七天历史，支持来源、处理去向、策略、最终策略、域名和响应码组合筛选，以及真实请求流向和域名占比。
+- 客户端行内备注与强制查询策略、累计统计持久化，以及可选主机名探测和域部分截断。
+- 按决策 / 上游分别控制普通及乐观缓存，新增 Surge 响应缓存和分项可靠性统计。
+- 按实际依赖应用配置，日志 / 隐私和客户端设置热更新，DNS 与 BGP 尽量独立更新。
+- 多窗口分别管理本地和远程后端，增强会话恢复、目标地址绑定和远程升级后的 App 重启控制。
+- 缓存不一致率与 DNS 请求量告警、真实下载进度、可收起 / 隐藏导航和监控展示保护。
+- Surge IPv4 下一跳自动探测，Fake-IP 网段使用单行逗号输入。
+
+完整变更、修复及升级说明见 [v1.0.4 更新记录](.gitea/release-notes/v1.0.4.md)。
 
 ## ✨ 能做什么？
 
@@ -252,7 +266,7 @@ curl -fsSL https://raw.githubusercontent.com/KnotDing/routepilot/main/scripts/in
 
 GitHub 脚本无法访问时，可用 [Gitea 备用安装脚本](https://gitea.knotding.com/knot/routepilot/raw/branch/main/scripts/install_skill.sh)，将上述命令中的 `https://raw.githubusercontent.com/KnotDing/routepilot/main/scripts/install_skill.sh` 替换为该链接。
 
-安装器从官方仓库获取 **v1.0.3** 的 skill，无需克隆、编译或管理员权限。默认覆盖并备份；追加 `--on-conflict skip` 可保留现有内容。安装 skill 不会启用 CLI 或保存登录凭证，使用前请在 App 设置中启用 CLI，并让 agent 重新加载 skills。
+安装器从官方仓库获取 **v1.0.4** 的 skill，无需克隆、编译或管理员权限。默认覆盖并备份；追加 `--on-conflict skip` 可保留现有内容。安装 skill 不会启用 CLI 或保存登录凭证，使用前请在 App 设置中启用 CLI，并让 agent 重新加载 skills。
 
 [CLI 使用与安装目录](docs/cli.md) · [安装脚本源码](scripts/install_skill.sh)
 

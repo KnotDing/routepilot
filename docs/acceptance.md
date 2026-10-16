@@ -1,5 +1,24 @@
 # Acceptance evidence — 2026-10-08
 
+## Stable v1.0.4 release gate — 2026-10-16
+
+This release consolidates the final behavior from beta.1–28 since stable
+v1.0.3 (`5ca0fd97496776d9949dbe3218d57f982dc0e04f`). The full user-facing
+change record is [.gitea/release-notes/v1.0.4.md](../.gitea/release-notes/v1.0.4.md).
+Source identity is `1.0.4 / build 111`; the skill installer pins the new stable
+tag. Worktree baseline is `de2d7a3855fece6d99868b5d31b70483caad8d41` on both forges.
+
+Local `env GOCACHE=/private/tmp/routepilot-next-hop-go-build make verify-release`
+and `make fuzz` passed: 36 frontend files / 193 tests, all Go race / vet, native
+core / WKWebView / multiple windows, 17 pages / 14 settings categories, nine
+cache UI checks and full package validation. Fuzz executed 217,336 cases. Local
+App/backend identity is `1.0.4 / build 111`; reports are `local-verification.log`,
+`local-fuzz.log` and `local-package-verification.json`. CI regression/full release,
+publication and dual-forge artifact verification remain pending. Evidence goes to
+`artifacts/releases/v1.0.4/`. Prior packages and bin files were preserved under
+`artifacts/pre-v1.0.4-backup-20261016/`. No live installation/restart is authorized
+by this publication task; no new live gateway/LAN/IPv6 acceptance is claimed.
+
 ## Automatic Surge VM IPv4 next hop — 2026-10-16
 
 `surge.next_hop4` is optional for IPv4 Fake-IP routes. Explicit values take

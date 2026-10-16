@@ -268,3 +268,13 @@
 - 已发布：`v1.0.4-beta.28`，commit `bfb4501848212838f819dc1158b193e6ca859bea`，tag 对象 `2e9345739823347c8091e83ba9f57b5d844e0ca2`；GitHub 回归 `38834865752`、Release `38834901914` 与 Gitea `2108` 均成功，Gitea 下载复用、回退跳过。Release 链接见上方最近核验节；完整证据为 `artifacts/releases/v1.0.4-beta.28/publication-verification.json`。本轮最终交接为后续文档提交，不移动标签。
 - 保留的无关改动：无。旧安装包和 `bin/` 备份于 `artifacts/pre-beta28-backup-20261016/`。
 - 下一步与依赖：无发布遗留。后续仍需双仓库推送；本轮 GitHub SSH 22 端口关闭且 HTTPS 凭据写入返回 403，已通过官方 `ssh.github.com:443` 和既有 SSH 身份完成推送，未修改全局配置。临时 wrapper 为 `artifacts/releases/v1.0.4-beta.28/github-ssh443.sh`，可配合 `git -c core.sshCommand=<绝对路径> push origin <分支或标签>`；必要时复用以保留 origin 双推约定。
+
+## 任务交接（2026-10-16，v1.0.4 正式发布中）
+
+- 目标与验收条件：发布 `v1.0.4` 正式版，归并上次正式版 `v1.0.3` 以来全部 beta.1–28 的最终功能与修复，完成正式版本地验证 / fuzz、发布提交 CI 回归、双 Release workflow 和六项附件核验。
+- 当前状态：进行中。双仓库上次正式版为 `v1.0.3`（`5ca0fd9`），main 基线为 `de2d7a3`，目标 `v1.0.4` 标签未使用。源码版本已准备为 `1.0.4 / build 111`；最近已核验发布仍见上方 beta.28。
+- 已完成与修改文件：`.gitea/release-notes/v1.0.4.md` 按最终行为整理监控 / 历史、客户端 / 主机名、分项缓存、配置 / 路由、多窗口 / 远程、更新 / 通知、可靠性及升级边界；README 新增正式版摘要与完整记录入口。`internal/buildinfo/release.json`、`scripts/install_skill.sh` 的正式 tag / 版本提示及 README skill 版本同步为 1.0.4。
+- 验证：本轮 `make verify-release` 与 `make fuzz` 均通过：前端 36 文件 / 193 测试、Go 全包 race / vet、原生核心 / WKWebView / 多窗口、17 页 / 14 类设置、9 项缓存 UI、完整包校验；fuzz 执行 217,336 次。源码与本地 App / 后台为 `1.0.4 / build 111`。证据目录为 `artifacts/releases/v1.0.4/`。未安装或重启现用环境。
+- 已发布：v1.0.4 尚未提交 / 推送，正式发布门禁和附件证据待补齐。历史 beta.28 的已通过验证不能替代本轮正式版验证。
+- 保留的无关改动：无。旧安装包与 bin 备份于 `artifacts/pre-v1.0.4-backup-20261016/`。
+- 下一步与依赖：完成正式验证，双推分支和新标签，等待 GitHub 回归 / 完整 Release 及 Gitea 下载复用；下载两边三附件核验正式版标记、哈希 / 包 / App 与后台身份，更新最近已核验发布及本轮交接并双推。GitHub 若仍无法使用 SSH 22，可复用上轮已验证的临时 SSH 443 wrapper，不更改全局配置。
