@@ -130,15 +130,15 @@
 - 下一步与依赖：
 ```
 
-## 最近已核验发布（2026-10-15）
+## 最近已核验发布（2026-10-16）
 
-- 最新已发布正式版为 `v1.0.3`；最新完整核验测试版为 `v1.0.4-beta.27`，标签指向 `7c36b3aae8a7bbe590f8dce11c1fac13b371e781`，注释标签对象为 `7100a6414613abc168a7ea34b571bbf228cbfc6b`。后续交接文档提交不移动发布标签。
-- beta.27 GitHub 回归 [run 38721553427](https://github.com/KnotDing/routepilot/actions/runs/38721553427) 与 [Release run 38721553616](https://github.com/KnotDing/routepilot/actions/runs/38721553616) 成功；[Gitea run 2105](https://gitea.knotding.com/knot/routepilot/actions/runs/2105) 成功复用 GitHub 制品，macOS 回退任务跳过。发布提交及注释标签对象已核对双仓库一致。
-- [GitHub Release](https://github.com/KnotDing/routepilot/releases/tag/v1.0.4-beta.27) 与 [Gitea 备用 Release](https://gitea.knotding.com/knot/routepilot/releases/tag/v1.0.4-beta.27) 均为 `prerelease=true`、`draft=false`，只有 DMG、ZIP、SHA256SUMS 三项非空附件。六项附件均下载，双仓库 SHA256 完全相同；ZIP、代码签名与 DMG 完整性通过。实际 App 与捆绑后台均为 `1.0.4-beta.27 / build 35`（CI run number），源码 / 本地包 build 为 109，不混为一谈。
-- beta.27 新增多管理窗口：状态栏按后端新建 / 唤起独立页面，后端选择、会话、回调、可见性和编辑状态隔离；标题显示名称及地址。请求按选中地址绑定，其他窗口修改连接地址后，旧页面返回 409 并要求重新连接。细节见 `.gitea/release-notes/v1.0.4-beta.27.md`、`docs/remote-management.md` 与 `docs/acceptance.md`。
-- 本地 `make verify-release` 全部通过：前端 35 文件 / 190 项、Go 全包 race / vet、原生核心 / 真实 WKWebView / 多窗口隔离、17 页面 / 14 设置分类、9 项缓存 UI 检查及完整包校验。GitHub 回归另包含版本解析 fuzz。证据为 `artifacts/releases/v1.0.4-beta.27/local-verification.log`、`local-package-verification.json`、`publication-verification.json` 与同目录工作流 / 远端引用记录。
-- 未安装、升级或重启现用 App / 后台；未验收真实远程 / 实际钥匙串登录、长期多窗口资源占用、网关 RIB / FIB、PF / LAN / Surge / NAT / IPv6 路径。既有 `update_dialog.swift` WebKit 并发警告仍存在。
-- 此节为带日期的快照。接手时以 `git status`、`internal/buildinfo/release.json`、远端标签与实际 Release / Actions 为准；下方 beta.26 / beta.25 / beta.15 等旧交接仅为历史记录。
+- 最新已发布正式版为 `v1.0.3`；最新完整核验测试版为 `v1.0.4-beta.28`，标签指向 `bfb4501848212838f819dc1158b193e6ca859bea`，注释标签对象为 `2e9345739823347c8091e83ba9f57b5d844e0ca2`。后续交接文档提交不移动发布标签。
+- beta.28 发布提交的 GitHub 回归 [run 38834865752](https://github.com/KnotDing/routepilot/actions/runs/38834865752) 与 [Release run 38834901914](https://github.com/KnotDing/routepilot/actions/runs/38834901914) 成功；[Gitea run 2108](https://gitea.knotding.com/knot/routepilot/actions/runs/2108) 成功复用 GitHub 制品，macOS 回退任务跳过。发布提交与注释标签对象已核对双仓库一致。
+- [GitHub Release](https://github.com/KnotDing/routepilot/releases/tag/v1.0.4-beta.28) 与 [Gitea 备用 Release](https://gitea.knotding.com/knot/routepilot/releases/tag/v1.0.4-beta.28) 均为 `prerelease=true`、`draft=false`，只有 DMG、ZIP、SHA256SUMS 三项非空附件。六项附件均下载，双仓库 SHA256 完全相同；ZIP、代码签名、DMG 完整性 / 布局和 DMG 内 App / CLI / 后台与 ZIP 的二进制一致性通过。实际 App 与后台均为 `1.0.4-beta.28 / build 36`（CI run number）；源码 / 本地包 build 为 110，不混为一谈。
+- beta.28 将 Surge IPv4 下一跳改为选填，留空使用当前后端的 Surge VMNET `self-ip`；显式填写优先。每 30 秒最多一次有界探测，地址变化 / 失败按旧 Fake-IP TTL / 宽限期排空并更新 / 撤回路径，保留 DNS / BGP 实例。静态确认绑定自动地址，变化后需重新确认；Fake-IP 网段为单行逗号输入。详见 `.gitea/release-notes/v1.0.4-beta.28.md`、`docs/routing-backends.md` 和 `docs/acceptance.md`。
+- 本地 `make verify-release` 全部通过：前端 36 文件 / 193 项、Go 全包 race / vet、原生核心 / 真实 WKWebView / 多窗口、17 页面 / 14 分类、9 项缓存 UI 和完整打包校验。GitHub 发布提交回归另含版本解析 fuzz。新代码只读探测本机 Surge VM 返回 `192.168.20.141`；单行输入已核对连续逗号输入、提交数组和手机布局。证据位于 `artifacts/releases/v1.0.4-beta.28/` 的 `local-verification.log`、`local-package-verification.json`、`publication-verification.json` 及工作流 / 引用记录。
+- 未安装、升级或重启现用 App / 后台；未验收真实 DHCP 地址变化、远程 Mac 的 CLI / 桌面用户上下文、网关 RIB / FIB、PF / LAN / NAT / IPv6 路径及长期资源占用。既有 WebKit 并发、测试夹具重复 React key、前端包体大小和 hdiutil 弃用提示仍存在。
+- 此节为带日期的快照。接手时以 `git status`、`internal/buildinfo/release.json`、远端标签及实际 Release / Actions 为准；下方旧发布交接仅为历史记录。
 
 ## 任务交接（2026-10-11）
 
@@ -259,12 +259,12 @@
 - 保留的无关改动：无；本轮开始时只有本次待发布改动。旧包 / bin 备份至 `artifacts/pre-beta27-backup-20261015/`，历史证据保留；不安装或重启现用环境。
 - 下一步与依赖：无未完成的实现或发布事项；后续可随时交接，先核对工作区和远端。继续提交仍须双仓库同步；GitHub SSH 不稳定时沿用此前按命令的 HTTPS 改写及已有 gh 凭证助手，不输出凭证。证据目录 `artifacts/releases/v1.0.4-beta.27/`。源地址绑定头对旧客户端保持可选兼容；新页面的全部读取、写入和任务轮询绑定需本机中继后台同步升级。新窗口不复制状态栏本地会话 Cookie，通过已存凭证独立登录；未保存凭证时新窗口需登录。原生测试通过 `ROUTEPILOT_NATIVE_TEST` 排除实际 App 启动和凭证种子，使用随机 loopback 端口及现有请求客户端；不能运行测试构建作为生产 App。
 
-## 任务交接（2026-10-16，beta.28 发布中）
+## 任务交接（2026-10-16，beta.28）
 
-- 目标与验收条件：发布 Surge IPv4 下一跳选填 / 自动探测和 Fake-IP 网段单行逗号输入；核验双仓库分支 / 标签、GitHub 回归、双 Release workflow 和三项安装附件。
-- 当前状态：进行中。源码版本为 `1.0.4-beta.28 / build 110`；已确认双仓库 `main` 基线为 `663c6b6`，beta.28 标签未使用。最近完整核验发布仍为上方 beta.27。
-- 已完成与修改文件：自动探测见 `internal/surge/vmnet.go`、`internal/routing/next_hop.go`、`internal/app/app.go` / `configuration.go`；配置校验、地址绑定的静态确认及测试已同步。设置显示和单行网段输入见 `web/src/surge-next-hop.jsx`、`form-fields.jsx`、`main.jsx`、`routing.jsx`；双语、README、路由 / 配置应用 / 验收文档和 `.gitea/release-notes/v1.0.4-beta.28.md` 已更新。
-- 验证：开发阶段前端 36 文件 / 193 测试、Surge / routing / config / app race、相关 vet、前端与 Go 构建通过；17 页 / 14 类设置在 1440 / 1120 / 390 检查通过。最终单行输入改动后相关 16 测试、生产构建及模拟浏览器连续逗号输入 / 提交数组 / 手机布局通过。新探测代码只读实测 VM 地址为 `192.168.20.141`。本轮 `make verify-release` 已全部通过：前端 36 文件 / 193 测试、Go 全包 race / vet、原生核心 / WKWebView / 多窗口、17 页 / 14 类设置、9 项缓存 UI 及完整 App / ZIP / 签名 / DMG 校验。本地源码 / 包为 `1.0.4-beta.28 / build 110`；日志与包报告位于 `artifacts/releases/v1.0.4-beta.28/`。
-- 已发布：尚未提交 / 推送 beta.28，GitHub 回归与双发布门禁、附件校验待完成。未安装或重启现用环境；真实网关 RIB / FIB、DHCP 地址变化与 LAN / IPv6 路径未验收。
+- 目标与验收条件：发布 Surge IPv4 下一跳选填 / 自动探测和 Fake-IP 网段单行逗号输入；双仓库分支 / 标签、发布提交 GitHub 回归、两个 Release workflow 和三项安装附件均核验通过。
+- 当前状态：已完成。`v1.0.4-beta.28` 已在 GitHub / Gitea 核验发布；App 与后台为 `1.0.4-beta.28 / build 36`，源码 / 本地包为 build 110。
+- 已完成与修改文件：`internal/surge/vmnet.go`（两秒 CLI 探测，仅读 VM `self-ip`）；`internal/routing/next_hop.go`（显式优先、30 秒节流、路由安全校验、有效 / 待应用地址）；`internal/app/app.go` / `configuration.go`（旧 Fake-IP TTL 排空、静态确认绑定）；配置、路由就绪检查和相关测试已同步。UI 在 `web/src/surge-next-hop.jsx`、`form-fields.jsx`、`main.jsx`、`routing.jsx`；网段支持中英文逗号，保存仍为数组。双语、README、代码地图、路由 / 配置应用 / 验收文档和 beta.28 发行说明已更新。
+- 验证：本地 `env GOCACHE=/private/tmp/routepilot-next-hop-go-build make verify-release` 全部通过（36 文件 / 193 前端测试、Go 全包 race / vet、原生 / 浏览器与包检查）；发布提交 GitHub 回归包含 fuzz 并成功。六项下载附件哈希一致、版本 / build / ZIP / 签名 / DMG 校验通过。仅只读实测 VM 地址；未安装 / 重启现用环境、未验收真实 DHCP / 网关 / LAN / IPv6 路径。
+- 已发布：`v1.0.4-beta.28`，commit `bfb4501848212838f819dc1158b193e6ca859bea`，tag 对象 `2e9345739823347c8091e83ba9f57b5d844e0ca2`；GitHub 回归 `38834865752`、Release `38834901914` 与 Gitea `2108` 均成功，Gitea 下载复用、回退跳过。Release 链接见上方最近核验节；完整证据为 `artifacts/releases/v1.0.4-beta.28/publication-verification.json`。本轮最终交接为后续文档提交，不移动标签。
 - 保留的无关改动：无。旧安装包和 `bin/` 备份于 `artifacts/pre-beta28-backup-20261016/`。
-- 下一步与依赖：完成本地验证，明确暂存本轮文件，Conventional Commit 后双仓库推送 main 和未用注释标签；等待门禁、下载六项附件校验哈希 / ZIP / 签名 / DMG / App 与后台身份，再更新本文件最终证据并提交双推，不移动发布标签。
+- 下一步与依赖：无发布遗留。后续仍需双仓库推送；本轮 GitHub SSH 22 端口关闭且 HTTPS 凭据写入返回 403，已通过官方 `ssh.github.com:443` 和既有 SSH 身份完成推送，未修改全局配置。临时 wrapper 为 `artifacts/releases/v1.0.4-beta.28/github-ssh443.sh`，可配合 `git -c core.sshCommand=<绝对路径> push origin <分支或标签>`；必要时复用以保留 origin 双推约定。

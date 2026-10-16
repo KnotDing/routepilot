@@ -38,7 +38,8 @@ Executed for this change:
   it did not change configuration or restart services. Probe source and UI
   screenshots remain under ignored `artifacts/`.
 
-Not committed, released, installed or applied to the running RoutePilot backend.
+The implementation-stage checks above preceded beta.28 publication; final release
+evidence is recorded below. Nothing was installed or applied to the live backend.
 Live BGP gateway RIB/FIB, DHCP address changes and LAN packet paths were not
 exercised; isolated state-machine checks do not establish those outcomes.
 
@@ -58,8 +59,27 @@ WKWebView / multi-window checks, 17 pages / 14 settings categories, nine cache U
 checks, full App packaging and ZIP / signatures / DMG layout validation. Source
 and local package identity is `1.0.4-beta.28 / build 110`. Evidence is under
 `artifacts/releases/v1.0.4-beta.28/` (`local-verification.log` and
-`local-package-verification.json`). CI regression, publication and downloaded
-release artifact verification are pending. No live installation or restart.
+`local-package-verification.json`). Publication is verified: tag `v1.0.4-beta.28` resolves to
+`bfb4501848212838f819dc1158b193e6ca859bea`, annotated tag object
+`2e9345739823347c8091e83ba9f57b5d844e0ca2`, identical on GitHub and Gitea.
+
+- [GitHub regression](https://github.com/KnotDing/routepilot/actions/runs/38834865752)
+  and [Release](https://github.com/KnotDing/routepilot/actions/runs/38834901914)
+  succeeded. Regression includes version-parser fuzz.
+- [Gitea Release](https://gitea.knotding.com/knot/routepilot/actions/runs/2108)
+  succeeded by mirroring GitHub; fallback build skipped.
+- [GitHub Release](https://github.com/KnotDing/routepilot/releases/tag/v1.0.4-beta.28)
+  and [Gitea mirror](https://gitea.knotding.com/knot/routepilot/releases/tag/v1.0.4-beta.28)
+  are non-draft prereleases, each containing only DMG, ZIP and SHA256SUMS.
+  All six attachments downloaded nonempty, with identical SHA-256 across forges.
+  ZIP integrity, signatures, DMG integrity/layout and binary identity passed.
+  Actual App/backend identity is **1.0.4-beta.28 / build 36**, independent of
+  local source build 110. See `publication-verification.json` in the evidence directory.
+
+GitHub SSH port 22 closed connections and the local HTTPS credential could not
+write (403); pushing via the official SSH 443 endpoint with the existing SSH
+identity completed synchronization. No global Git/SSH configuration changed.
+No live installation, restart, DHCP transition or gateway path acceptance.
 
 ## LAN resource profiling — 2026-10-13
 
