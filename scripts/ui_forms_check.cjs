@@ -44,7 +44,7 @@ const fixture=Function(source.slice(source.indexOf('const settings='),source.ind
     if(!['domain','destination','policy','final_policy','response_code'].some(key=>url.searchParams.has(key)))value.domain_statistics={started_at:'2026-10-15T00:00:00Z',completed:counts(selected).completed,unrecorded:0};
     if(path.startsWith('dns/monitoring/history'))value={summary:value,sources:value.sources,source_policy_flows:value.source_policy_flows,from:value.started_at,to:value.observed_at,points:[{from:value.started_at,to:value.observed_at,seconds:60,rate_valid:true,counts:value}]};
    }
-   if(path==='surge/status'){value.snapshot.ipv6_state='disabled';value.snapshot.always_real_ip_count=61;}
+   if(path==='surge/status'){value.next_hop4={automatic:true,address:'192.0.2.141',detected_address:'192.0.2.141'};value.snapshot.ipv6_state='disabled';value.snapshot.always_real_ip_count=61;}
    return route.fulfill({contentType:'application/json',body:JSON.stringify(value)});
   }
   const file=url.pathname==='/'?'web/dist/index.html':'web/dist'+url.pathname;
@@ -73,6 +73,13 @@ const fixture=Function(source.slice(source.indexOf('const settings='),source.ind
   for(const label of pages){await go(label);await check(width+' '+label);}
   for(const label of categories){
    await page.locator('.tabs').getByRole('button',{name:label,exact:true}).click();
+   if(label==='Surge'){
+    const nextHop=page.getByLabel('Surge IPv4 下一跳',{exact:true}),manual=await nextHop.inputValue();
+    if(await nextHop.getAttribute('required')!==null)throw Error('IPv4 next hop must be optional');
+    await nextHop.fill('');await page.getByText('自动探测的 Surge IPv4 下一跳：192.0.2.141',{exact:true}).waitFor();
+    await check('automatic Surge next hop '+width);await page.screenshot({path:out+'/surge-next-hop-'+width+'.png',fullPage:true});
+    await nextHop.fill(manual);
+   }
    if(label==='路由'){
     const mode=page.getByLabel('路由模式',{exact:true});
     await page.getByRole('heading',{name:'BGP',exact:true}).waitFor();

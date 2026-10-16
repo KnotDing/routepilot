@@ -42,6 +42,7 @@ type Verification struct {
 	Scope     string    `json:"scope"`
 }
 type Status struct {
+	NextHop4             NextHop4Status   `json:"surge_next_hop4"`
 	BGPRequested         bool             `json:"bgp_requested"`
 	Mode                 string           `json:"mode"`
 	FakeIPBackend        string           `json:"fake_ip_backend"`
@@ -58,6 +59,8 @@ type Status struct {
 }
 type Manager struct {
 	mu            sync.RWMutex
+	autoNextHop4  string
+	nextHop4      NextHop4Status
 	document      config.Document
 	bgp           Backend
 	startupError  string
@@ -123,7 +126,10 @@ func (m *Manager) Desired(controller, dns, surge bool) []bgp.Advertisement {
 	if m.bgp == nil {
 		return out
 	}
-	for _, row := range Definitions(m.document) {
+	for _, row := range Definitions(m.effectiveDocument()) {
+		if row.NextHop == "" {
+			continue
+		}
 		switch row.Kind {
 		case "fake-ip":
 			if r.FakeIPBackend != "bgp" || !surge {
@@ -172,7 +178,7 @@ func (m *Manager) SyncPeers(ctx context.Context, d config.Document) error {
 		}
 	}
 	m.mu.Lock()
-	m.document = d.Clone()
+	m.updateDocument(d)
 	m.mu.Unlock()
 	return nil
 }
@@ -183,7 +189,7 @@ func (m *Manager) SyncPeers(ctx context.Context, d config.Document) error {
 func (m *Manager) UpdateDocument(d config.Document) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	m.document = d.Clone()
+	m.updateDocument(d)
 }
 
 func (m *Manager) Refresh(ctx context.Context) (bool, error) {
@@ -204,9 +210,10 @@ func (m *Manager) Refresh(ctx context.Context) (bool, error) {
 	return m.snapshot.FakeIPReady, err
 }
 func (m *Manager) makeStatus(s bgp.Status) Status {
-	cfg := m.document.Settings
+	effective := m.effectiveDocument()
+	cfg := effective.Settings
 	r := cfg.Routing.Effective()
-	v := Status{BGPRequested: r.UsesBGP() && cfg.BGP.Enabled, Mode: r.Mode, FakeIPBackend: r.FakeIPBackend, DNSBackend: r.DNSBackend, Enabled: s.Enabled, Advertised: s.Advertised, Limit: cfg.BGP.RouteLimit, Peers: s.Peers, Routes: []Route{}, LastError: s.LastError, Limitations: []string{}}
+	v := Status{NextHop4: m.nextHop4Status(), BGPRequested: r.UsesBGP() && cfg.BGP.Enabled, Mode: r.Mode, FakeIPBackend: r.FakeIPBackend, DNSBackend: r.DNSBackend, Enabled: s.Enabled, Advertised: s.Advertised, Limit: cfg.BGP.RouteLimit, Peers: s.Peers, Routes: []Route{}, LastError: s.LastError, Limitations: []string{}}
 	if m.startupError != "" {
 		v.LastError = m.startupError
 	}
@@ -230,7 +237,7 @@ func (m *Manager) makeStatus(s bgp.Status) Status {
 	fakeReady := len(cfg.Surge.FakePrefixes) > 0
 	dnsReady := true
 	dnsCount := 0
-	for _, a := range Definitions(m.document) {
+	for _, a := range Definitions(effective) {
 		backend := r.FakeIPBackend
 		if a.Kind == "dns-interception" {
 			backend = r.DNSBackend
@@ -265,7 +272,7 @@ func (m *Manager) makeStatus(s bgp.Status) Status {
 		} else {
 			announced := false
 			for _, row := range v.Routes {
-				if row.Prefix == a.Prefix {
+				if row.Prefix == a.Prefix && row.NextHop == a.NextHop {
 					announced = row.Announced
 				}
 			}
@@ -282,7 +289,7 @@ func (m *Manager) makeStatus(s bgp.Status) Status {
 			}
 		}
 	}
-	v.FakeIPReady = fakeReady
+	v.FakeIPReady = fakeReady && m.nextHop4Ready()
 	v.DNSInterceptionReady = !cfg.DNS.InterceptionEnabled || dnsCount > 0 && dnsReady
 	if r.FakeIPBackend == "static" || r.DNSBackend == "static" {
 		v.Limitations = append(v.Limitations, "External static routes are operator declarations; installation is unknown and RoutePilot never installs or withdraws them.", "Operator confirmation permits Fake-IP issuance; optional Mac connectivity probes do not prove gateway or LAN route installation.", "Static Fake-IP routes remain after Surge or RoutePilot stops.")

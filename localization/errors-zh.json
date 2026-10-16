@@ -1,4 +1,10 @@
 {
+  "configured IPv6 Fake-IP routing requires a Surge IPv6 next hop": "已配置的 IPv6 Fake-IP 路由需要 Surge IPv6 下一跳",
+  "invalid confirmed static Fake-IP IPv4 next hop": "已确认的静态 Fake-IP IPv4 下一跳无效",
+  "Surge VMNET status unavailable; check Surge Enhanced Mode and CLI support": "无法读取 Surge VMNET 状态，请检查增强模式和 CLI 版本支持",
+  "Surge VMNET is not running or returned invalid status": "Surge VMNET 未运行或返回了无效状态",
+  "Surge VMNET did not return a usable IPv4 self-ip": "Surge VMNET 未返回有效的 IPv4 self-ip 地址",
+  "Detected Surge VM IPv4 next hop failed routing safety validation": "自动探测的 Surge VM IPv4 下一跳未通过路由安全校验",
   "invalid source/next-hop address": "出口源地址或下一跳地址无效",
   "maximum 32 remote backends": "最多配置 32 个远程后端",
   "invalid or duplicate backend": "远程后端配置无效或重复",

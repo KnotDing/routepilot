@@ -829,16 +829,26 @@ func (a *App) monitor(ctx context.Context, rt *Runtime) {
 		if !s.DNS.InterceptionEnabled {
 			rt.health.Disabled("Transparent DNS")
 		}
-		rt.routingMu.RLock()
+		rt.routingMu.Lock()
+		if rt.routes.NextHop4ProbeDue(time.Now()) {
+			address, err := surge.ReadVMNextHop4(ctx, rt.adapter.Runner)
+			rt.routes.ObserveNextHop4(address, err, time.Now().UTC())
+		}
+		nextHopReady := rt.routes.NextHop4Ready()
+		if !nextHopReady {
+			rt.machine.SuspendRouting()
+			rt.machine.DrainResponses()
+		}
 		preCtx, preCancel := context.WithTimeout(ctx, 2*time.Second)
 		preReady, _ := rt.routes.Refresh(preCtx)
 		preCancel()
-		plan := rt.machine.Step(time.Now(), state.Input{Controller: controller || rt.server == nil && rt.Fault() != "", DNS: dnsReady, Surge: surgeReady, FakeIP: up["Surge Fake-IP DNS"], Routes: preReady})
+		plan := rt.machine.Step(time.Now(), state.Input{Controller: controller || rt.server == nil && rt.Fault() != "", DNS: dnsReady, Surge: surgeReady && nextHopReady, FakeIP: up["Surge Fake-IP DNS"], Routes: preReady})
 		routeCtx, routeCancel := context.WithTimeout(ctx, 2*time.Second)
-		desired := rt.routes.Desired(controller && dnsReady && up["Database"], dnsReady && up["Real DNS"], plan.KeepSurgeRoutes)
 		if !plan.KeepSurgeRoutes {
 			rt.machine.DrainResponses()
+			rt.routes.ApplyNextHop4()
 		}
+		desired := rt.routes.Desired(controller && dnsReady && up["Database"], dnsReady && up["Real DNS"], plan.KeepSurgeRoutes)
 		e := rt.routes.Reconcile(routeCtx, desired)
 		ready, re := rt.routes.Refresh(routeCtx)
 		routeCancel()
@@ -867,8 +877,8 @@ func (a *App) monitor(ctx context.Context, rt *Runtime) {
 			a.event("INFO", "bgp_peer", "BGP peer state changed")
 			lastPeers = string(peerJSON)
 		}
-		plan = rt.machine.Step(time.Now(), state.Input{Controller: controller || rt.server == nil && rt.Fault() != "", DNS: dnsReady, Surge: surgeReady, FakeIP: up["Surge Fake-IP DNS"], Routes: ready})
-		rt.routingMu.RUnlock()
+		plan = rt.machine.Step(time.Now(), state.Input{Controller: controller || rt.server == nil && rt.Fault() != "", DNS: dnsReady, Surge: surgeReady && nextHopReady, FakeIP: up["Surge Fake-IP DNS"], Routes: ready})
+		rt.routingMu.Unlock()
 		if plan.State != previousState {
 			a.event("INFO", "system_state", "System state: "+plan.State)
 			previousState = plan.State
@@ -1193,7 +1203,7 @@ func (a *App) View(ctx context.Context, key string) (any, error) {
 		return surge.ReadHosts(ctx, rt.adapter.Runner)
 	case "surge/status":
 		snapshot, observed := rt.adapter.Snapshot()
-		return map[string]any{"snapshot": snapshot, "observed_at": observed, "fresh": snapshot.Digest != "" && time.Since(observed) <= rt.adapter.MaxSnapshotAge}, nil
+		return map[string]any{"snapshot": snapshot, "next_hop4": manager.NextHop4(), "observed_at": observed, "fresh": snapshot.Digest != "" && time.Since(observed) <= rt.adapter.MaxSnapshotAge}, nil
 	case "bgp/status", "routing/status":
 		return manager.Status(), nil
 	}

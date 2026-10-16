@@ -1,4 +1,4 @@
-import React,{useId} from 'react';
+import React,{useEffect,useId,useRef,useState} from 'react';
 import {useT} from './i18n';
 
 export function FieldLabel({label,required=false,hint,children,className='',...props}){
@@ -12,6 +12,14 @@ export function FieldLabel({label,required=false,hint,children,className='',...p
  </label>;
 }
 export function FormHint(){const t=useT();return <p className="form-guidance">{t('标有“必填”的项目需要填写；开启相关功能后，必填提示会自动变化。')}</p>}
+export function CommaSeparatedField({value,onChange,disabled=false,...props}){
+ const formatted=value.join(', '),[text,setText]=useState(formatted),lastValue=useRef(formatted);
+ useEffect(()=>{if(formatted!==lastValue.current)setText(formatted);lastValue.current=formatted},[formatted]);
+ return <FieldLabel {...props}><input type="text" autoComplete="off" disabled={disabled} value={text} onChange={e=>{
+  const text=e.target.value,values=text.split(/[,，]/).map(value=>value.trim()).filter(Boolean);
+  lastValue.current=values.join(', ');setText(text);onChange(values);
+ }} onBlur={()=>setText(value.join(', '))}/></FieldLabel>;
+}
 const numbers=new Set('timeout_ms source_port_first source_port_last local_asn listen_port route_limit hold_seconds keepalive_seconds capacity response_capacity workers queue direct_ttl_seconds surge_ttl_seconds unknown_ttl_seconds error_ttl_seconds interval_ms failures successes grace_seconds stabilize_seconds history_capacity event_retention session_minutes cooldown_seconds asn port ttl med local_preference checkIntervalHours check_interval_hours gateway_asn'.split(' '));
 export const numericField=name=>numbers.has(name);
 export function resourceRequired(page,name){return numericField(name)||({Hosts:['domain','addresses','match'],Interception:['prefix'],Peers:['address'],Routes:['prefix','next_hop'],Overrides:['domain','match','decision']}[page]||[]).includes(name)}
@@ -45,6 +53,7 @@ export function settingsRequirement(category,name,draft,interception=[]){
   const family=name.endsWith('6')?6:4;
   result.required=Boolean(active&&(surge.fake_prefixes||[]).some(prefix=>prefix.includes(':')===(family===6)));
   if(result.required)result.hint='当前 Fake-IP 路由地址族需要 Surge 下一跳。';
+  if(name==='next_hop4'){result.required=false;result.hint='选填；留空时由当前后端自动探测 Surge VM IPv4 地址，填写时优先使用指定地址。';}
  }
  return result;
 }

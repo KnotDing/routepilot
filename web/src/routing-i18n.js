@@ -1,5 +1,6 @@
 const messages={
  'zh-CN':{
+  autoNextHopChanged:'Surge VM IPv4 地址已变化，请更新网关静态路由后重新勾选确认并保存。',
   language:'页面语言',configuration:'路由配置',mode:'路由模式',fakeBackend:'Fake-IP 路由方式',dnsBackend:'DNS 拦截路由方式',
   bgpLimit:'自动发布与撤销路由；需要可用的 BGP 邻居。',staticLimit:'网关路由由外部管理，停止服务后仍保留。',hybridLimit:'两类路由分别选择后端；静态路由由外部维护。',
   fakeConfirmed:'Fake-IP 路由已在网关配置',staticDNS:'启用静态 DNS 拦截',dnsConfirmAction:'确认网关路由已配置',dnsConfirmed:'✓ 网关路由已确认',staticRisk:'静态 DNS 路由不会随服务停止撤销。',
@@ -10,6 +11,7 @@ const messages={
   'external-unconfirmed':'待外部配置','external-confirmed':'用户已声明配置','external-missing-next-hop':'缺少下一跳','inactive':'未发布','announced':'已发布','ribState':'本地 RIB','withdrawn':'已撤销'
  },
  en:{
+  autoNextHopChanged:'The Surge VM IPv4 address changed. Update the static routes on the gateway, then confirm again and save.',
   language:'Page language',configuration:'Routing configuration',mode:'Routing mode',fakeBackend:'Fake-IP routing method',dnsBackend:'DNS interception method',
   bgpLimit:'Routes are announced and withdrawn automatically; an available BGP neighbor is required.',staticLimit:'Gateway routes are managed externally and remain after the service stops.',hybridLimit:'Choose a backend for each route type; static routes are maintained externally.',
   fakeConfirmed:'Fake-IP routes configured on the gateway',staticDNS:'Enable static DNS interception',dnsConfirmAction:'Confirm gateway routes are configured',dnsConfirmed:'✓ Gateway routes confirmed',staticRisk:'Static DNS routes remain when the service stops.',

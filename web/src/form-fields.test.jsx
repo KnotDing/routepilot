@@ -52,6 +52,16 @@ it('requests an initial password only when authentication is enabled and none is
  draft.security.password_configured=true;
  expect(settingsRequirement('security','password',draft).required).toBe(false);
 });
+it('keeps Surge IPv4 next hop optional and shows the connected backend detection result',()=>{
+ const settings={general:{},bgp:{enabled:true},routing:{mode:'bgp'},surge:{next_hop4:'',next_hop6:'',fake_prefixes:['198.18.0.0/15','fd00:1234::/64'],trust_direct:false}};
+ render(<Settings settings={settings} surgeStatus={{next_hop4:{automatic:true,address:'192.0.2.141'}}} notify={()=>{}} refresh={()=>{}}/>);
+ fireEvent.click(screen.getByRole('button',{name:'Surge',exact:true}));
+ expect(screen.getByLabelText('Surge IPv4 下一跳')).not.toBeRequired();
+ expect(screen.getByLabelText('Surge IPv6 下一跳')).toBeRequired();
+ expect(screen.getByText('自动探测的 Surge IPv4 下一跳：192.0.2.141')).toBeInTheDocument();
+ fireEvent.change(screen.getByLabelText('Surge IPv4 下一跳'),{target:{value:'192.0.2.150'}});
+ expect(screen.queryByText('自动探测的 Surge IPv4 下一跳：192.0.2.141')).not.toBeInTheDocument();
+});
 it('marks resource requirements and hides irrelevant transport fields',()=>{
  render(<Resource page="Hosts" rows={[]} refresh={()=>{}} notify={()=>{}}/>);
  fireEvent.click(screen.getByRole('button',{name:'＋ 添加'}));

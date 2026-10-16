@@ -185,3 +185,29 @@ func TestParseUpdateTime(t *testing.T) {
 		}
 	}
 }
+
+func TestIPv4FakeNextHopCanBeDetectedButIPv6StillRequiresAddress(t *testing.T) {
+	for _, mode := range []string{"bgp", "static"} {
+		d := Default()
+		d.Settings.Routing = Routing{Mode: mode, StaticFakeIPConfigured: true}
+		d.Settings.BGP.Enabled = true
+		d.Settings.BGP.RouterID = "192.0.2.2"
+		d.Settings.Surge.NextHop4 = ""
+		if err := d.Validate(); err != nil {
+			t.Fatal(mode, err)
+		}
+		d.Settings.Surge.NextHop4 = "not-an-address"
+		if d.Validate() == nil {
+			t.Fatal("invalid explicit address accepted")
+		}
+		d.Settings.Surge.NextHop4 = ""
+		d.Settings.Surge.FakePrefixes = append(d.Settings.Surge.FakePrefixes, "fd00:1234::/64")
+		if d.Validate() == nil {
+			t.Fatal("IPv6 unexpectedly became optional", mode)
+		}
+		d.Settings.Surge.NextHop6 = "fd00:20::5"
+		if err := d.Validate(); err != nil {
+			t.Fatal(err)
+		}
+	}
+}

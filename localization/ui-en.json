@@ -1,4 +1,13 @@
 {
+  "多个网段用逗号分隔。": "Separate multiple networks with commas.",
+  "选填；留空时由当前后端自动探测 Surge VM IPv4 地址，填写时优先使用指定地址。": "Optional. Leave blank to detect the Surge VM IPv4 address on the connected backend; an explicit address takes priority.",
+  "当前后端未提供 IPv4 下一跳探测状态。": "The connected backend does not provide IPv4 next hop detection status.",
+  "保存设置后将自动探测 Surge VM IPv4 地址。": "Save settings to detect the Surge VM IPv4 address automatically.",
+  "IPv4 下一跳自动探测失败：{reason}": "IPv4 next hop detection failed: {reason}",
+  "已探测到 {address}，等待旧 Fake-IP 响应到期后应用。": "Detected {address}; waiting for existing Fake-IP answers to expire before applying.",
+  "自动探测的 Surge IPv4 下一跳：{address}": "Detected Surge IPv4 next hop: {address}",
+  "正在等待 Surge VM IPv4 地址探测。": "Waiting for Surge VM IPv4 address detection.",
+  "请等待 Surge IPv4 下一跳自动探测成功后，再确认静态 Fake-IP 路由": "Wait for successful Surge IPv4 next hop detection before confirming static Fake-IP routes",
   "后端切换失败": "Backend switch failed",
   "探测主机名": "Probe hostnames",
   "截断探测主机名的域部分": "Trim domain suffix from detected hostnames",

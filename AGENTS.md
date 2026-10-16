@@ -188,6 +188,7 @@
 | 耗时操作与进度 | `internal/api/operations.go`（`startOperation`）；检查 `Prefer: respond-async` | `web/src/client.js`、`operation-status.jsx`；`internal/controlclient/client.go` 的 `Request` |
 | DNS 分流、AAAA 回落、Fake-IP 门禁 | `internal/dnsserver/dispatcher.go`（`Dispatch` / `resolveSurge`）；`internal/model/model.go` 定义查询上下文与结果 | `internal/localdns/local.go`；`internal/app/app.go` 的 `policy.Classify`；`internal/state/machine.go` |
 | Surge 策略求值、always-real-ip、Host/IPv6 同步 | `internal/surge/adapter.go`；`api.go` / `cli.go`；`real_ip.go` / `hosts.go` / `ipv6.go` | `internal/classifier/classifier.go`（`Classify` / `evaluate`）；`internal/app/decision_revision.go` |
+| Surge IPv4 下一跳自动探测 | `internal/surge/vmnet.go`（`ReadVMNextHop4`，只读 VMNET `self-ip`）；`internal/routing/next_hop.go`（自动 / 显式地址、30 秒探测节流、安全校验、静态确认地址绑定） | `internal/app/app.go` 的 `monitor`（旧 Fake-IP TTL / 宽限期排空后切换）；`configuration.go`（确认时绑定自动地址）；`web/src/surge-next-hop.jsx`、`form-fields.jsx`；`docs/routing-backends.md` |
 | 决策缓存、失效与空闲刷新 | `internal/classifier/classifier.go`、`idle_refresh.go`；`internal/cache/cache.go` / `policy.go`（分项开关、按旧值归属的有界统计） | `internal/app/decision_cache.go`、`decision_revision.go`；`web/src/cache.jsx`、`cache-i18n.js`、`cache-policies.jsx`（决策 / 上游独立开关与统计）；`internal/config/cache_policies.go`；`docs/cache-policies.md` |
 | 响应缓存、TTL、持久化与可靠性比较 | `internal/resolver/real.go`（`Resolve` / `exchange` / `refresh`）；`internal/app/surge_response_cache.go`（Surge 分项缓存、发行门禁、响应范围验证）；`response_cache.go`、`response_comparison.go`、`idle_refresh.go` | `internal/app/response_cache.go`、`app.go` 的 `responseCacheStats` / `Metrics`；`web/src/main.jsx` 的 Queries 页 |
 | 上游、出口绑定、策略专用 DNS | `internal/resolver/upstream_transport.go`、`egress*.go`；`internal/dnsserver/policy_dns.go` | `web/src/policy-dns.jsx`、`dns-settings.jsx`；`internal/config/config.go` |
@@ -257,3 +258,13 @@
 - 已发布：`v1.0.4-beta.27`，发布提交 `7c36b3aae8a7bbe590f8dce11c1fac13b371e781`，注释标签对象 `7100a6414613abc168a7ea34b571bbf228cbfc6b` 已双仓库核对。GitHub 回归 `38721553427`（含 fuzz）、Release `38721553616` 成功，Gitea `2105` 成功镜像 GitHub 制品 / 回退跳过。两个页面均为非草稿测试版，各有相同 DMG / ZIP / SHA256SUMS 三附件；六附件下载非空、哈希一致，包内 App 与后台均为 `1.0.4-beta.27 / build 35`，ZIP / 签名 / DMG 完整性通过。GitHub: https://github.com/KnotDing/routepilot/releases/tag/v1.0.4-beta.27；Gitea: https://gitea.knotding.com/knot/routepilot/releases/tag/v1.0.4-beta.27。正式 skill 安装版本保持 `v1.0.3`。
 - 保留的无关改动：无；本轮开始时只有本次待发布改动。旧包 / bin 备份至 `artifacts/pre-beta27-backup-20261015/`，历史证据保留；不安装或重启现用环境。
 - 下一步与依赖：无未完成的实现或发布事项；后续可随时交接，先核对工作区和远端。继续提交仍须双仓库同步；GitHub SSH 不稳定时沿用此前按命令的 HTTPS 改写及已有 gh 凭证助手，不输出凭证。证据目录 `artifacts/releases/v1.0.4-beta.27/`。源地址绑定头对旧客户端保持可选兼容；新页面的全部读取、写入和任务轮询绑定需本机中继后台同步升级。新窗口不复制状态栏本地会话 Cookie，通过已存凭证独立登录；未保存凭证时新窗口需登录。原生测试通过 `ROUTEPILOT_NATIVE_TEST` 排除实际 App 启动和凭证种子，使用随机 loopback 端口及现有请求客户端；不能运行测试构建作为生产 App。
+
+## 任务交接（2026-10-16，beta.28 发布中）
+
+- 目标与验收条件：发布 Surge IPv4 下一跳选填 / 自动探测和 Fake-IP 网段单行逗号输入；核验双仓库分支 / 标签、GitHub 回归、双 Release workflow 和三项安装附件。
+- 当前状态：进行中。源码版本为 `1.0.4-beta.28 / build 110`；已确认双仓库 `main` 基线为 `663c6b6`，beta.28 标签未使用。最近完整核验发布仍为上方 beta.27。
+- 已完成与修改文件：自动探测见 `internal/surge/vmnet.go`、`internal/routing/next_hop.go`、`internal/app/app.go` / `configuration.go`；配置校验、地址绑定的静态确认及测试已同步。设置显示和单行网段输入见 `web/src/surge-next-hop.jsx`、`form-fields.jsx`、`main.jsx`、`routing.jsx`；双语、README、路由 / 配置应用 / 验收文档和 `.gitea/release-notes/v1.0.4-beta.28.md` 已更新。
+- 验证：开发阶段前端 36 文件 / 193 测试、Surge / routing / config / app race、相关 vet、前端与 Go 构建通过；17 页 / 14 类设置在 1440 / 1120 / 390 检查通过。最终单行输入改动后相关 16 测试、生产构建及模拟浏览器连续逗号输入 / 提交数组 / 手机布局通过。新探测代码只读实测 VM 地址为 `192.168.20.141`。本轮 `make verify-release` 已全部通过：前端 36 文件 / 193 测试、Go 全包 race / vet、原生核心 / WKWebView / 多窗口、17 页 / 14 类设置、9 项缓存 UI 及完整 App / ZIP / 签名 / DMG 校验。本地源码 / 包为 `1.0.4-beta.28 / build 110`；日志与包报告位于 `artifacts/releases/v1.0.4-beta.28/`。
+- 已发布：尚未提交 / 推送 beta.28，GitHub 回归与双发布门禁、附件校验待完成。未安装或重启现用环境；真实网关 RIB / FIB、DHCP 地址变化与 LAN / IPv6 路径未验收。
+- 保留的无关改动：无。旧安装包和 `bin/` 备份于 `artifacts/pre-beta28-backup-20261016/`。
+- 下一步与依赖：完成本地验证，明确暂存本轮文件，Conventional Commit 后双仓库推送 main 和未用注释标签；等待门禁、下载六项附件校验哈希 / ZIP / 签名 / DMG / App 与后台身份，再更新本文件最终证据并提交双推，不移动发布标签。

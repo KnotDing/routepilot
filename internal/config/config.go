@@ -616,8 +616,8 @@ func (d Document) Validate() error {
 		if e != nil {
 			return e
 		}
-		if (routing.FakeIPBackend == "bgp" && s.BGP.Enabled || routing.FakeIPBackend == "static" && routing.StaticFakeIPConfigured) && (prefix.Addr().Is4() && s.Surge.NextHop4 == "" || prefix.Addr().Is6() && s.Surge.NextHop6 == "") {
-			return errors.New("configured Fake-IP routing requires a Surge next hop for every address family")
+		if (routing.FakeIPBackend == "bgp" && s.BGP.Enabled || routing.FakeIPBackend == "static" && routing.StaticFakeIPConfigured) && prefix.Addr().Is6() && s.Surge.NextHop6 == "" {
+			return errors.New("configured IPv6 Fake-IP routing requires a Surge IPv6 next hop")
 		}
 		if networks[p] {
 			return errors.New("duplicate fake prefix")

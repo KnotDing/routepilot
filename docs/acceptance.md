@@ -1,5 +1,66 @@
 # Acceptance evidence — 2026-10-08
 
+## Automatic Surge VM IPv4 next hop — 2026-10-16
+
+`surge.next_hop4` is optional for IPv4 Fake-IP routes. Explicit values take
+priority; blank values use the connected backend's CLI VMNET `self-ip`.
+The saved value remains blank. Runtime state exposes the detected/effective
+address, pending transition and read error through the existing Surge/routing
+status endpoints. IPv6 keeps its previous explicit-address requirements.
+
+The existing monitor probes at most every 30 seconds, with a two-second timeout.
+Failures pause issuance and preserve old paths for issued TTLs/grace. Address
+changes drain old answers before updating paths, retaining the DNS runtime and
+BGP speaker. Static confirmation binds to the detected address and requires
+explicit confirmation again after an address change, including after restart.
+
+Executed for this change:
+
+- `npm --prefix web test -- --reporter=dot`: 36 files / 193 tests passed.
+  The final focused four-file rerun passed all 18 tests after a static-confirmation
+  display refinement. Existing monitoring fixture duplicate-key warnings remain.
+- `npm --prefix web run build`: management UI and offline notes built; the existing
+  bundle-size advisory remains.
+- `env GOCACHE=/private/tmp/routepilot-next-hop-go-build go test -race
+  ./internal/surge ./internal/routing ./internal/config ./internal/app`: passed.
+  Coverage includes strict VMNET parsing, manual priority, bounded probing,
+  Fake-IP TTL drain/recovery, independent routes, unsafe detected addresses,
+  persistence and address-bound static confirmation. Tests use mock Surge,
+  temporary private databases and random loopback ports; initial sandbox bind
+  restrictions were resolved by running isolated integration tests outside it.
+- `go vet` for the same four packages and `go build ./...` with the same cache:
+  passed, with frontend assets built before Go embedding.
+- `node scripts/ui_forms_check.cjs`: 17 pages / 14 categories at widths 1440,
+  1120 and 390 passed; the optional IPv4 field and detected-address hint were
+  checked at each width. Mobile screenshot visually inspected.
+- A temporary read-only program using the new `surge.ReadVMNextHop4` with the
+  installed Surge CLI returned **192.168.20.141**. It only read VMNET status;
+  it did not change configuration or restart services. Probe source and UI
+  screenshots remain under ignored `artifacts/`.
+
+Not committed, released, installed or applied to the running RoutePilot backend.
+Live BGP gateway RIB/FIB, DHCP address changes and LAN packet paths were not
+exercised; isolated state-machine checks do not establish those outcomes.
+
+Follow-up: the Fake-IP prefix editor now uses a single-line comma-separated
+field (ASCII or Chinese commas), retaining the configuration array format.
+The three relevant frontend files passed all 16 tests and the production build
+passed. An isolated browser with a mock API verified typing a trailing comma,
+adding an IPv6 prefix, the submitted two-element array, and no horizontal
+overflow at width 390. The screenshot is under
+`artifacts/surge-next-hop-2026-10-16/prefix-single-line-390.png`.
+
+## Beta.28 release gate — 2026-10-16
+
+Local `env GOCACHE=/private/tmp/routepilot-next-hop-go-build make verify-release`
+passed: 36 frontend files / 193 tests, all Go race tests and vet, native core /
+WKWebView / multi-window checks, 17 pages / 14 settings categories, nine cache UI
+checks, full App packaging and ZIP / signatures / DMG layout validation. Source
+and local package identity is `1.0.4-beta.28 / build 110`. Evidence is under
+`artifacts/releases/v1.0.4-beta.28/` (`local-verification.log` and
+`local-package-verification.json`). CI regression, publication and downloaded
+release artifact verification are pending. No live installation or restart.
+
 ## LAN resource profiling — 2026-10-13
 
 See [CPU and memory evidence](performance-2026-10-13.md) for reproducible

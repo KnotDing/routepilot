@@ -15,7 +15,7 @@ RoutePilot 是一款 macOS 状态栏应用：向 Surge 查询分流策略，为 
 - **缩短直连路径：** DIRECT 查询返回真实地址，客户端后续流量由网关直接送往 WAN，不必绕经 Surge；Fake-IP 和下一跳配置为 Surge 的受管理前缀仍按路由经过 Surge。
 - **Surge 故障时保留新连接的直连路径：** RoutePilot 停止发放新的 Fake-IP，后续查询改用独立真实 DNS 解析，让网关可将新连接直连出网（真实 DNS 与 WAN 可用时）。已发放 Fake-IP 在 TTL / 宽限期内仍可能依赖 Surge。
 
-[📦 下载最新版本](https://github.com/KnotDing/routepilot/releases) · [🧪 多管理窗口测试版 v1.0.4-beta.27](https://github.com/KnotDing/routepilot/releases/tag/v1.0.4-beta.27) · [Gitea 备用下载](https://gitea.knotding.com/knot/routepilot/releases) · [🚀 快速开始](#quick-start) · [🤖 安装 skill](#agent-skill) · [📚 文档导航](#documentation)
+[📦 下载最新版本](https://github.com/KnotDing/routepilot/releases) · [🧪 自动 IPv4 下一跳测试版 v1.0.4-beta.28](https://github.com/KnotDing/routepilot/releases/tag/v1.0.4-beta.28) · [Gitea 备用下载](https://gitea.knotding.com/knot/routepilot/releases) · [🚀 快速开始](#quick-start) · [🤖 安装 skill](#agent-skill) · [📚 文档导航](#documentation)
 
 <p align="center">
   <img src="docs/images/management-4k.png" width="100%" alt="RoutePilot App 管理界面 4K 截图">
@@ -84,7 +84,7 @@ RoutePilot 处理被送到它的 DNS 请求并发布受管理路由；普通应�
 | 步骤 | 配置与确认 |
 | --- | --- |
 | ① DNS 出口 | 在「设置 → DNS」填写物理出口接口、已分配的源地址、网关和真实上游。UDP / TCP 填 IP 与端口；DoT 另填证书名称，DoH 填 HTTPS URL。 |
-| ② Surge | 核对 CLI、Fake-IP DNS、Fake-IP 网段和各地址族下一跳。常驻后台以 root 运行时，CLI 降权到桌面用户，也可指定 Surge 用户。 |
+| ② Surge | 核对 CLI、Fake-IP DNS、Fake-IP 网段和各地址族下一跳。IPv4 下一跳可留空，自动探测 Surge VM 地址；IPv6 按需填写。常驻后台以 root 运行时，CLI 降权到桌面用户，也可指定 Surge 用户。 |
 | ③ 防止回流 | 在网关设置高优先级源策略，让 Controller 的上游请求走不含拦截路由的 WAN 路径。固定本机出口接口不能替代网关策略，验证后再确认绕行。 |
 | ④ 路由 | 在「设置 → 路由」选择后端和分流模式。BGP 邻居可复用全局 ASN、Router ID；Fake-IP 下一跳指向 Surge，DNS 拦截下一跳指向 Controller。 |
 | ⑤ 透明拦截 | 添加解析器前缀、实际接收接口和具体监听地址（建议端口 1054）。需要 PF 权限，根规则须可到达 `com.apple/*`；应用仅管理自己的锚点。 |

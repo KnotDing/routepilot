@@ -38,6 +38,21 @@ func (a *App) SaveConfiguration(ctx context.Context, d config.Document) error {
 	previousRouting := old.Settings.Routing.Effective()
 	if !reflect.DeepEqual(old.Settings.Surge.FakePrefixes, d.Settings.Surge.FakePrefixes) || old.Settings.Surge.NextHop4 != d.Settings.Surge.NextHop4 || old.Settings.Surge.NextHop6 != d.Settings.Surge.NextHop6 || previousRouting.Mode != d.Settings.Routing.Mode || previousRouting.FakeIPBackend != d.Settings.Routing.FakeIPBackend {
 		d.Settings.Routing.StaticFakeIPConfigured = false
+		d.Settings.Routing.StaticFakeIPNextHop4 = ""
+	}
+	if !d.Settings.Routing.StaticFakeIPConfigured || d.Settings.Surge.NextHop4 != "" {
+		d.Settings.Routing.StaticFakeIPNextHop4 = ""
+	} else if d.Settings.Routing.FakeIPBackend == "static" && d.Settings.Routing.StaticFakeIPNextHop4 == "" && hasIPv4FakePrefix(d) {
+		// The empty metadata field requests an explicit new confirmation. Other
+		// saves preserve its address, so an IP change cannot silently re-confirm.
+		a.mu.RLock()
+		routes := a.runtime.routes
+		a.mu.RUnlock()
+		next := routes.NextHop4()
+		if !next.Automatic || next.Address == "" || next.Address != next.DetectedAddress || next.Error != "" {
+			return errors.New("请等待 Surge IPv4 下一跳自动探测成功后，再确认静态 Fake-IP 路由")
+		}
+		d.Settings.Routing.StaticFakeIPNextHop4 = next.Address
 	}
 	if !reflect.DeepEqual(old.Interception, d.Interception) || old.Settings.DNS.Source4 != d.Settings.DNS.Source4 || old.Settings.DNS.Source6 != d.Settings.DNS.Source6 || previousRouting.Mode != d.Settings.Routing.Mode || previousRouting.DNSBackend != d.Settings.Routing.DNSBackend || previousRouting.StaticDNSInterception != d.Settings.Routing.StaticDNSInterception {
 		d.Settings.Routing.StaticDNSConfigured = false
