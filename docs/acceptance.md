@@ -14,10 +14,31 @@ core / WKWebView / multiple windows, 17 pages / 14 settings categories, nine
 cache UI checks and full package validation. Fuzz executed 217,336 cases. Local
 App/backend identity is `1.0.4 / build 111`; reports are `local-verification.log`,
 `local-fuzz.log` and `local-package-verification.json`. CI regression/full release,
-publication and dual-forge artifact verification remain pending. Evidence goes to
-`artifacts/releases/v1.0.4/`. Prior packages and bin files were preserved under
-`artifacts/pre-v1.0.4-backup-20261016/`. No live installation/restart is authorized
-by this publication task; no new live gateway/LAN/IPv6 acceptance is claimed.
+publication and dual-forge artifact verification have now passed:
+
+- Tag `v1.0.4` resolves to `6d336a770028a18690914eeaf2733cdd42e86ed3`, annotated
+  object `cd460ac01058ff470afdd5fb9762a6f56e208219`; both remotes agree.
+- [GitHub regression](https://github.com/KnotDing/routepilot/actions/runs/38844597375)
+  and the complete [stable Release workflow](https://github.com/KnotDing/routepilot/actions/runs/38844625516)
+  succeeded, including their required native/browser checks and fuzz.
+- [Gitea Release](https://gitea.knotding.com/knot/routepilot/actions/runs/2109)
+  succeeded by mirroring GitHub; fallback build skipped.
+- [GitHub Release](https://github.com/KnotDing/routepilot/releases/tag/v1.0.4)
+  and [Gitea mirror](https://gitea.knotding.com/knot/routepilot/releases/tag/v1.0.4)
+  are non-draft stable releases (`prerelease=false`), each with only DMG, ZIP
+  and SHA256SUMS. All six attachments downloaded, with identical hashes across
+  forges. ZIP, signatures, DMG integrity/layout, binary identity and actual
+  **App/backend 1.0.4 / build 37** passed; CI build differs from local build 111.
+  GitHub latest also points to v1.0.4.
+- All three public files referenced by the stable skill installer downloaded
+  and matched tag contents; no skill was installed.
+
+Evidence is under `artifacts/releases/v1.0.4/`, including
+`publication-verification.json` and `skill-source/verification.json`. Prior
+packages and bin files were preserved under
+`artifacts/pre-v1.0.4-backup-20261016/`. The final handoff is a later docs-only
+commit; the release tag remains unchanged. No live installation/restart was
+performed, and no new live gateway/LAN/IPv6 or notarization acceptance is claimed.
 
 ## Automatic Surge VM IPv4 next hop — 2026-10-16
 
