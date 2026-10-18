@@ -945,4 +945,4 @@ acceptance was performed. Configuration runtime application is unchanged.
 - 共用 `MetricValue` 保留完整数值，宽度不足时缩小、扩宽时恢复，始终单行。DNS / 缓存 / 客户端 / 路由 / 监控卡片复用同一共享 ResizeObserver；仅数值、空间、字体变化时重新测量，无定时器。
 - `npm --prefix web test`：38 文件 / 201 项通过，覆盖内容变化、缩小 / 恢复、隐藏零宽度、共享 observer 清理和无 ResizeObserver 的 resize 回退。
 - 前端构建与 `make ui-test` 通过（18 页面 / 14 分类 / 1440、1120、390 宽度及 9 项缓存 UI）；真实浏览器使用 16 位数值验证不换行 / 不溢出 / 不缩写和扩宽恢复。
-- `env GOCACHE=/private/tmp/routepilot-dhcp-gocache make package package-check` 通过，本地 App / 后台 `1.0.5-beta.5 / build 117`。本轮未重复本地 Go / 原生测试，发布提交仍需完整 CI；未安装或重启现用环境。证据在 `artifacts/releases/v1.0.5-beta.5/`，发布核验待补齐。
+- `env GOCACHE=/private/tmp/routepilot-dhcp-gocache make package package-check` 通过，本地 App / 后台 `1.0.5-beta.5 / build 117`。本轮未重复本地 Go / 原生测试，发布提交仍需完整 CI；未安装或重启现用环境。已发布 `v1.0.5-beta.5`（`cc8f34d`），GitHub 回归 `39137981766` / Release `39137997174` 及 Gitea `2121` 全部成功；双仓库六附件下载 / SHA256 / 签名 / ZIP / DMG / 包内身份校验通过且哈希一致，App / 后台为 build 43。最新统计字号 / 无分割线 CSS 已在捆绑后台中核对。证据：`artifacts/releases/v1.0.5-beta.5/publication-verification.json`。
