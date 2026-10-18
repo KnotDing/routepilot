@@ -87,6 +87,7 @@ const fixture=Function(source.slice(source.indexOf('const settings='),source.ind
     await page.screenshot({path:out+'/dhcp-'+width+'.png',fullPage:true});
     await page.emulateMedia({colorScheme:'dark'});await page.screenshot({path:out+'/dhcp-dark-'+width+'.png',fullPage:true});await page.emulateMedia({colorScheme:'light'});
     await page.getByRole('button',{name:'编辑 DHCP 设备 02:00:00:00:00:01',exact:true}).click();await page.getByRole('dialog',{name:'DHCP 设备属性',exact:true}).waitFor();await check('DHCP device editor '+width);
+    if(await page.locator('.dhcp-device-editor footer').evaluate(footer=>parseFloat(getComputedStyle(footer).borderTopWidth)>0))throw Error('Unnecessary DHCP device footer divider remains');
     await page.screenshot({path:out+'/dhcp-device-'+width+'.png',fullPage:true});
     await page.emulateMedia({colorScheme:'dark'});await page.screenshot({path:out+'/dhcp-device-dark-'+width+'.png',fullPage:true});await page.emulateMedia({colorScheme:'light'});
     await page.getByRole('button',{name:'取消',exact:true}).click();

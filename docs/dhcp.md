@@ -60,6 +60,6 @@ RoutePilot 后台可在明确指定的一个局域网接口、一个 IPv4 子网
 - `npm --prefix web test`：37 个文件、197 项通过，包含设备逐项继承、启用前检查/取消、远程保存及草稿保护。
 - `go test -race ./internal/dhcpserver ./internal/config ./internal/database ./internal/api ./internal/remote ./internal/app ./cmd/routepilot`：通过。覆盖租约分配/续租/释放/重启恢复、设备选项与 Option 121、持久化失败、冲突隔离、保留地址、报文边界、检查提示、独立保存/备份和远程允许列表；后续补充测试也单独通过。
 - `npm --prefix web run build`、`go build ./...` 及上述 Go 包的 `go vet`：通过。前端仍有大于 500 kB 的分块提示。
-- 未在现用局域网启用 DHCP，也未完成真实 UDP 67/68 收发、iOS 租约及路由采纳、与其他 DHCP 服务共存的现场验收。启用检查使用可注入的模拟探测验证分支，不能代替实际广播域验证。未安装或发布。
+- 未在现用局域网启用 DHCP，也未完成真实 UDP 67/68 收发、iOS 租约及路由采纳、与其他 DHCP 服务共存的现场验收。启用检查使用可注入的模拟探测验证分支，不能代替实际广播域验证。本节为实现阶段记录；后续 UI 检查及发布结果见 [验收记录](acceptance.md)。
 
 English: The optional DHCPv4 server serves one explicitly selected local IPv4 subnet. Gateway, DNS, classless routes, NTP, network boot, next-server, TFTP, lease duration and domain support independent per-MAC overrides. Preflight discovery and macOS address-method checks report competing servers, DHCP-configured interfaces and inconclusive checks before enabling. Leases are durably committed before ACK, restored without extending expiry, and kept independent of DNS/BGP restarts. Relay, DHCPv6 and boot-file/TFTP hosting are outside this implementation.

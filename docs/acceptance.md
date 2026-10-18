@@ -932,4 +932,10 @@ acceptance was performed. Configuration runtime application is unchanged.
 
 - 移除独立设备配置卡片，租约列表保留无有效租约的配置设备，行内打开设备属性弹窗；保存通过独立设备接口，不提交全局草稿。后端能力字段可选，旧版仅降级该入口。
 - `npm --prefix web test`：37 文件 / 199 项通过；`go test -race ./internal/api ./internal/remote ./internal/dhcpserver` 及对应 `go vet` 通过。`make ui-test` 覆盖 18 页面 / 14 分类 / 1440、1120、390 宽度，新增 DHCP 明暗主题、单标题、无额外分组边框、保存区间距、编辑弹窗与无障碍名称检查；9 项缓存 UI 通过。
-- `env GOCACHE=/private/tmp/routepilot-dhcp-gocache make package package-check` 通过，App / 后台为 `1.0.5-beta.3 / build 115`。日志与包报告在 `artifacts/releases/v1.0.5-beta.3/`。尚未发布；未安装或重启现用环境，未做真实 DHCP 客户端验收。
+- `env GOCACHE=/private/tmp/routepilot-dhcp-gocache make package package-check` 通过，App / 后台为 `1.0.5-beta.3 / build 115`。日志与包报告在 `artifacts/releases/v1.0.5-beta.3/`。已发布 `v1.0.5-beta.3`（`64ff605`）：GitHub 回归 `39136395753` / Release `39136416256`、Gitea `2119` 均成功，双边六附件下载 / 哈希 / 签名 / ZIP / DMG 校验通过且一致，App / 后台为 build 41；证据见该版 `publication-verification.json`。未安装或重启现用环境，未做真实 DHCP 客户端验收。
+
+## 2026-10-18：设备表单无多余分割线（v1.0.5-beta.4）
+
+- 仅移除 DHCP 设备属性窗口 footer 上边框，新增真实浏览器断言；保留输入框风格、标题、列表内编辑和间距。
+- 前端构建、`make ui-test`（18 页 / 14 分类 / 三宽度、明暗主题、9 项缓存检查）和 `env GOCACHE=/private/tmp/routepilot-dhcp-gocache make package package-check` 通过。本地 App / 后台为 `1.0.5-beta.4 / build 116`，证据在 `artifacts/releases/v1.0.5-beta.4/`。未重复本地 Go / 原生测试；beta.3 对应验证保留。
+- 尚未发布，待发布提交 CI 和双仓库附件核验；未安装、重启现用环境或实际启用 DHCP。

@@ -10,3 +10,4 @@
 .dhcp-panel .metrics strong{display:block}
 .dhcp-panel .metrics>section{padding:14px}
 .dhcp-panel>form{margin:0 0 22px}
+.dhcp-device-editor footer{border-top:0}
