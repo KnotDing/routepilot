@@ -132,7 +132,7 @@
 
 ## 最近已核验发布（更新于 2026-10-18）
 
-- 最新完整核验正式版为 `v1.0.4`，标签指向 `6d336a770028a18690914eeaf2733cdd42e86ed3`，注释标签对象为 `cd460ac01058ff470afdd5fb9762a6f56e208219`。最新已核验测试版为 `v1.0.5-beta.3`（`64ff605`，双仓库 App / 后台 build 41），详见下方交接；`v1.0.5-beta.4` 发布进行中。`v1.0.4-beta.29` 为误基准历史发布，不移动标签。后续交接文档提交不移动发布标签。
+- 最新完整核验正式版为 `v1.0.4`，标签指向 `6d336a770028a18690914eeaf2733cdd42e86ed3`，注释标签对象为 `cd460ac01058ff470afdd5fb9762a6f56e208219`。最新已核验测试版为 `v1.0.5-beta.4`（`d3f479b`，双仓库 App / 后台 build 42），详见下方交接；`v1.0.5-beta.5` 发布进行中。`v1.0.4-beta.29` 为误基准历史发布，不移动标签。后续交接文档提交不移动发布标签。
 - 正式发布提交的 GitHub 回归 [run 38844597375](https://github.com/KnotDing/routepilot/actions/runs/38844597375) 与完整 [Release run 38844625516](https://github.com/KnotDing/routepilot/actions/runs/38844625516) 成功；[Gitea run 2109](https://gitea.knotding.com/knot/routepilot/actions/runs/2109) 成功复用 GitHub 制品，macOS 回退任务跳过。发布提交及注释标签对象已核对双仓库一致。
 - [GitHub Release](https://github.com/KnotDing/routepilot/releases/tag/v1.0.4) 与 [Gitea 备用 Release](https://gitea.knotding.com/knot/routepilot/releases/tag/v1.0.4) 均为 `prerelease=false`、`draft=false`，只有 DMG、ZIP、SHA256SUMS 三项非空附件。六项附件均下载，双仓库 SHA256 完全一致；ZIP、签名、DMG 完整性 / 布局及 DMG 与 ZIP 的 App / CLI / 后台二进制一致性通过。App 与后台均为 `1.0.4 / build 37`（CI run number）；源码及本地包 build 为 111，不混为一谈。GitHub latest 已指向 v1.0.4。
 - v1.0.4 归并上次正式版 v1.0.3 之后 beta.1–28 的最终变更：实时 / 七天历史监控和六维筛选、客户端备注 / 强制策略 / 主机名、分项普通 / 乐观缓存、模块化配置应用、Surge IPv4 下一跳自动探测、多后端窗口隔离、更新进度 / 远端 App 重启、通知 / 导航 / 资源优化及历史恢复修复。完整说明见 `.gitea/release-notes/v1.0.4.md`；README 含摘要与入口，`scripts/install_skill.sh` 正式 tag / 提示版本已同步。
@@ -209,12 +209,22 @@
 ## 任务交接（2026-10-18，v1.0.5-beta.4）
 
 - 目标与验收条件：移除 DHCP 设备属性表单底部的多余分割线，保留设置页输入风格、列表内编辑与间距修复，发布新测试版。
-- 当前状态：进行中。源码 `1.0.5-beta.4 / build 116`，尚未发布。
+- 当前状态：已完成。源码 / 本地包 `1.0.5-beta.4 / build 116`，双仓库 App / 后台制品 build 42。
 - 已完成与修改文件：`web/src/dhcp.css` 仅对设备窗口 footer 清除上边框；`scripts/ui_forms_check.cjs` 新增真实浏览器检查；版本、说明及交接同步。
 - 验证：`npm --prefix web run build`、`make ui-test` 与 `env GOCACHE=/private/tmp/routepilot-dhcp-gocache make package package-check` 通过；18 页 / 14 分类 / 三宽度、明暗主题、设备表单底部无分割线及 9 项缓存 UI 均通过，本地 App / 后台 `1.0.5-beta.4 / build 116`。此前 beta.3 的 199 前端测试、相关 race / vet 与发布提交完整 CI 均通过；本轮 CSS 修复未重复该完整本地测试组合。本轮未安装、重启或开启 DHCP。
-- 已发布：未发布，待本地检查、双仓库提交 / 注释标签、CI 和附件核验。
+- 已发布：`v1.0.5-beta.4` 指向 `d3f479b89f53b3e6d205accf1fe306e3a3f1a545`，注释标签对象 `f93fd9687900e0988172ccf2e5cd653ecfa946c1`，双仓库已核对一致。GitHub 回归 `39137089104` / Release `39137101493`、Gitea `2120`（#136）均成功；Gitea 镜像 GitHub 附件。两个页面均为非草稿测试版，只有 DMG / ZIP / SHA256SUMS 三附件，六附件下载、哈希、签名、ZIP / DMG 完整性及包内 App / 后台身份均通过且双仓库哈希一致，身份为 `1.0.5-beta.4 / build 42`。额外确认捆绑后台中已嵌入移除分割线的最新 CSS。链接：https://github.com/KnotDing/routepilot/releases/tag/v1.0.5-beta.4 ；https://gitea.knotding.com/knot/routepilot/releases/tag/v1.0.5-beta.4 。证据：`artifacts/releases/v1.0.5-beta.4/publication-verification.json`。
 - 保留的无关改动：无。beta.3 旧包及 bin 备份至 `artifacts/pre-beta4-backup-20261018/`。
-- 下一步与依赖：完成发布与最终交接，证据在 `artifacts/releases/v1.0.5-beta.4/`。
+- 下一步与依赖：无发布遗留。最终交接作为后续文档提交双推，不移动发布标签；未安装或重启现用环境，真实 DHCP 客户端与路由采纳仍待现场验收。
+
+## 任务交接（2026-10-18，v1.0.5-beta.5）
+
+- 目标与验收条件：统计数值空间不足时缩小字号，保持完整单行，扩宽后恢复；覆盖 DNS / 缓存 / 客户端 / 路由 / 监控的共用统计卡片，发布新测试版。
+- 当前状态：进行中。源码 `1.0.5-beta.5 / build 117`，尚未发布。
+- 已完成与修改文件：`web/src/metric-value.jsx` 共用自适应组件，单一共享 ResizeObserver，仅数值 / 尺寸 / 字体变化时测量，无定时器；`style.css` 保持单行；main / clients / cache / routing / monitoring 接入；新增单元测试和真实浏览器长值 / 扩宽恢复检查。
+- 验证：前端 38 文件 / 201 项、18 页 / 14 分类 / 三宽度和 9 项缓存 UI 通过；浏览器确认 16 位数值不折行、不溢出，扩宽恢复。`env GOCACHE=/private/tmp/routepilot-dhcp-gocache make package package-check` 通过，本地 App / 后台 `1.0.5-beta.5 / build 117`。本版仅前端显示改动，未重复本地 Go / 原生测试；发布提交 CI 仍需完整回归。未安装、重启或开启 DHCP。
+- 已发布：未发布，待本地打包、双仓库提交 / 标签、回归及六附件核验。
+- 保留的无关改动：无。beta.4 旧包与 bin 备份至 `artifacts/pre-beta5-backup-20261018/`。
+- 下一步与依赖：完成 beta.5 发布和最终交接，证据在 `artifacts/releases/v1.0.5-beta.5/`。
 
 ## 代码地图：按任务定位
 

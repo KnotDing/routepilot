@@ -938,4 +938,11 @@ acceptance was performed. Configuration runtime application is unchanged.
 
 - 仅移除 DHCP 设备属性窗口 footer 上边框，新增真实浏览器断言；保留输入框风格、标题、列表内编辑和间距。
 - 前端构建、`make ui-test`（18 页 / 14 分类 / 三宽度、明暗主题、9 项缓存检查）和 `env GOCACHE=/private/tmp/routepilot-dhcp-gocache make package package-check` 通过。本地 App / 后台为 `1.0.5-beta.4 / build 116`，证据在 `artifacts/releases/v1.0.5-beta.4/`。未重复本地 Go / 原生测试；beta.3 对应验证保留。
-- 尚未发布，待发布提交 CI 和双仓库附件核验；未安装、重启现用环境或实际启用 DHCP。
+- 已发布 `v1.0.5-beta.4`（`d3f479b`）：GitHub 回归 `39137089104` / Release `39137101493`、Gitea `2120` 均成功。双发布页为非草稿测试版，六附件均下载并完成 SHA256 / 签名 / ZIP / DMG / 包内身份核验，哈希一致，App / 后台均为 build 42；捆绑后台已包含最新无分割线 CSS。证据为该版 `publication-verification.json`。未安装、重启现用环境或实际启用 DHCP。
+
+## 2026-10-18：统计数值自适应字号（v1.0.5-beta.5）
+
+- 共用 `MetricValue` 保留完整数值，宽度不足时缩小、扩宽时恢复，始终单行。DNS / 缓存 / 客户端 / 路由 / 监控卡片复用同一共享 ResizeObserver；仅数值、空间、字体变化时重新测量，无定时器。
+- `npm --prefix web test`：38 文件 / 201 项通过，覆盖内容变化、缩小 / 恢复、隐藏零宽度、共享 observer 清理和无 ResizeObserver 的 resize 回退。
+- 前端构建与 `make ui-test` 通过（18 页面 / 14 分类 / 1440、1120、390 宽度及 9 项缓存 UI）；真实浏览器使用 16 位数值验证不换行 / 不溢出 / 不缩写和扩宽恢复。
+- `env GOCACHE=/private/tmp/routepilot-dhcp-gocache make package package-check` 通过，本地 App / 后台 `1.0.5-beta.5 / build 117`。本轮未重复本地 Go / 原生测试，发布提交仍需完整 CI；未安装或重启现用环境。证据在 `artifacts/releases/v1.0.5-beta.5/`，发布核验待补齐。

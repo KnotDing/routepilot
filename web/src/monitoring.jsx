@@ -1,3 +1,4 @@
+import {MetricValue} from './metric-value';
 import './monitoring.css';
 import {useFlowCanvas} from './monitoring-flow-size';
 import {DomainStatistics,emptyMonitoringFilters} from './monitoring-filters';
@@ -150,7 +151,7 @@ function MonitoringScreen({snapshot,backendName,focus,onFocus,backendURL,history
   {mode==='history'&&!historical.loading&&!historical.error&&!historical.history&&<div className="notice">{t('此后端暂不支持历史监控，请升级后端。')}</div>}
   {mode==='history'&&historical.history&&<p className="field-hint">{new Date(historical.history.from).toLocaleString(currentLocale())} → {new Date(historical.history.to).toLocaleString(currentLocale())} · {t('历史保留七天，时间按分钟聚合。')}</p>}
   {source&&<p className="notice">{t('当前统计来源：{source}',{source:display.protected?display.source(source):sourceName(source,t,clientSettings)})}</p>}
-  {mode==='history'&&historical.history?.points.length===0?<div className="notice">{t('所选时间范围暂无历史采样')}</div>:view&&<>{metrics.length>0&&<div className="metrics monitor-metrics">{metrics.map(([key,label,value])=><div className="metric" key={label}><span>{t(label)}</span><strong>{value}</strong></div>)}</div>}
+  {mode==='history'&&historical.history?.points.length===0?<div className="notice">{t('所选时间范围暂无历史采样')}</div>:view&&<>{metrics.length>0&&<div className="metrics monitor-metrics">{metrics.map(([key,label,value])=><div className="metric" key={label}><span>{t(label)}</span><MetricValue>{value}</MetricValue></div>)}</div>}
   <FlowChartGrid>{visible('dnsFlow')&&<FlowChart snapshot={view} sources={sources} selected={source} clientSettings={clientSettings}/>}{visible('clientFlow')&&<ClientPolicyChart rows={mode==='history'?historical.history?.source_policy_flows:view.source_policy_flows} clientSettings={clientSettings}/>}</FlowChartGrid>
   <div className="monitor-primary-grid">{visible('policies')&&<Policies snapshot={view} limit={source&&source!=='legacy'?64:512}/>}
   {visible('sources')&&<SourceStatistics sources={shareSources} total={mode==='history'?historical.history?.total_received:snapshot.received} selected={source} onSelect={setSource} clientSettings={clientSettings}/>}

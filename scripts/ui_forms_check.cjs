@@ -30,7 +30,7 @@ const fixture=Function(source.slice(source.indexOf('const settings='),source.ind
    if(path==='dns/clients')value={...value,clients:[{client_ip:'192.0.2.10',queries:12,direct:12,surge:0,reject:0,unknown:0,errors:0,last_seen:new Date().toISOString()}],stats:{...value.stats,clients:1,queries:12,direct:12}};
    if(path==='settings')value={...value,cache:{...value.cache,optimistic:false,optimistic_responses:false},notifications:{enabled:true,surge:true,bgp:true,dns:true,controller:true,recovery:true,cooldown_seconds:300,webhook_url:'',webhook_configured:false,errors:[]}};
    if(path==='settings'&&sourceNames)value={...value,dns:{...value.dns,clients:[{id:'named',ip:'192.0.2.10',name:sourceRemark,decision:''}]}};
-   if(path==='status'){value.online_update=true;value.software={...value.software,...JSON.parse(fs.readFileSync('internal/buildinfo/release.json'))};}
+   if(path==='status'){value.counters={...value.counters,Queries:1537234123456789};value.online_update=true;value.software={...value.software,...JSON.parse(fs.readFileSync('internal/buildinfo/release.json'))};}
    if(path==='status'&&crowdedPolicyFlows){
     const pairs=[['192.168.20.131','',1492],['192.168.20.131','Hidding',1061],['192.168.20.131','REJECT',900],['192.168.20.131','US_FallBack',130],['192.168.20.131','LX_US',20],['192.168.20.131','DIRECT',6],['192.168.20.3','REJECT',143],['192.168.20.3','US_FallBack',583],['192.168.20.3','LX_US',135],['192.168.20.3','DIRECT',58],['192.168.20.3','HK_FallBack',14],['192.168.20.3','JP_FallBack',6],['192.168.20.111','JP_FallBack',4],['192.168.20.111','SG_FallBack',5],['192.168.20.246','SG_FallBack',3]];
     value.dns_monitoring.source_policy_flows=pairs.map(([source,policy,queries],i)=>({source,policy,queries,kind:policy?'named':'unnamed',final_kind:policy?'named':'unnamed',final_policy:policy?'DNS Node '+i%10:''}));
@@ -72,6 +72,17 @@ const fixture=Function(source.slice(source.indexOf('const settings='),source.ind
   await page.setViewportSize({width,height:1000});
   for(const label of pages){
    await go(label);await check(width+' '+label);
+   if(label==='DNS 概览'){
+    const query=page.locator('.metric').filter({has:page.getByText('总查询',{exact:true})});
+    await page.waitForFunction(()=>[...document.querySelectorAll('.metric-value')].every(value=>value.firstElementChild.getBoundingClientRect().width<=value.clientWidth+1));
+    const metrics=await query.evaluate(card=>{const outer=card.querySelector('.metric-value'),text=outer.firstElementChild;return {text:text.textContent,scale:Number(outer.style.getPropertyValue('--metric-fit'))||1,whiteSpace:getComputedStyle(text).whiteSpace}});
+    if(metrics.text!=='1537234123456789'||metrics.scale>=1||metrics.whiteSpace!=='nowrap')throw Error('Long metric did not shrink without changing its value');
+    await page.screenshot({path:out+'/metric-fit-'+width+'.png',fullPage:true});
+    await query.evaluate(card=>card.parentElement.style.gridTemplateColumns='minmax(0,1fr)');
+    await page.waitForFunction(()=>[...document.querySelectorAll('.metric-value')].every(value=>!value.style.getPropertyValue('--metric-fit')||Number(value.style.getPropertyValue('--metric-fit'))===1));
+    await query.evaluate(card=>card.parentElement.style.gridTemplateColumns='');
+    await page.waitForFunction(()=>[...document.querySelectorAll('.metric-value')].every(value=>value.firstElementChild.getBoundingClientRect().width<=value.clientWidth+1));
+   }
    if(label==='DHCP 服务'){
     await page.getByRole('heading',{name:'DHCP 租约',exact:true}).waitFor();
     if(await page.getByRole('heading',{name:'设备专属配置',exact:true}).count())throw Error('Standalone DHCP device panel remains');

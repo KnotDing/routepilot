@@ -1,3 +1,4 @@
+import {MetricValue} from './metric-value';
 import {FieldLabel} from './form-fields';
 import React,{useState} from 'react';
 import {request} from './client';
@@ -18,7 +19,7 @@ export function RoutingPanel({settings,snapshot,refresh,notify}) {
  const [locale]=useLocale(),t=routingText(locale);
  if(!settings)return null;
  const verify=async e=>{e.preventDefault();setBusy(true);try{setResult(await request('routing/verify','POST',probe));refresh()}catch(e){notify(e.message,true)}finally{setBusy(false)}};
- const statusCard=(label,value)=><div className="metric" key={label}><span>{t(label)}</span><strong>{value}</strong></div>;
+ const statusCard=(label,value)=><div className="metric" key={label}><span>{t(label)}</span><MetricValue>{value}</MetricValue></div>;
  const rows=snapshot?.routes||[],fakeRows=rows.filter(r=>r.backend==='static'&&r.kind==='fake-ip');
  const probes=new Map(fakeRows.filter(r=>r.connectivity).map(r=>[r.prefix,r.connectivity]));
  if(result)probes.set(result.prefix,result);

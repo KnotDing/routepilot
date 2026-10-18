@@ -1,3 +1,4 @@
+import {MetricValue} from './metric-value';
 import React,{useEffect,useRef,useState} from 'react';
 import {createRoot} from 'react-dom/client';
 import {request,requestOptional,setCSRF,setLocalCSRF,localRequest,selectBackend,isRemote,pretty,reconnectAfterApplication} from './client';
@@ -111,7 +112,7 @@ function Table({rows,columns,onRow,selectable=false,selectedIds=[],onToggle,onTo
  </table>{!rows.length&&<div className="empty">{t('暂无记录')}</div>}</div>;
 }
 function Badge({value}){const t=useT();return <span className={'badge '+(['HEALTHY','UP','ESTABLISHED','DIRECT','Announced',true].includes(value)?'good':['DOWN','ERROR','STOPPING','DEGRADED','DISCONNECTED','REJECT'].includes(value)?'bad':'neutral')}>{valueLabel(value)??'—'}</span>}
-const metric=(label,value)=><div className="metric" key={label}><span>{translate(valueLabel(label))}</span><strong>{pretty(value)}</strong></div>;
+const metric=(label,value)=><div className="metric" key={label}><span>{translate(valueLabel(label))}</span><MetricValue>{pretty(value)}</MetricValue></div>;
 const templates={Hosts:{domain:'',match:'exact',addresses:[],ttl:60,enabled:true,source:'manual'},Interception:{name:'',prefix:'',enabled:true},Peers:{address:'',asn:64512,hold_seconds:30,keepalive_seconds:10,port:179,enabled:true,description:''},Routes:{prefix:'',next_hop:'',med:0,local_preference:100,communities:[],health_binding:'none',enabled:true,description:''},Overrides:{domain:'',match:'exact',decision:'SURGE',enabled:true,description:''}};
 const paths={Hosts:'dns/hosts',Interception:'dns/interception',Peers:'bgp/peers',Routes:'bgp/routes',Overrides:'overrides'};
 function useModal(open,close){useEffect(()=>{if(!open)return;const overflow=document.body.style.overflow;document.body.style.overflow='hidden';const escape=e=>{if(e.key==='Escape')close()};document.addEventListener('keydown',escape);return()=>{document.body.style.overflow=overflow;document.removeEventListener('keydown',escape)}},[open])}

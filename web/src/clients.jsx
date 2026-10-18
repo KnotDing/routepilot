@@ -1,3 +1,4 @@
+import {MetricValue} from './metric-value';
 import React,{useState} from 'react';
 import {ClientEditor} from './client-settings';
 import {useT,message} from './i18n';
@@ -24,7 +25,7 @@ export function ClientsPanel({snapshot={},configs=[],refresh,notify}){
  const stats=snapshot.stats||{},observed=Array.isArray(snapshot.clients)?snapshot.clients:[],seen=new Set(observed.map(c=>c.client_ip)),settings=new Map((configs||[]).map(c=>[c.ip,c])),clients=[...observed,...(configs||[]).filter(c=>!seen.has(c.ip)).map(c=>({client_ip:c.ip}))],supported=Array.isArray(configs),columns=supported?[...clientColumns,['actions','操作']]:clientColumns;
  return <>
   {snapshot.storage_error&&<p role="alert" className="notice error">{t('客户端统计保存失败')}: {message(snapshot.storage_error)}</p>}
-  <div className="metrics">{summaryMetrics.map(([label,key])=><div className="metric" key={key}><span>{t(label)}</span><strong>{stats[key]??0}</strong></div>)}</div>
+  <div className="metrics">{summaryMetrics.map(([label,key])=><div className="metric" key={key}><span>{t(label)}</span><MetricValue>{stats[key]??0}</MetricValue></div>)}</div>
   {snapshot.evicted_clients>0&&<p className="field-hint">{t('客户端列表容量为 {capacity} 个；已淘汰 {count} 个不活跃客户端，淘汰前的请求仍计入汇总统计。',{capacity:snapshot.capacity,count:snapshot.evicted_clients})}</p>}
   <section className="panel">
    <h2>{t('客户端列表')}</h2>
