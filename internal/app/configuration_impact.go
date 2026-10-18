@@ -64,6 +64,7 @@ func (rt *Runtime) suspendRouting(ctx context.Context, waitTTL bool) error {
 func dnsRuntimeDocument(d config.Document) config.Document {
 	d.Settings.DNS.AAAAFallback = ""
 	d.Settings.DNS.Clients = nil
+	d.Settings.DHCP = config.DHCP{}
 	d.Settings.RemoteBackends = nil
 	d.Settings.General = config.General{}
 	d.Settings.Security = config.Security{}

@@ -43,6 +43,7 @@ Commands:
   dns import-hosts
   cache list [--domain NAME --decision DIRECT --offset 0 --limit 100]
   cache flush (--domain NAME | --all)
+  dhcp status | get | schema | check --file FILE | set --file FILE
   surge status | hosts
   bgp status | routing status | routing verify --file FILE
   RESOURCE list | schema | add --file FILE | update ID --file FILE | delete ID
@@ -315,13 +316,29 @@ func (r *runner) execute(args []string) (json.RawMessage, error) {
 			return nil, usage("mode set auto|force-direct|force-surge")
 		}
 		return r.call("PUT", "mode", encode(map[string]string{"mode": args[1]}))
-	case "settings", "config", "updates", "dns", "cache", "surge", "bgp", "routing", "operation":
+	case "dhcp", "settings", "config", "updates", "dns", "cache", "surge", "bgp", "routing", "operation":
 		if len(args) == 0 {
 			return nil, usage(command + " action required")
 		}
 		action := args[0]
 		rest := args[1:]
 		switch command + " " + action {
+		case "dhcp status":
+			if len(rest) == 0 {
+				return r.call("GET", "dhcp/status", nil)
+			}
+		case "dhcp get":
+			if len(rest) == 0 {
+				return r.call("GET", "dhcp/configuration", nil)
+			}
+		case "dhcp schema":
+			if len(rest) == 0 {
+				return encode(config.DHCP{Options: config.DHCPOptions{LeaseSeconds: 86400}}), nil
+			}
+		case "dhcp check":
+			return r.fileCall("POST", "dhcp/check", rest, false)
+		case "dhcp set":
+			return r.fileCall("PUT", "dhcp/configuration", rest, false)
 		case "settings get":
 			if len(rest) == 0 {
 				return r.call("GET", "settings", nil)

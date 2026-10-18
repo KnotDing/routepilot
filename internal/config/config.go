@@ -181,6 +181,7 @@ func BackendURL(raw string) (*url.URL, error) {
 }
 
 type Settings struct {
+	DHCP           DHCP          `json:"dhcp"`
 	RemoteBackends []Backend     `json:"remote_backends"`
 	Routing        Routing       `json:"routing"`
 	General        General       `json:"general"`
@@ -294,6 +295,7 @@ func HostPattern(domain, match string) (string, error) {
 // Clone prevents an unvalidated management edit from mutating live slices.
 func (d Document) Clone() Document {
 	c := d
+	c.Settings.DHCP = d.Settings.DHCP.Clone()
 	c.Settings.Cache = cloneCachePolicies(d.Settings.Cache)
 	if d.Settings.Notifications.Errors != nil {
 		c.Settings.Notifications.Errors = append([]string{}, d.Settings.Notifications.Errors...)
@@ -399,6 +401,9 @@ func ParseUpdateTime(value string) (int, int, bool) {
 }
 
 func (d Document) Validate() error {
+	if err := d.Settings.DHCP.Validate(); err != nil {
+		return err
+	}
 	if err := d.Settings.Cache.validatePolicies(); err != nil {
 		return err
 	}

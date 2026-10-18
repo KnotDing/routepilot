@@ -66,11 +66,11 @@ const fixture=Function(source.slice(source.indexOf('const settings='),source.ind
   const overflow=await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth+1);
   if(overflow)throw Error(name+' overflows the viewport');
  }
- const pages=['仪表盘','大屏监控','DNS 概览','查询记录','决策缓存','客户端','DNS 拦截','本地 DNS','域名覆盖','规则测试','路由','BGP 概览','BGP 邻居','手动路由','健康状态','事件','设置'];
+ const pages=['仪表盘','大屏监控','DNS 概览','查询记录','决策缓存','客户端','DHCP 服务','DNS 拦截','本地 DNS','域名覆盖','规则测试','路由','BGP 概览','BGP 邻居','手动路由','健康状态','事件','设置'];
  const categories=['通用','DNS','Surge','路由','缓存','健康','日志与隐私','安全','软件更新','大屏监控','通知','状态栏','CLI 与 skill','关于'];
  for(const width of [1440,1120,390]){
   await page.setViewportSize({width,height:1000});
-  for(const label of pages){await go(label);await check(width+' '+label);}
+  for(const label of pages){await go(label);await check(width+' '+label);if(label==='DHCP 服务'){await page.getByRole('heading',{name:'设备专属配置',exact:true}).waitFor();if(await page.getByLabel('启用 DHCPv4 服务',{exact:true}).isDisabled())throw Error('Supported DHCP controls are disabled');await page.screenshot({path:out+'/dhcp-'+width+'.png',fullPage:true});}}
   for(const label of categories){
    await page.locator('.tabs').getByRole('button',{name:label,exact:true}).click();
    if(label==='Surge'){

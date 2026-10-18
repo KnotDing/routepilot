@@ -51,9 +51,9 @@ func allowed(path, method string) bool {
 	if path == "app/automation" {
 		return method == "GET" || method == "PUT"
 	}
-	read := map[string]bool{"session": true, "settings": true, "configuration/export": true, "configuration/status": true, "operations/status": true, "mode": true, "status": true, "health": true, "dns/queries": true, "dns/clients": true, "dns/monitoring": true, "dns/monitoring/history": true, "dns/cache": true, "surge/status": true, "surge/hosts": true, "bgp/status": true, "routing/status": true, "events": true, "updates/status": true, "updates/check": true}
-	post := map[string]bool{"login": true, "logout": true, "configuration/import": true, "configuration/retry": true, "bgp/export-frr": true, "bgp/routes/import-url": true, "bgp/routes/import": true, "dns/hosts/import-surge": true, "routing/verify": true, "test/domain": true, "dns/cache/flush": true, "resources/bulk-delete": true, "updates/install": true, "updates/skip": true, "updates/restart-app": true}
-	if method == "GET" && read[path] || method == "POST" && post[path] || method == "PUT" && (path == "settings" || path == "mode") {
+	read := map[string]bool{"dhcp/status": true, "dhcp/configuration": true, "session": true, "settings": true, "configuration/export": true, "configuration/status": true, "operations/status": true, "mode": true, "status": true, "health": true, "dns/queries": true, "dns/clients": true, "dns/monitoring": true, "dns/monitoring/history": true, "dns/cache": true, "surge/status": true, "surge/hosts": true, "bgp/status": true, "routing/status": true, "events": true, "updates/status": true, "updates/check": true}
+	post := map[string]bool{"dhcp/check": true, "login": true, "logout": true, "configuration/import": true, "configuration/retry": true, "bgp/export-frr": true, "bgp/routes/import-url": true, "bgp/routes/import": true, "dns/hosts/import-surge": true, "routing/verify": true, "test/domain": true, "dns/cache/flush": true, "resources/bulk-delete": true, "updates/install": true, "updates/skip": true, "updates/restart-app": true}
+	if method == "GET" && read[path] || method == "POST" && post[path] || method == "PUT" && (path == "settings" || path == "mode" || path == "dhcp/configuration") {
 		return true
 	}
 	for _, resource := range []string{"dns/client-settings", "bgp/routes/feeds", "bgp/peers", "bgp/routes", "dns/interception", "dns/hosts", "overrides"} {

@@ -19,7 +19,7 @@ async function fetchJSON(url,method,body,selected,extraHeaders={}){
  }finally{pending.delete(controller)}
 }
 export function localRequest(path,method='GET',body){return fetchJSON('/api/v1/'+path,method,body,false)}
-const deferredPaths=new Set(['bgp/routes/import-url','dns/hosts/import-surge','routing/verify','test/domain','dns/cache/flush','updates/check']);
+const deferredPaths=new Set(['dhcp/check','bgp/routes/import-url','dns/hosts/import-surge','routing/verify','test/domain','dns/cache/flush','updates/check']);
 let operationSequence=0;
 export async function request(path,method='GET',body,headers){
  const revision=generation,base='/api/v1/'+(backend?'management/relay/'+encodeURIComponent(backend)+'/':'');

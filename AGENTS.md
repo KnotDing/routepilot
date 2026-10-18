@@ -132,7 +132,7 @@
 
 ## 最近已核验发布（更新于 2026-10-18）
 
-- 最新完整核验正式版为 `v1.0.4`，标签指向 `6d336a770028a18690914eeaf2733cdd42e86ed3`，注释标签对象为 `cd460ac01058ff470afdd5fb9762a6f56e208219`。最新正确版本系列测试版为 `v1.0.4-beta.28`（`bfb4501`，CI build 36）；`v1.0.4-beta.29` 为 2026-10-18 误基准发布，详见下方交接。`v1.0.5-beta.1` 发布进行中。后续交接文档提交不移动发布标签。
+- 最新完整核验正式版为 `v1.0.4`，标签指向 `6d336a770028a18690914eeaf2733cdd42e86ed3`，注释标签对象为 `cd460ac01058ff470afdd5fb9762a6f56e208219`。最新已核验测试版为 `v1.0.5-beta.1`（`0909f02`，GitHub build 39 / Gitea 回退 build 133），详见下方交接；`v1.0.5-beta.2` 发布进行中。`v1.0.4-beta.29` 为误基准历史发布，不移动标签。后续交接文档提交不移动发布标签。
 - 正式发布提交的 GitHub 回归 [run 38844597375](https://github.com/KnotDing/routepilot/actions/runs/38844597375) 与完整 [Release run 38844625516](https://github.com/KnotDing/routepilot/actions/runs/38844625516) 成功；[Gitea run 2109](https://gitea.knotding.com/knot/routepilot/actions/runs/2109) 成功复用 GitHub 制品，macOS 回退任务跳过。发布提交及注释标签对象已核对双仓库一致。
 - [GitHub Release](https://github.com/KnotDing/routepilot/releases/tag/v1.0.4) 与 [Gitea 备用 Release](https://gitea.knotding.com/knot/routepilot/releases/tag/v1.0.4) 均为 `prerelease=false`、`draft=false`，只有 DMG、ZIP、SHA256SUMS 三项非空附件。六项附件均下载，双仓库 SHA256 完全一致；ZIP、签名、DMG 完整性 / 布局及 DMG 与 ZIP 的 App / CLI / 后台二进制一致性通过。App 与后台均为 `1.0.4 / build 37`（CI run number）；源码及本地包 build 为 111，不混为一谈。GitHub latest 已指向 v1.0.4。
 - v1.0.4 归并上次正式版 v1.0.3 之后 beta.1–28 的最终变更：实时 / 七天历史监控和六维筛选、客户端备注 / 强制策略 / 主机名、分项普通 / 乐观缓存、模块化配置应用、Surge IPv4 下一跳自动探测、多后端窗口隔离、更新进度 / 远端 App 重启、通知 / 导航 / 资源优化及历史恢复修复。完整说明见 `.gitea/release-notes/v1.0.4.md`；README 含摘要与入口，`scripts/install_skill.sh` 正式 tag / 提示版本已同步。
@@ -186,6 +186,16 @@
 - 下一步与依赖：无。未授权安装升级现用环境；具体上游三层图尚未实现。后续提交仍须同时推送 Gitea 与 GitHub。
 
 
+## 任务交接（2026-10-18，v1.0.5-beta.2）
+
+- 目标与验收条件：发布 DHCPv4 服务及启用前其他服务器 / 静态地址检查；逐设备覆盖所有 DHCP 选项，双仓库工作流及发布附件核验通过。
+- 当前状态：进行中。版本 `1.0.5-beta.2 / 源码 build 114`，尚未发布。
+- 已完成与修改文件：`internal/config/dhcp.go`、`internal/dhcpserver/`、`internal/database/dhcp.go` 实现配置、协议、网口、探测与租约；app / API / remote / CLI / 备份集成；`web/src/dhcp*` 与导航、双语；相关测试、`scripts/ui_forms_check.cjs`、`docs/dhcp.md`、README 与发行说明。
+- 验证：`env GOCACHE=/private/tmp/routepilot-dhcp-gocache make verify-release` 通过：前端 37 文件 / 197 项、Go 全包 race / vet、原生 / WKWebView / 多窗口、18 页面 / 14 分类三宽度 UI 和完整包校验；`make fuzz` 207,725 次执行通过。本地 App / 后台均为 `1.0.5-beta.2 / build 114`。未覆盖现用安装升级、真实 DHCP 广播收发、iOS 租约及路由采纳。探测无响应不证明不存在其他服务器。
+- 已发布：未发布，待本地完整检查后提交、双推 main / 注释标签、确认 GitHub 回归及双 Release，再下载核验附件。
+- 保留的无关改动：无。旧安装包和 bin 备份至 `artifacts/pre-beta2-backup-20261018/`；本轮不安装或重启现用环境。
+- 下一步与依赖：完成发布验证与最终交接，证据放在 `artifacts/releases/v1.0.5-beta.2/`；后续文档提交也须双推，不移动发布标签。
+
 ## 代码地图：按任务定位
 
 先查下表，通常从“首读”开始，再跟随调用读取“关联”。函数名比行号稳定；模块位置变化时同步更新这里。不要预先通读 `app.go`、`api.go`、`main.jsx` 或 `main.swift` 的全部内容。
@@ -215,6 +225,7 @@
 | 决策缓存、失效与空闲刷新 | `internal/classifier/classifier.go`、`idle_refresh.go`；`internal/cache/cache.go` / `policy.go`（分项开关、按旧值归属的有界统计） | `internal/app/decision_cache.go`、`decision_revision.go`；`web/src/cache.jsx`、`cache-i18n.js`、`cache-policies.jsx`（决策 / 上游独立开关与统计）；`internal/config/cache_policies.go`；`docs/cache-policies.md` |
 | 响应缓存、TTL、持久化与可靠性比较 | `internal/resolver/real.go`（`Resolve` / `exchange` / `refresh`）；`internal/app/surge_response_cache.go`（Surge 分项缓存、发行门禁、响应范围验证）；`response_cache.go`、`response_comparison.go`、`idle_refresh.go` | `internal/app/response_cache.go`、`app.go` 的 `responseCacheStats` / `Metrics`；`web/src/main.jsx` 的 Queries 页 |
 | 上游、出口绑定、策略专用 DNS | `internal/resolver/upstream_transport.go`、`egress*.go`；`internal/dnsserver/policy_dns.go` | `web/src/policy-dns.jsx`、`dns-settings.jsx`；`internal/config/config.go` |
+| DHCPv4、租约与设备覆盖 | `internal/config/dhcp.go`；`internal/dhcpserver/engine.go` / `packet.go`（分配、状态转换、Option 121）；`server.go` / `check.go` / `address_darwin.go`（接口绑定、DHCPINFORM 探测、静态地址检查） | `internal/database/dhcp.go`；`internal/app/dhcp.go`；`internal/api/dhcp.go`；`web/src/dhcp.jsx`；`docs/dhcp.md`；独立配置接口 `dhcp/configuration`、状态 `dhcp/status`，不通过通用 settings PUT 覆盖 DHCP |
 | 透明 DNS / PF | `internal/dnsserver/transparent.go`、`pf_rules.go`、`pf_control.go`、`pf_darwin.go`；普通 UDP/TCP 监听在 `server.go` | `web/src/dns-interception.jsx`（DNS 拦截页的静态网关配置确认，复用 settings 保存）；`docs/routing-backends.md`、`phase-2-acceptance.md`、`phase-2-docker-evidence.md`；`scripts/*phase2*` |
 | BGP 邻居、详情与路由发布 | `internal/bgp/gobgp.go`（`peerConfig` / `SyncPeers` / `Peers` / `Exported`）；`manager.go`（`Reconcile` / `Refresh`） | `internal/routing/manager.go`；`web/src/bgp-peer-details.jsx`、`routing.jsx`、`main.jsx` 的 `Resource`；`docs/routing-backends.md` |
 | URL 路由导入与定时同步 | `internal/routeimport/import.go`；`internal/api/api.go` 的 `RunRouteFeedScheduler` | `web/src/route-import.jsx`；配置中的 route feeds；导入与后台任务状态 |

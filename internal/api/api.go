@@ -479,6 +479,10 @@ func (a *API) serve(w http.ResponseWriter, r *http.Request) {
 		write(w, 200, value)
 		return
 	}
+	if path == "dhcp/check" && r.Method == "POST" {
+		a.checkDHCP(w, r)
+		return
+	}
 	if path == "routing/verify" && r.Method == "POST" {
 		var body json.RawMessage
 		if e := decode(w, r, &body); e != nil {
@@ -546,6 +550,8 @@ func (a *API) serve(w http.ResponseWriter, r *http.Request) {
 			write(w, 200, d.Settings.RemoteBackends)
 		case "settings":
 			write(w, 200, d.Settings)
+		case "dhcp/configuration":
+			write(w, 200, d.Settings.DHCP)
 		case "configuration/export":
 			w.Header().Set("Content-Disposition", "attachment; filename=surge-controller-backup.json")
 			sections := r.URL.Query()["sections"]
@@ -605,7 +611,7 @@ func (a *API) serve(w http.ResponseWriter, r *http.Request) {
 			} else {
 				write(w, 200, v)
 			}
-		case "status", "health", "dns/queries", "dns/clients", "surge/status", "surge/hosts", "bgp/status", "routing/status":
+		case "dhcp/status", "status", "health", "dns/queries", "dns/clients", "surge/status", "surge/hosts", "bgp/status", "routing/status":
 			v, e := a.Service.View(r.Context(), path)
 			if e != nil {
 				fail(w, 503, e)
@@ -630,6 +636,15 @@ func (a *API) serve(w http.ResponseWriter, r *http.Request) {
 	old := d
 	created := false
 	switch path {
+	case "dhcp/configuration":
+		if r.Method != "PUT" {
+			w.WriteHeader(405)
+			return
+		}
+		if e := decode(w, r, &d.Settings.DHCP); e != nil {
+			fail(w, 400, e)
+			return
+		}
 	case "settings":
 		if r.Method != "PUT" {
 			w.WriteHeader(405)
@@ -643,6 +658,7 @@ func (a *API) serve(w http.ResponseWriter, r *http.Request) {
 		// Client settings have a dedicated resource. Older settings forms must
 		// not erase or overwrite that independently edited configuration.
 		settings.DNS.Clients = d.Settings.DNS.Clients
+		settings.DHCP = d.Settings.DHCP
 		d.Settings = settings
 		if e := mergeSecrets(&d, &old); e != nil {
 			fail(w, 400, e)

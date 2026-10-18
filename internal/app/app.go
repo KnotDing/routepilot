@@ -28,6 +28,7 @@ import (
 	"surge-controller/internal/classifier"
 	"surge-controller/internal/config"
 	"surge-controller/internal/database"
+	"surge-controller/internal/dhcpserver"
 	"surge-controller/internal/dnsserver"
 	"surge-controller/internal/events"
 	"surge-controller/internal/localdns"
@@ -184,6 +185,7 @@ type Runtime struct {
 	latencySum                                       atomic.Uint64
 }
 type App struct {
+	dhcp                  *dhcpserver.Service
 	notificationAnomalies notifications.AnomalyMonitor
 	notificationSampleMu  sync.Mutex
 	surgeRecovery         surge.Recovery
@@ -350,6 +352,12 @@ func Open(ctx context.Context, path string) (*App, error) {
 	a.mu.Lock()
 	a.runtime = rt
 	a.mu.Unlock()
+	a.dhcp = dhcpserver.NewService(store)
+	if err := a.dhcp.Apply(ctx, a.applied.Settings.DHCP); err != nil {
+		a.application = ApplicationStatus{Revision: 1, State: "failed", Error: err.Error()}
+		a.event("ERROR", "dhcp_start_failed", err.Error())
+	}
+	a.reportDHCPWarnings()
 	// Keep an existing last-working listener checkpoint until Serve confirms
 	// the desired management address can actually bind.
 	if previous, loadErr := store.LoadActiveConfiguration(ctx); loadErr == nil && previous.Version == 0 {
@@ -1008,7 +1016,7 @@ func (rt *Runtime) shutdownDNS(ctx context.Context, waitTTL bool) error {
 	rt.engine.Close()
 	return e
 }
-func (a *App) activateConfiguration(ctx context.Context, d config.Document) error {
+func (a *App) activateConfiguration(ctx context.Context, d config.Document) (resultErr error) {
 	d = d.Clone()
 	a.transition.Lock()
 	defer a.transition.Unlock()
@@ -1021,6 +1029,19 @@ func (a *App) activateConfiguration(ctx context.Context, d config.Document) erro
 	}
 	old := a.activeConfiguration()
 	impact := configurationChanges(old, d)
+	if a.dhcp != nil && (!reflect.DeepEqual(old.Settings.DHCP, d.Settings.DHCP) || a.dhcp.Snapshot().State == "failed") {
+		if err := a.dhcp.Apply(a.ctx, d.Settings.DHCP); err != nil {
+			return err
+		}
+		a.reportDHCPWarnings()
+		defer func() {
+			if resultErr != nil {
+				if err := a.dhcp.Apply(a.ctx, old.Settings.DHCP); err != nil {
+					resultErr = errors.Join(resultErr, fmt.Errorf("restore DHCP: %w", err))
+				}
+			}
+		}()
+	}
 	if impact.DNS && d.Settings.DNS.InterceptionEnabled {
 		// Check access before stopping working DNS. Opening the state device does
 		// not install PF rules; the normal build still owns the eventual lease.
@@ -1206,11 +1227,16 @@ func (a *App) View(ctx context.Context, key string) (any, error) {
 		clientStatistics.StorageError = *e
 	}
 	switch key {
+	case "dhcp/status":
+		if a.dhcp == nil {
+			return nil, errors.New("DHCP service unavailable")
+		}
+		return a.dhcp.Snapshot(), nil
 	case "configuration/status":
 		return application, nil
 	case "status":
 		p := rt.machine.Plan()
-		return map[string]any{"software": buildinfo.Current(), "go_runtime": currentGoRuntimeStatus(), "online_update": true, "remote_credential_origin_binding": true, "fast_configuration_save": true, "notification_anomaly_alerts": true, "selective_cache_policies": true, "cache_controls": true, "surge_response_cache": true, "notification_alerts": a.notificationAnomalies.Snapshot(), "configuration_application": application, "mode": mode, "state": p.State, "fake_ip_enabled": p.AllowFakeIP, "queries_per_minute": rt.queryRate.Load(), "queries_per_second": math.Float64frombits(a.queryRateBits.Load()), "surge_restart": a.surgeRecovery.Status(), "counters": rt.dispatcher.Statistics().Snapshot(), "client_statistics": clientStatistics, "dns_monitoring": a.dnsMonitoring.View(), "dns_monitoring_history": a.monitoringHistoryStatus(), "cache": map[string]any{"decision": rt.engine.Cache.Stats(), "response": responseCacheStats(rt)}, "warning": rt.Fault(), "uptime_seconds": int(time.Since(rt.started).Seconds())}, nil
+		return map[string]any{"dhcp_server": true, "software": buildinfo.Current(), "go_runtime": currentGoRuntimeStatus(), "online_update": true, "remote_credential_origin_binding": true, "fast_configuration_save": true, "notification_anomaly_alerts": true, "selective_cache_policies": true, "cache_controls": true, "surge_response_cache": true, "notification_alerts": a.notificationAnomalies.Snapshot(), "configuration_application": application, "mode": mode, "state": p.State, "fake_ip_enabled": p.AllowFakeIP, "queries_per_minute": rt.queryRate.Load(), "queries_per_second": math.Float64frombits(a.queryRateBits.Load()), "surge_restart": a.surgeRecovery.Status(), "counters": rt.dispatcher.Statistics().Snapshot(), "client_statistics": clientStatistics, "dns_monitoring": a.dnsMonitoring.View(), "dns_monitoring_history": a.monitoringHistoryStatus(), "cache": map[string]any{"decision": rt.engine.Cache.Stats(), "response": responseCacheStats(rt)}, "warning": rt.Fault(), "uptime_seconds": int(time.Since(rt.started).Seconds())}, nil
 	case "health":
 		values := rt.health.Values()
 		sort.Slice(values, func(i, j int) bool { return values[i].Name < values[j].Name })
@@ -1640,6 +1666,9 @@ func (a *App) Close() error {
 	}
 	a.transition.Lock()
 	defer a.transition.Unlock()
+	if a.dhcp != nil {
+		a.dhcp.Close()
+	}
 	a.mu.Lock()
 	rt := a.runtime
 	a.mu.Unlock()

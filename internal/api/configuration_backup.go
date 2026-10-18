@@ -10,7 +10,7 @@ import (
 const configurationBackupFormatVersion = 1
 
 var configurationBackupSections = []string{
-	"general", "dns", "surge", "routing", "bgp", "cache", "health", "logging", "notifications", "security", "updates",
+	"general", "dhcp", "dns", "surge", "routing", "bgp", "cache", "health", "logging", "notifications", "security", "updates",
 	"peers", "routes", "route_feeds", "interception", "overrides", "hosts",
 }
 
@@ -53,6 +53,9 @@ func makeConfigurationBackup(document config.Document, sections []string) (confi
 		return configurationBackup{}, err
 	}
 	filtered := config.Document{Version: document.Version}
+	if selected["dhcp"] {
+		filtered.Settings.DHCP = document.Settings.DHCP.Clone()
+	}
 	if selected["general"] {
 		filtered.Settings.General = document.Settings.General
 		filtered.Settings.RemoteBackends = document.Settings.RemoteBackends
@@ -127,6 +130,9 @@ func mergeBackup(current, incoming config.Document, sections []string) (config.D
 		return config.Document{}, err
 	}
 	merged := current.Clone()
+	if selected["dhcp"] {
+		merged.Settings.DHCP = incoming.Settings.DHCP.Clone()
+	}
 	if selected["general"] {
 		merged.Settings.General = incoming.Settings.General
 		merged.Settings.RemoteBackends = incoming.Settings.RemoteBackends

@@ -13,8 +13,10 @@ monitoring.sources=[{source:'192.0.2.10',counts:monitorSourceA},{source:'192.0.2
 for(const [source,counts] of [['192.0.2.10',monitorSourceA],['192.0.2.20',monitorSourceB]])counts.source_policy_flows=counts.policies.map(p=>({source,policy:p.policy,kind:p.other?'overflow':p.policy?'named':'unnamed',final_policy:p.final_policy,final_kind:p.other?'overflow':p.final_policy?'named':'unnamed',queries:p.queries}));
 monitoring.source_policy_flows=[...monitorSourceA.source_policy_flows,...monitorSourceB.source_policy_flows];
 
+settings.dhcp={enabled:false,interface:'en0',server_ip:'192.0.2.2',subnet:'192.0.2.0/24',pool_start:'192.0.2.100',pool_end:'192.0.2.200',options:{gateway:'192.0.2.1',dns:['192.0.2.2'],routes:[{prefix:'91.104.0.0/13',gateway:'192.0.2.3'}],ntp:['192.0.2.1'],boot_file:'https://boot.example/start.ipxe',boot_server:'192.0.2.4',tftp:'tftp.example',lease_seconds:86400,domain:'lan.example'},devices:[{mac:'02:00:00:00:00:01',name:'iOS',address:'192.0.2.205',options:{}}]};
 const peer={id:'p',address:'192.0.2.1',asn:65001,local_asn:0,router_id:'',hold_seconds:30,keepalive_seconds:10,port:179,enabled:true,description:''};
 function fixture(path){
+ if(path==='dhcp/status')return {supported:true,enabled:false,running:false,state:'disabled',interface:'en0',received:0,sent:0,leases:[]};
  if(path==='session')return {authenticated:true,csrf:'test'};
  if(path==='status')return {cache_controls:true,selective_cache_policies:true,surge_response_cache:true,notification_anomaly_alerts:true,notification_alerts:[],dns_monitoring_history:{supported:true,retention_days:7,resolution_seconds:60,storage_error:''},dns_monitoring:{...monitoring,observed_at:new Date().toISOString()},state:'HEALTHY',mode:'auto',fake_ip_enabled:true,queries_per_minute:1,counters:{Queries:1,Direct:0,Surge:1,Reject:0,Unknown:0,Errors:0,Intercepted:1,Addressed:0},cache:{decision:{entries:1,hits:1,misses:0},response:{entries:2,stale_entries:1,hits:7,misses:3,evictions:1,capacity:10000}},software:{name:'RoutePilot',version:'0.4.5',build:'14',os:'darwin',arch:'arm64',go_version:'go1.26.0'}};
  if(path.startsWith('dns/monitoring?')){const source=new URLSearchParams(path.split('?')[1]).get('source');return source==='192.0.2.10'?monitorSourceA:monitorSourceB;}
@@ -44,7 +46,7 @@ function noUntranslatedText(){const texts=[];const walker=document.createTreeWal
 afterEach(()=>{cleanup();localStorage.clear();sessionStorage.clear();selectBackend('');vi.unstubAllGlobals();document.documentElement.lang='zh-CN'});
 it('localizes every page, settings category, editor and query detail through the global preference',async()=>{
  localStorage.setItem('routepilot.locale','en');vi.stubGlobal('EventSource',class{addEventListener(){}close(){}});vi.stubGlobal('fetch',vi.fn(async url=>({ok:true,status:200,json:async()=>fixture(String(url).replace('/api/v1/',''))})));render(<App/>);await screen.findByRole('heading',{level:1,name:'Dashboard'});await screen.findByText('DNS and routing');
- const pages=['Monitoring','DNS overview','Query history','Decision cache','Client','DNS interception','Local DNS','Domain overrides','Rule test','Routing','BGP overview','BGP neighbors','Manual routes','Health status','Events','Settings'];
+ const pages=['Monitoring','DNS overview','Query history','Decision cache','Client','DHCP service','DNS interception','Local DNS','Domain overrides','Rule test','Routing','BGP overview','BGP neighbors','Manual routes','Health status','Events','Settings'];
  for(const [index,page] of pages.entries()){
   fireEvent.click(screen.getByRole('navigation').querySelectorAll('button')[index+1]);await screen.findByRole('heading',{level:1,name:page});await waitFor(noUntranslatedText);
   if(['DNS interception','Local DNS','Domain overrides','BGP neighbors','Manual routes'].includes(page)){fireEvent.click(screen.getByRole('button',{name:'＋ Add'}));noUntranslatedText();fireEvent.click(screen.getByRole('button',{name:'Close'}))}

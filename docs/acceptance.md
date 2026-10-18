@@ -920,3 +920,10 @@ acceptance was performed. Configuration runtime application is unchanged.
 - `npm --prefix web test` 35 文件 / 190 项通过，`npm --prefix web run build` 通过；`env GOCACHE=/Volumes/Code/RoutePilot/.cache/go-build go test -race ./internal/remote ./internal/api -count=1 -timeout 90s` 通过，同一 GOCACHE 下 `go vet ./internal/remote ./internal/api` 与 `go build ./...` 通过。按 `scripts/build_app.sh` 的完整 Swift 源码清单，以 macOS 13 目标编译并链接原生可执行文件通过。日志见 `artifacts/multiple-management-windows-2026-10-15/`，既有 `update_dialog.swift` WebKit 并发警告仍存在。
 - 发布前 `env GOCACHE=/Volumes/Code/RoutePilot/.cache/go-build make verify-release` 全部通过：前端 35 文件 / 190 项，Go 全包 race / vet，原生核心 / 真实 WKWebView / 多窗口隔离，17 页面 / 14 分类响应式检查（1440 / 1120 / 390），9 项缓存 UI 和完整 App / 后台 / CLI / DMG / ZIP 校验。本地包 App 与后台均为 `1.0.4-beta.27 / build 109`，签名、版本、资源、哈希与 DMG 布局通过。
 - 发布核验完成：`v1.0.4-beta.27` 标签指向 `7c36b3aae8a7bbe590f8dce11c1fac13b371e781`，双仓库 main / 注释标签对象核对一致。GitHub 回归 `38721553427`（含 fuzz）与 Release `38721553616` 成功，Gitea `2105` 整体成功镜像 GitHub 制品 / 回退跳过。两个发布页均为非草稿测试版，各有 DMG / ZIP / SHA256SUMS 三附件，六附件下载非空、哈希相同；App 与后台均为 `1.0.4-beta.27 / build 35`，签名 / ZIP / DMG 完整性通过。证据为 `artifacts/releases/v1.0.4-beta.27/publication-verification.json`，旧包与 bin 保存在 `artifacts/pre-beta27-backup-20261015/`。AGENTS.md 已同步最近发布与最终交接，后续文档提交不移动标签。未安装或重启现用环境，未连接真实远程后端或验收实际钥匙串登录、升级、长期多窗口资源占用及现场网络路径。
+
+## 2026-10-18：DHCPv4（v1.0.5-beta.2 发布检查）
+
+- 实现可选 DHCPv4、九项全局 / 逐设备选项、固定地址、租约持久化、Option 121 与默认路由；启用前检查其他响应服务器和 macOS 网口地址方式。配置独立应用，支持备份 / CLI / 远程中继。
+- `env GOCACHE=/private/tmp/routepilot-dhcp-gocache make verify-release` 通过：前端 37 文件 / 197 项，Go 全包 race / vet，原生核心 / 真实 WKWebView / 多窗口，18 页面 / 14 设置分类在 1440 / 1120 / 390 宽度检查，9 项缓存 UI，以及完整 App / 后台 / CLI / DMG / ZIP / 签名 / 版本 / SHA256 校验。本地身份为 `1.0.5-beta.2 / build 114`。
+- 同一 GOCACHE 下 `make fuzz` 通过，207,725 次执行。发布前备份旧包及 bin 至 `artifacts/pre-beta2-backup-20261018/`，日志和包报告在 `artifacts/releases/v1.0.5-beta.2/`。
+- 尚未发布；CI 与发布附件核验完成后补齐证据。未安装或重启现用环境，未实际开启 DHCP；真实广播收发、iOS 租约 / 路由采纳及长期运行不在本轮本地证据范围内。

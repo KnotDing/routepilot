@@ -1,6 +1,7 @@
 import React from 'react';
 
 const icons={
+ DHCP:<><rect x="3" y="3" width="18" height="7" rx="2"/><path d="M12 10v5M5 20v-5h14v5M3 20h4M10 20h4M17 20h4M7 6.5h.01"/></>,
  Monitor:<><rect x="3" y="4" width="18" height="13" rx="2"/><path d="M8 21h8M12 17v4M6 12l3-3 4 4 5-6"/></>,
  Dashboard:<><rect x="3.5" y="3.5" width="7" height="7" rx="1.5"/><rect x="13.5" y="3.5" width="7" height="7" rx="1.5"/><rect x="3.5" y="13.5" width="7" height="7" rx="1.5"/><rect x="13.5" y="13.5" width="7" height="7" rx="1.5"/></>,
  DNS:<><circle cx="12" cy="12" r="8.75"/><path d="M3.5 12h17M12 3.25c-4.9 4.8-4.9 12.7 0 17.5M12 3.25c4.9 4.8 4.9 12.7 0 17.5"/></>,

@@ -22,6 +22,10 @@ RoutePilot 是一款 macOS 状态栏应用：向 Surge 查询分流策略，为 
 </p>
 <p align="center"><sub>管理界面预览 · 3840 × 2160 · 页面中的指标、地址和事件均为虚构示例数据</sub></p>
 
+## v1.0.5-beta.2 测试版
+
+新增可选 DHCPv4 服务，支持逐设备配置网关、DNS、路由、NTP、网络启动、TFTP、租期和域名；启用前检查其他 DHCP 服务器与网口静态地址。默认关闭，真实客户端租约及路由采纳仍待现场验收。详见 [测试版更新记录](.gitea/release-notes/v1.0.5-beta.2.md) · [下载测试版](https://github.com/KnotDing/routepilot/releases/tag/v1.0.5-beta.2)。
+
 ## v1.0.4 更新
 
 本次正式版汇总自 v1.0.3 以来的全部 28 个测试版，主要增加：
@@ -41,6 +45,7 @@ RoutePilot 是一款 macOS 状态栏应用：向 Surge 查询分流策略，为 
 | 功能 | 一句话了解 |
 | --- | --- |
 | DNS 分流 | 根据 Surge 策略选择真实地址或 Fake-IP，支持 UDP / TCP / DoT / DoH 和策略专用上游 |
+| DHCPv4 | 可选地址分配服务，支持网关 / DNS / Option 121 路由 / NTP / 网络启动 / TFTP / 租期 / 域名，以及逐项设备覆盖和启用前检查；详见 [DHCP 配置](docs/dhcp.md) |
 | 路由发布 | BGP、Static、Hybrid 三种模式，管理 Fake-IP、DNS 拦截前缀与手动路由 |
 | 规则维护 | URL 导入先预览，定时同步 IPv4、IPv6 或两者，支持批量删除 |
 | 本地解析 | 自定义域名、通配符和 TTL，也可导入 Surge `[Host]` 静态映射 |
