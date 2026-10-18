@@ -130,9 +130,9 @@
 - 下一步与依赖：
 ```
 
-## 最近已核验发布（2026-10-16）
+## 最近已核验发布（更新于 2026-10-18）
 
-- 最新完整核验正式版为 `v1.0.4`，标签指向 `6d336a770028a18690914eeaf2733cdd42e86ed3`，注释标签对象为 `cd460ac01058ff470afdd5fb9762a6f56e208219`。最新已核验测试版仍为 `v1.0.4-beta.28`（`bfb4501`，CI build 36），旧交接保留在下方。后续交接文档提交不移动发布标签。
+- 最新完整核验正式版为 `v1.0.4`，标签指向 `6d336a770028a18690914eeaf2733cdd42e86ed3`，注释标签对象为 `cd460ac01058ff470afdd5fb9762a6f56e208219`。最新正确版本系列测试版为 `v1.0.4-beta.28`（`bfb4501`，CI build 36）；`v1.0.4-beta.29` 为 2026-10-18 误基准发布，详见下方交接。`v1.0.5-beta.1` 发布进行中。后续交接文档提交不移动发布标签。
 - 正式发布提交的 GitHub 回归 [run 38844597375](https://github.com/KnotDing/routepilot/actions/runs/38844597375) 与完整 [Release run 38844625516](https://github.com/KnotDing/routepilot/actions/runs/38844625516) 成功；[Gitea run 2109](https://gitea.knotding.com/knot/routepilot/actions/runs/2109) 成功复用 GitHub 制品，macOS 回退任务跳过。发布提交及注释标签对象已核对双仓库一致。
 - [GitHub Release](https://github.com/KnotDing/routepilot/releases/tag/v1.0.4) 与 [Gitea 备用 Release](https://gitea.knotding.com/knot/routepilot/releases/tag/v1.0.4) 均为 `prerelease=false`、`draft=false`，只有 DMG、ZIP、SHA256SUMS 三项非空附件。六项附件均下载，双仓库 SHA256 完全一致；ZIP、签名、DMG 完整性 / 布局及 DMG 与 ZIP 的 App / CLI / 后台二进制一致性通过。App 与后台均为 `1.0.4 / build 37`（CI run number）；源码及本地包 build 为 111，不混为一谈。GitHub latest 已指向 v1.0.4。
 - v1.0.4 归并上次正式版 v1.0.3 之后 beta.1–28 的最终变更：实时 / 七天历史监控和六维筛选、客户端备注 / 强制策略 / 主机名、分项普通 / 乐观缓存、模块化配置应用、Surge IPv4 下一跳自动探测、多后端窗口隔离、更新进度 / 远端 App 重启、通知 / 导航 / 资源优化及历史恢复修复。完整说明见 `.gitea/release-notes/v1.0.4.md`；README 含摘要与入口，`scripts/install_skill.sh` 正式 tag / 提示版本已同步。
@@ -140,15 +140,27 @@
 - 本轮未安装、升级或重启现用 App / 后台；未新增验收真实 DHCP / 远程 CLI 用户上下文、网关 RIB / FIB、PF / LAN / NAT / IPv6 路径或长期资源占用。既有 Swift 捕获 / WebKit 并发、测试夹具重复 React key、前端包体大小与 hdiutil 弃用提示仍存在；包检查不代表公证或现场升级验收。
 - 此节为带日期快照。接手时以 `git status`、源码版本、远端标签及实际 Release / Actions 为准，下方旧版交接仅为历史记录。
 
-## 任务交接（2026-10-18，v1.0.4-beta.29）
+- 2026-10-18 误将新测试版沿用为 `v1.0.4-beta.29`，该版已发布，不能移动或复用标签。用户指出应以稳定版 `1.0.4` 为基准启动 `1.0.5` 测试系列；正确序列从 `v1.0.5-beta.1` 开始。将 beta.29 视为误发历史记录，不作为当前源码基线或后续 beta 序号依据。
+
+## 任务交接（2026-10-18，误发 v1.0.4-beta.29）
 
 - 目标与验收条件：发布 PF 锚点意外清空后可自动恢复的修复版测试版；GitHub 回归及两个 Release workflow 成功，GitHub / Gitea 各发布 DMG、ZIP、SHA256SUMS 并核验版本与哈希。
-- 当前状态：本地实现与完整验证已完成；提交、双仓库推送、CI 和 Release 核验待完成。发布前 `main` 两个远端均为 `e6b3711`，最新测试版为 `v1.0.4-beta.28`，`v1.0.4-beta.29` 标签不存在。
+- 当前状态：已意外按旧基准发布，现标记为误发且保留不可移动的历史标签。功能提交 `d945c03beb9e6c6417e06c3d42b96def60e8a75b` 已同步双仓库；GitHub 回归 #58、Release #38 和 Gitea Release #132 成功，版本为 `1.0.4-beta.29 / build 112`。正确系列已改为 `v1.0.5-beta.1`，发布待完成。
 - 已完成与修改文件：修复代码在 `internal/dnsserver/pf_control.go`、`internal/app/app.go`，说明在 `docs/architecture.md`；状态栏「本机后台」新增管理员授权重启服务的入口，代码在 `native/main.swift`、双语文案在 `localization/ui-en.json`。版本与双语发行说明在 `internal/buildinfo/release.json`、`.gitea/release-notes/v1.0.4-beta.29.md`。安装 skill 继续指向正式版。现有安装包和三个 `bin/` 二进制备份于 `artifacts/pre-beta29-backup-20261018/`。
 - 验证：获授权 loopback 网络后 `GOCACHE="$PWD/.cache/go-build" GOMODCACHE="$PWD/.cache/go-mod" make verify-release` 通过，前端 36 文件 / 193 项、Go 全包 race / vet、原生检查、17 页面 / 14 分类 UI、9 项缓存 UI、包校验均通过；`make fuzz` 通过 242,535 次执行。包内 App / 后台身份均为 `1.0.4-beta.29 / build 112`，DMG SHA256 `d37a742c662b58defe9881587c5d6b49a4ec5274cf2ea9f4ec15340b768efaab`，ZIP SHA256 `45464938b699d8c13b408f09b34c28e58caf741f3783dcd24548da3cbaaba5b0`。PF 恢复尚未在真实 macOS PF 上现场验收。服务状态检查为 HEALTHY；直接 `launchctl kickstart -k system/com.routepilot.surge-controller` 被系统拒绝，当前服务未重启。
-- 已发布：尚未提交、打标签或推送；GitHub / Gitea workflow、Release 和附件均待完成。
+- 已发布：误发标签 `v1.0.4-beta.29` 指向 `d945c03beb9e6c6417e06c3d42b96def60e8a75b`，GitHub: https://github.com/KnotDing/routepilot/releases/tag/v1.0.4-beta.29；Gitea: https://gitea.knotding.com/knot/routepilot/releases/tag/v1.0.4-beta.29。GitHub 回归 `39125524746`、Release `39125524816`、Gitea Release #132 均成功；Gitea Release API 核对为非草稿测试版及三项非空附件。该标签不删除、不移动、不复用。
 - 保留的无关改动：无。
-- 下一步与依赖：运行 `make verify-release`、`make fuzz`；然后 scoped commit、注释标签和双仓库推送。若本机网络再次阻止远端核对或推送，需恢复后补齐再报告完成。
+- 下一步与依赖：正确版本及发布工作记录见下节；运行对应本地验证并完成 `v1.0.5-beta.1` 双仓库发布核验。
+
+## 任务交接（2026-10-18，v1.0.5-beta.1）
+
+- 目标与验收条件：以正式版 `v1.0.4` 为基准发布 `v1.0.5-beta.1`，包含 PF 空锚点恢复和状态栏本机后台重启入口；双仓库分支 / 标签、GitHub 回归、两个 Release workflow 及三项附件均须核验。
+- 当前状态：进行中。本地发布包已完成检查，源码版本为 `1.0.5-beta.1 / build 113`；远端尚未创建此标签。
+- 已完成与修改文件：PF 恢复及原生重启入口在前节所列文件；本修正新增 `.gitea/release-notes/v1.0.5-beta.1.md` 并更新版本。beta.29 既有版本 / 发行说明保留为已发布记录。安装 skill 继续指向正式版。
+- 验证：`env GOCACHE="$PWD/.cache/go-build" GOMODCACHE="$PWD/.cache/go-mod" make verify-release` 通过：前端 36 文件 / 193 项、Go 全包 race / vet、原生 / WKWebView、17 页面 / 14 分类 UI、9 项缓存 UI、完整包校验。`make fuzz` 通过 238,291 次执行。包内 App / 后台为 `1.0.5-beta.1 / build 113`；DMG SHA256 `b9d030b3643b958cc094b1a683fdd850c47c2896555ca3cc21ee25c35c9197c5`，ZIP SHA256 `28bb60e50b943bcc830502ecdf5909c8151cc35a88c5ea7e7681de3e40787c0f`。没有真实 PF 清空恢复验收。请求重启本机后台时服务状态 HEALTHY，但 `launchctl kickstart` 被系统拒绝；服务未实际重启。新菜单项已编译 / 测试，但未安装 App，因此不能通过菜单实际操作。
+- 已发布：尚无 `v1.0.5-beta.1` 提交、标签或 Release；不得将 beta.29 当作正确版本基准。
+- 保留的无关改动：无。原有安装包及 `bin/` 备份在 `artifacts/pre-beta29-backup-20261018/`。
+- 下一步与依赖：运行 `make verify-release`、`make fuzz`，提交并注释打标，双推 Gitea / GitHub；核验回归、两个 Release workflow、发布类型和六项附件哈希。发布后把证据补入本节，并将最终交接文档提交双推。不要安装升级本机 App；菜单项需新 App 版本才能在任务栏使用。
 
 ## 任务交接（2026-10-11）
 
