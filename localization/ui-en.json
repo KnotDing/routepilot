@@ -1381,5 +1381,13 @@
   "确认强制重启": "Confirm force restart",
   "将关闭并重新打开远端 {name} 的 App，无需远端用户确认。未保存的管理页面内容可能丢失；网络后台、DNS 和 BGP 继续运行。": "Close and reopen the App on {name} without confirmation from the remote user. Unsaved management page edits may be lost. The network service, DNS and BGP will keep running.",
   "管理端已确认强制重启 App，即将关闭并重新打开管理窗口。网络服务继续运行。": "The management client confirmed a forced App restart. The management window will close and reopen. The network service will keep running.",
-  "远程后端已是最新版本，可继续正常管理。": "The remote backend is up to date and can be managed normally."
+  "远程后端已是最新版本，可继续正常管理。": "The remote backend is up to date and can be managed normally.",
+  "DHCP 设备属性": "DHCP device properties",
+  "保存设备属性": "Save device properties",
+  "移除设备配置": "Remove device configuration",
+  "DHCP 设备配置已移除，正在后台应用": "DHCP device configuration removed; applying in the background",
+  "DHCP 设备属性已保存，正在后台应用": "DHCP device properties saved; applying in the background",
+  "此后端暂不支持租约列表内编辑，请升级后端。": "This backend does not support editing devices in the lease list. Update the backend.",
+  "无有效租约": "No active lease",
+  "编辑 DHCP 设备 {mac}": "Edit DHCP device {mac}"
 }

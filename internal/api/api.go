@@ -552,6 +552,8 @@ func (a *API) serve(w http.ResponseWriter, r *http.Request) {
 			write(w, 200, d.Settings)
 		case "dhcp/configuration":
 			write(w, 200, d.Settings.DHCP)
+		case "dhcp/devices":
+			write(w, 200, d.Settings.DHCP.Devices)
 		case "configuration/export":
 			w.Header().Set("Content-Disposition", "attachment; filename=surge-controller-backup.json")
 			sections := r.URL.Query()["sections"]
@@ -636,6 +638,15 @@ func (a *API) serve(w http.ResponseWriter, r *http.Request) {
 	old := d
 	created := false
 	switch path {
+	case "dhcp/devices":
+		if r.Method != "PUT" {
+			w.WriteHeader(405)
+			return
+		}
+		if e := decode(w, r, &d.Settings.DHCP.Devices); e != nil {
+			fail(w, 400, e)
+			return
+		}
 	case "dhcp/configuration":
 		if r.Method != "PUT" {
 			w.WriteHeader(405)

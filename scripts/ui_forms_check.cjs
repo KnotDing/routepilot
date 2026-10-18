@@ -70,7 +70,28 @@ const fixture=Function(source.slice(source.indexOf('const settings='),source.ind
  const categories=['通用','DNS','Surge','路由','缓存','健康','日志与隐私','安全','软件更新','大屏监控','通知','状态栏','CLI 与 skill','关于'];
  for(const width of [1440,1120,390]){
   await page.setViewportSize({width,height:1000});
-  for(const label of pages){await go(label);await check(width+' '+label);if(label==='DHCP 服务'){await page.getByRole('heading',{name:'设备专属配置',exact:true}).waitFor();if(await page.getByLabel('启用 DHCPv4 服务',{exact:true}).isDisabled())throw Error('Supported DHCP controls are disabled');await page.screenshot({path:out+'/dhcp-'+width+'.png',fullPage:true});}}
+  for(const label of pages){
+   await go(label);await check(width+' '+label);
+   if(label==='DHCP 服务'){
+    await page.getByRole('heading',{name:'DHCP 租约',exact:true}).waitFor();
+    if(await page.getByRole('heading',{name:'设备专属配置',exact:true}).count())throw Error('Standalone DHCP device panel remains');
+    if(await page.getByLabel('启用 DHCPv4 服务',{exact:true}).isDisabled())throw Error('Supported DHCP controls are disabled');
+    const spacing=await page.locator('.dhcp-panel').evaluate(panel=>{
+     const actions=panel.querySelector('form .toolbar').getBoundingClientRect(),leases=panel.querySelector('form + .panel').getBoundingClientRect();
+     return leases.top-actions.bottom;
+    });
+    if(spacing<18)throw Error('DHCP save actions touch lease panel: '+spacing);
+    if(await page.locator('.dhcp-option legend').count())throw Error('DHCP option titles are duplicated');
+    if(await page.locator('.dhcp-option').evaluateAll(options=>options.some(option=>parseFloat(getComputedStyle(option).borderTopWidth)>0)))throw Error('DHCP options have extra borders');
+    for(const name of ['DNS 服务器地址','NTP 服务器地址','网络启动文件或 URL','启动服务器 IPv4（siaddr）','TFTP 服务器名称或地址','租期（秒）','DHCP 域名'])if(await page.getByRole('textbox',{name,exact:true}).count()+(name==='租期（秒）'?await page.getByRole('spinbutton',{name,exact:true}).count():0)!==1)throw Error('DHCP input lost accessible name: '+name);
+    await page.screenshot({path:out+'/dhcp-'+width+'.png',fullPage:true});
+    await page.emulateMedia({colorScheme:'dark'});await page.screenshot({path:out+'/dhcp-dark-'+width+'.png',fullPage:true});await page.emulateMedia({colorScheme:'light'});
+    await page.getByRole('button',{name:'编辑 DHCP 设备 02:00:00:00:00:01',exact:true}).click();await page.getByRole('dialog',{name:'DHCP 设备属性',exact:true}).waitFor();await check('DHCP device editor '+width);
+    await page.screenshot({path:out+'/dhcp-device-'+width+'.png',fullPage:true});
+    await page.emulateMedia({colorScheme:'dark'});await page.screenshot({path:out+'/dhcp-device-dark-'+width+'.png',fullPage:true});await page.emulateMedia({colorScheme:'light'});
+    await page.getByRole('button',{name:'取消',exact:true}).click();
+   }
+  }
   for(const label of categories){
    await page.locator('.tabs').getByRole('button',{name:label,exact:true}).click();
    if(label==='Surge'){

@@ -6,7 +6,7 @@ import {selectBackend} from './client';
 
 afterEach(()=>{cleanup();vi.unstubAllGlobals();vi.restoreAllMocks();selectBackend('');localStorage.removeItem('routepilot.locale')});
 const config=()=>({...emptyDHCP(),interface:'en0',server_ip:'192.0.2.10',subnet:'192.0.2.0/24',pool_start:'192.0.2.100',pool_end:'192.0.2.200'});
-const status={supported:true,state:'disabled',received:0,sent:0,leases:[]};
+const status={device_settings:true,supported:true,state:'disabled',received:0,sent:0,leases:[]};
 
 it('keeps every device option independently inheritable and can explicitly omit DNS',()=>{
  const onChange=vi.fn();const global={...emptyDHCP().options,dns:['1.1.1.1'],gateway:'192.0.2.1'};
@@ -48,4 +48,31 @@ it('does not overwrite an edited DHCP draft during polling and disables unsuppor
  expect(screen.getByRole('textbox',{name:'DHCP 服务器 IPv4'})).toHaveValue('192.0.2.20');
  rerender(<DHCPPanel {...props} snapshot={null} settings={{}}/>);
  expect(screen.getByLabelText('启用 DHCPv4 服务')).toBeDisabled();
+});
+
+it('edits device properties from the lease list without saving an unrelated global draft',async()=>{
+ const fetch=vi.fn(async()=>({ok:true,json:async()=>({ok:true})}));vi.stubGlobal('fetch',fetch);
+ const settings=config(),lease={address:'192.0.2.120',mac:'02:00:00:00:00:01',hostname:'Phone',state:'bound',expires_at:'2026-10-19T00:00:00Z'};
+ render(<DHCPPanel settings={{dhcp:settings}} snapshot={{...status,leases:[lease]}} refresh={vi.fn()} notify={vi.fn()}/>);
+ expect(screen.queryByRole('heading',{name:'设备专属配置'})).not.toBeInTheDocument();
+ fireEvent.change(screen.getByRole('textbox',{name:'DHCP 服务器 IPv4'}),{target:{value:'192.0.2.20'}});
+ fireEvent.click(screen.getByRole('button',{name:'编辑 DHCP 设备 02:00:00:00:00:01'}));
+ fireEvent.change(screen.getByRole('textbox',{name:'设备名称'}),{target:{value:'My iPhone'}});
+ fireEvent.click(screen.getByRole('button',{name:'保存设备属性'}));
+ await waitFor(()=>expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+ expect(fetch).toHaveBeenCalledOnce();expect(fetch.mock.calls[0][0]).toBe('/api/v1/dhcp/devices');
+ expect(JSON.parse(fetch.mock.calls[0][1].body)).toEqual([{mac:lease.mac,name:'My iPhone',address:lease.address,options:{}}]);
+ expect(screen.getByRole('textbox',{name:'DHCP 服务器 IPv4'})).toHaveValue('192.0.2.20');
+ expect(screen.getByText('My iPhone')).toBeInTheDocument();
+});
+
+it('keeps configured devices without a lease editable and preserves failed editor drafts',async()=>{
+ vi.stubGlobal('fetch',vi.fn(async()=>({ok:false,status:422,json:async()=>({error:'invalid DHCP domain'}),text:async()=> 'invalid DHCP domain'})));
+ const device={mac:'02:00:00:00:00:02',name:'Offline',address:'192.0.2.220',options:{}};
+ render(<DHCPPanel settings={{dhcp:{...config(),devices:[device]}}} snapshot={status} refresh={vi.fn()} notify={vi.fn()}/>);
+ expect(screen.getByText('无有效租约')).toBeInTheDocument();
+ fireEvent.click(screen.getByRole('button',{name:'编辑 DHCP 设备 '+device.mac}));
+ fireEvent.change(screen.getByRole('textbox',{name:'设备名称'}),{target:{value:'Still here'}});
+ fireEvent.click(screen.getByRole('button',{name:'保存设备属性'}));
+ await screen.findByRole('alert');expect(screen.getByRole('textbox',{name:'设备名称'})).toHaveValue('Still here');
 });

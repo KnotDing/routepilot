@@ -22,9 +22,9 @@ RoutePilot 是一款 macOS 状态栏应用：向 Surge 查询分流策略，为 
 </p>
 <p align="center"><sub>管理界面预览 · 3840 × 2160 · 页面中的指标、地址和事件均为虚构示例数据</sub></p>
 
-## v1.0.5-beta.2 测试版
+## v1.0.5-beta.3 测试版
 
-新增可选 DHCPv4 服务，支持逐设备配置网关、DNS、路由、NTP、网络启动、TFTP、租期和域名；启用前检查其他 DHCP 服务器与网口静态地址。默认关闭，真实客户端租约及路由采纳仍待现场验收。详见 [测试版更新记录](.gitea/release-notes/v1.0.5-beta.2.md) · [下载测试版](https://github.com/KnotDing/routepilot/releases/tag/v1.0.5-beta.2)。
+新增可选 DHCPv4 服务，支持逐设备配置网关、DNS、路由、NTP、网络启动、TFTP、租期和域名；启用前检查其他 DHCP 服务器与网口静态地址。设备属性直接从租约列表编辑，并修复选项标题重复和按钮区间距。默认关闭，真实客户端租约及路由采纳仍待现场验收。详见 [测试版更新记录](.gitea/release-notes/v1.0.5-beta.3.md) · [下载测试版](https://github.com/KnotDing/routepilot/releases/tag/v1.0.5-beta.3)。
 
 ## v1.0.4 更新
 

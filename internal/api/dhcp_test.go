@@ -68,3 +68,21 @@ func TestDHCPPreflightReturnsWarningsWithoutSavingConfiguration(t *testing.T) {
 		t.Fatal("preflight modified the saved DHCP configuration")
 	}
 }
+
+func TestDHCPDeviceSavePreservesGlobalOptions(t *testing.T) {
+	d := config.Default()
+	d.Settings.DHCP.Options = config.DHCPOptions{Domain: "saved.lan", LeaseSeconds: 3600}
+	service := &routeService{doc: d}
+	handler := (&API{Service: service}).Handler()
+	body, _ := json.Marshal([]config.DHCPDevice{{MAC: "02:00:00:00:00:01", Name: "Phone"}})
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, httptest.NewRequest("PUT", "/api/v1/dhcp/devices", bytes.NewReader(body)))
+	if response.Code != 200 || service.doc.Settings.DHCP.Options.Domain != "saved.lan" || len(service.doc.Settings.DHCP.Devices) != 1 {
+		t.Fatalf("device save changed globals: %d %s", response.Code, response.Body.String())
+	}
+	response = httptest.NewRecorder()
+	handler.ServeHTTP(response, httptest.NewRequest("GET", "/api/v1/dhcp/devices", nil))
+	if response.Code != 200 || !bytes.Contains(response.Body.Bytes(), []byte("Phone")) {
+		t.Fatalf("device get: %d %s", response.Code, response.Body.String())
+	}
+}

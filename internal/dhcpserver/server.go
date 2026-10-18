@@ -19,16 +19,17 @@ type Storage interface {
 	SaveDHCP(context.Context, State) error
 }
 type Status struct {
-	Running   bool         `json:"running"`
-	Preflight *CheckResult `json:"preflight,omitempty"`
-	Supported bool         `json:"supported"`
-	Enabled   bool         `json:"enabled"`
-	State     string       `json:"state"`
-	Interface string       `json:"interface"`
-	Error     string       `json:"error,omitempty"`
-	Received  uint64       `json:"received"`
-	Sent      uint64       `json:"sent"`
-	Leases    []Lease      `json:"leases"`
+	DeviceSettings bool         `json:"device_settings"`
+	Running        bool         `json:"running"`
+	Preflight      *CheckResult `json:"preflight,omitempty"`
+	Supported      bool         `json:"supported"`
+	Enabled        bool         `json:"enabled"`
+	State          string       `json:"state"`
+	Interface      string       `json:"interface"`
+	Error          string       `json:"error,omitempty"`
+	Received       uint64       `json:"received"`
+	Sent           uint64       `json:"sent"`
+	Leases         []Lease      `json:"leases"`
 }
 type running struct {
 	conn   *net.UDPConn
@@ -47,7 +48,7 @@ type Service struct {
 }
 
 func NewService(storage Storage) *Service {
-	return &Service{storage: storage, addressCheck: addressMode, discoverCheck: discover, status: Status{Supported: true, State: "disabled", Leases: []Lease{}}}
+	return &Service{storage: storage, addressCheck: addressMode, discoverCheck: discover, status: Status{DeviceSettings: true, Supported: true, State: "disabled", Leases: []Lease{}}}
 }
 func (s *Service) Snapshot() Status {
 	s.mu.Lock()

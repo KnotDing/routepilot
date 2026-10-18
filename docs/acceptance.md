@@ -926,4 +926,10 @@ acceptance was performed. Configuration runtime application is unchanged.
 - 实现可选 DHCPv4、九项全局 / 逐设备选项、固定地址、租约持久化、Option 121 与默认路由；启用前检查其他响应服务器和 macOS 网口地址方式。配置独立应用，支持备份 / CLI / 远程中继。
 - `env GOCACHE=/private/tmp/routepilot-dhcp-gocache make verify-release` 通过：前端 37 文件 / 197 项，Go 全包 race / vet，原生核心 / 真实 WKWebView / 多窗口，18 页面 / 14 设置分类在 1440 / 1120 / 390 宽度检查，9 项缓存 UI，以及完整 App / 后台 / CLI / DMG / ZIP / 签名 / 版本 / SHA256 校验。本地身份为 `1.0.5-beta.2 / build 114`。
 - 同一 GOCACHE 下 `make fuzz` 通过，207,725 次执行。发布前备份旧包及 bin 至 `artifacts/pre-beta2-backup-20261018/`，日志和包报告在 `artifacts/releases/v1.0.5-beta.2/`。
-- 尚未发布；CI 与发布附件核验完成后补齐证据。未安装或重启现用环境，未实际开启 DHCP；真实广播收发、iOS 租约 / 路由采纳及长期运行不在本轮本地证据范围内。
+- 已发布 `v1.0.5-beta.2`（`c1f7b31`）：GitHub 回归 `39135288272` / Release `39135304875` 及 Gitea `2118` 全成功。双仓库三附件均下载核验，哈希一致，App / 后台 `1.0.5-beta.2 / build 40`；证据见该版本目录的 `publication-verification.json`。未安装或重启现用环境，未实际开启 DHCP；真实广播收发、iOS 租约 / 路由采纳及长期运行不在本轮本地证据范围内。
+
+## 2026-10-18：DHCP 列表内设备编辑与布局（v1.0.5-beta.3）
+
+- 移除独立设备配置卡片，租约列表保留无有效租约的配置设备，行内打开设备属性弹窗；保存通过独立设备接口，不提交全局草稿。后端能力字段可选，旧版仅降级该入口。
+- `npm --prefix web test`：37 文件 / 199 项通过；`go test -race ./internal/api ./internal/remote ./internal/dhcpserver` 及对应 `go vet` 通过。`make ui-test` 覆盖 18 页面 / 14 分类 / 1440、1120、390 宽度，新增 DHCP 明暗主题、单标题、无额外分组边框、保存区间距、编辑弹窗与无障碍名称检查；9 项缓存 UI 通过。
+- `env GOCACHE=/private/tmp/routepilot-dhcp-gocache make package package-check` 通过，App / 后台为 `1.0.5-beta.3 / build 115`。日志与包报告在 `artifacts/releases/v1.0.5-beta.3/`。尚未发布；未安装或重启现用环境，未做真实 DHCP 客户端验收。
