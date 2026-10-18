@@ -139,6 +139,12 @@ en0/bridge100 list reflects this Mac's observed bridge topology, not an assumed
 universal macOS setup. PF enable references use `pfctl -E`/`-X TOKEN`; removing
 this component must not disable PF globally.
 
+The service periodically checks the digest of its owned anchor. If the anchor
+has been emptied, it reloads the generated rules and updates the private lease
+digest; if any rules remain but the digest changed, it leaves them untouched,
+marks transparent DNS unhealthy, and records the ownership conflict. This
+recovers accidental anchor flushes without overwriting another PF owner.
+
 ## Egress bypass and the single-interface topology
 
 On the inspected Mac the physical LAN address is `192.168.20.2` on `en0`; its

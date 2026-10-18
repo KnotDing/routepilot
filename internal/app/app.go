@@ -169,6 +169,7 @@ type Runtime struct {
 	server                                           *dnsserver.Server
 	pf                                               *dnsserver.PF
 	pfLease                                          *dnsserver.PFLease
+	pfRules                                          string
 	machine                                          *state.Machine
 	health                                           *state.Health
 	routes                                           *routing.Manager
@@ -584,6 +585,10 @@ func (a *App) buildRuntime(d config.Document, saved *decisionCacheSnapshot, resp
 					pc.Listener6 = addr
 				}
 			}
+			rt.pfRules, err = pc.Rules()
+			if err != nil {
+				return nil, err
+			}
 			rt.pfLease, err = dnsserver.LoadPF(ctx, pc, a.dir)
 			if err != nil {
 				return nil, err
@@ -659,8 +664,31 @@ func (a *App) monitor(ctx context.Context, rt *Runtime) {
 	previousState := ""
 	rateAt := time.Now()
 	lastPeers := ""
+	lastPFError := ""
 	for {
 		begin := time.Now()
+		pfReady := true
+		if rt.pfLease != nil {
+			pfCtx, pfCancel := context.WithTimeout(ctx, 3*time.Second)
+			restored, pfErr := rt.pfLease.ReconcilePF(pfCtx, rt.pfRules)
+			pfCancel()
+			pfReady = pfErr == nil
+			if restored {
+				a.event("WARNING", "pf_recovered", "PF transparent DNS rules disappeared unexpectedly and were restored / PF 透明 DNS 规则意外消失，已自动恢复")
+			}
+			if pfErr != nil {
+				rt.SetFault("PF anchor unavailable")
+				if pfErr.Error() != lastPFError {
+					a.event("ERROR", "pf_recovery", "PF transparent DNS rules could not be restored / PF 透明 DNS 规则无法恢复："+pfErr.Error())
+					lastPFError = pfErr.Error()
+				}
+			} else {
+				if rt.Fault() == "PF anchor unavailable" {
+					rt.SetFault("")
+				}
+				lastPFError = ""
+			}
+		}
 		restart := a.activeConfiguration().Settings.Surge.Restart.Effective()
 		probeTimeout := time.Duration(s.DNS.TimeoutMS)*time.Millisecond + time.Second
 		if restart.Enabled && len(restart.Groups)+len(restart.Nodes) > 0 {
@@ -825,7 +853,7 @@ func (a *App) monitor(ctx context.Context, rt *Runtime) {
 		}
 		rt.health.Observe("Controller", controller, time.Since(begin), "controller ingress/egress unavailable")
 		rt.health.Observe("DNS listener", dnsReady, 0, "DNS listeners unavailable")
-		rt.health.Observe("Transparent DNS", !s.DNS.InterceptionEnabled || dnsReady && rt.pfLease != nil, 0, "transparent listener/PF unavailable")
+		rt.health.Observe("Transparent DNS", !s.DNS.InterceptionEnabled || dnsReady && rt.pfLease != nil && pfReady, 0, "transparent listener/PF unavailable")
 		if !s.DNS.InterceptionEnabled {
 			rt.health.Disabled("Transparent DNS")
 		}

@@ -772,6 +772,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
         var serviceItems: [NSMenuItem] = []
         if needsLogin { serviceItems.append(item("登录本机后台…", action: #selector(signIn), enabled: !stopping)); serviceItems.append(.separator()) }
         if !serviceInstalled { serviceItems.append(item("安装网络后台服务…", action: #selector(installService), enabled: !stopping && !smoke && child != nil)) }
+        if serviceInstalled { serviceItems.append(item("重启后台服务…", action: #selector(restartLocalBackendService), enabled: !stopping && !smoke)) }
         serviceItems.append(item("重新连接", action: #selector(reconnect), enabled: !stopping))
         serviceItems.append(item("打开服务日志", action: #selector(openLogs)))
         menu.addItem(submenu("本机后台", items: serviceItems))
@@ -1164,6 +1165,53 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
         } catch { alert("登录启动未修改", error.localizedDescription) }
     }
     @objc func reconnect() { bootFailures = 0; nextBoot = .distantPast; Task { await refresh() } }
+    @objc func restartLocalBackendService() {
+        guard !stopping, !smoke else { return }
+        guard FileManager.default.fileExists(atPath: "/Library/LaunchDaemons/com.routepilot.surge-controller.plist") else {
+            alert("无法重启后台服务", "本机后台服务尚未安装。")
+            return
+        }
+        let dialog = NSAlert()
+        dialog.messageText = L("重启本机后台服务？")
+        dialog.informativeText = L("DNS、BGP 和管理连接会短暂中断；配置与数据库将保留。")
+        dialog.addButton(withTitle: L("取消"))
+        dialog.addButton(withTitle: L("重启服务"))
+        NSApp.activate(ignoringOtherApps: true)
+        guard dialog.runModal() == .alertSecondButtonReturn else { return }
+        Task { await performLocalBackendRestart() }
+    }
+    func performLocalBackendRestart() async {
+        guard !stopping else { return }
+        stopping = true
+        rebuildMenu()
+        defer { stopping = false; rebuildMenu() }
+        do {
+            let command = "/bin/launchctl kickstart -k system/com.routepilot.surge-controller"
+            let escaped = command.replacingOccurrences(of: "\\", with: "\\\\").replacingOccurrences(of: "\"", with: "\\\"")
+            var failure: NSDictionary?
+            guard NSAppleScript(source: "do shell script \"\(escaped)\" with administrator privileges")?.executeAndReturnError(&failure) != nil else {
+                throw AppFailure(message: failure?[NSAppleScript.errorMessage] as? String ?? L("管理员授权失败"))
+            }
+            let deadline = Date().addingTimeInterval(45)
+            var lastError = ""
+            while Date() < deadline {
+                do {
+                    try await refreshFromBackend()
+                    if authenticated {
+                        alert("后台服务已重启", "本机后台已恢复连接。", preventsTermination: false)
+                        return
+                    }
+                    lastError = lastError.isEmpty ? L("需要登录管理服务") : lastError
+                } catch {
+                    lastError = error.localizedDescription
+                }
+                try await Task.sleep(nanoseconds: 1_000_000_000)
+            }
+            throw AppFailure(message: L("等待本机后台重启超时：{error}", ["error": lastError.isEmpty ? L("后台连接不可用") : lastError]))
+        } catch {
+            alert("后台服务未重启", L("后台重启失败：{error}", ["error": error.localizedDescription]))
+        }
+    }
     @objc func openLogs() {
         let url = child == nil && FileManager.default.fileExists(atPath: "/var/log/surge-controller") ? URL(fileURLWithPath: "/var/log/surge-controller") : dataDirectory
         NSWorkspace.shared.open(url)

@@ -140,6 +140,16 @@
 - 本轮未安装、升级或重启现用 App / 后台；未新增验收真实 DHCP / 远程 CLI 用户上下文、网关 RIB / FIB、PF / LAN / NAT / IPv6 路径或长期资源占用。既有 Swift 捕获 / WebKit 并发、测试夹具重复 React key、前端包体大小与 hdiutil 弃用提示仍存在；包检查不代表公证或现场升级验收。
 - 此节为带日期快照。接手时以 `git status`、源码版本、远端标签及实际 Release / Actions 为准，下方旧版交接仅为历史记录。
 
+## 任务交接（2026-10-18，v1.0.4-beta.29）
+
+- 目标与验收条件：发布 PF 锚点意外清空后可自动恢复的修复版测试版；GitHub 回归及两个 Release workflow 成功，GitHub / Gitea 各发布 DMG、ZIP、SHA256SUMS 并核验版本与哈希。
+- 当前状态：本地实现与完整验证已完成；提交、双仓库推送、CI 和 Release 核验待完成。发布前 `main` 两个远端均为 `e6b3711`，最新测试版为 `v1.0.4-beta.28`，`v1.0.4-beta.29` 标签不存在。
+- 已完成与修改文件：修复代码在 `internal/dnsserver/pf_control.go`、`internal/app/app.go`，说明在 `docs/architecture.md`；状态栏「本机后台」新增管理员授权重启服务的入口，代码在 `native/main.swift`、双语文案在 `localization/ui-en.json`。版本与双语发行说明在 `internal/buildinfo/release.json`、`.gitea/release-notes/v1.0.4-beta.29.md`。安装 skill 继续指向正式版。现有安装包和三个 `bin/` 二进制备份于 `artifacts/pre-beta29-backup-20261018/`。
+- 验证：获授权 loopback 网络后 `GOCACHE="$PWD/.cache/go-build" GOMODCACHE="$PWD/.cache/go-mod" make verify-release` 通过，前端 36 文件 / 193 项、Go 全包 race / vet、原生检查、17 页面 / 14 分类 UI、9 项缓存 UI、包校验均通过；`make fuzz` 通过 242,535 次执行。包内 App / 后台身份均为 `1.0.4-beta.29 / build 112`，DMG SHA256 `d37a742c662b58defe9881587c5d6b49a4ec5274cf2ea9f4ec15340b768efaab`，ZIP SHA256 `45464938b699d8c13b408f09b34c28e58caf741f3783dcd24548da3cbaaba5b0`。PF 恢复尚未在真实 macOS PF 上现场验收。服务状态检查为 HEALTHY；直接 `launchctl kickstart -k system/com.routepilot.surge-controller` 被系统拒绝，当前服务未重启。
+- 已发布：尚未提交、打标签或推送；GitHub / Gitea workflow、Release 和附件均待完成。
+- 保留的无关改动：无。
+- 下一步与依赖：运行 `make verify-release`、`make fuzz`；然后 scoped commit、注释标签和双仓库推送。若本机网络再次阻止远端核对或推送，需恢复后补齐再报告完成。
+
 ## 任务交接（2026-10-11）
 
 - 目标与验收条件：检查 v1.0.2 之后新增功能的测试覆盖；发布 v1.0.3 正式版；更新本文件记录工作流、版本与测试边界。

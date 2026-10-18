@@ -42,6 +42,64 @@ func pfDigest(ctx context.Context) (string, error) {
 	sum := sha256.Sum256(append(rules, nat...))
 	return hex.EncodeToString(sum[:]), nil
 }
+
+// ReconcilePF restores the managed anchor only when PF has removed all of its
+// rules. If another owner has changed the anchor, it refuses to overwrite it.
+func (l *PFLease) ReconcilePF(ctx context.Context, rules string) (bool, error) {
+	if l == nil || l.path == "" || l.Digest == "" {
+		return false, errors.New("invalid PF lease")
+	}
+	digest, err := pfDigest(ctx)
+	if err != nil {
+		return false, err
+	}
+	if digest == l.Digest {
+		return false, nil
+	}
+	filter, err := pfCommand(ctx, "-a", "com.apple/surge-controller", "-sr")
+	if err != nil {
+		return false, err
+	}
+	nat, err := pfCommand(ctx, "-a", "com.apple/surge-controller", "-sn")
+	if err != nil {
+		return false, err
+	}
+	if strings.TrimSpace(string(filter))+strings.TrimSpace(string(nat)) != "" {
+		return false, errors.New("PF anchor ownership changed; refusing to replace it")
+	}
+	file, err := os.CreateTemp(filepath.Dir(l.path), "pf-anchor-*.conf")
+	if err != nil {
+		return false, err
+	}
+	name := file.Name()
+	defer os.Remove(name)
+	if _, err = file.WriteString(rules); err != nil {
+		file.Close()
+		return false, err
+	}
+	if err = file.Close(); err != nil {
+		return false, err
+	}
+	if _, err = pfCommand(ctx, "-n", "-a", "com.apple/surge-controller", "-f", name); err != nil {
+		return false, err
+	}
+	if _, err = pfCommand(ctx, "-a", "com.apple/surge-controller", "-f", name); err != nil {
+		return false, err
+	}
+	l.Digest, err = pfDigest(ctx)
+	if err != nil {
+		return false, err
+	}
+	b, err := json.Marshal(l)
+	if err != nil {
+		return false, err
+	}
+	if err = os.WriteFile(l.path, b, 0600); err != nil {
+		return false, err
+	}
+	return true, nil
+}
+
 func LoadPF(ctx context.Context, c PFConfig, dir string) (*PFLease, error) {
 	rules, e := c.Rules()
 	if e != nil {
