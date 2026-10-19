@@ -401,10 +401,10 @@ func (a *App) Configuration() config.Document {
 	return a.config.Clone()
 }
 func (a *App) build(d config.Document, saved *decisionCacheSnapshot, responses *responseCacheSnapshot) (*Runtime, error) {
-	return a.buildRuntime(d, saved, responses, nil, false)
+	return a.buildRuntime(d, saved, responses, nil, false, false)
 }
 
-func (a *App) buildRuntime(d config.Document, saved *decisionCacheSnapshot, responses *responseCacheSnapshot, preserved *routing.Manager, syncPeers bool) (rt *Runtime, err error) {
+func (a *App) buildRuntime(d config.Document, saved *decisionCacheSnapshot, responses *responseCacheSnapshot, preserved *routing.Manager, syncPeers bool, swapAPI bool) (rt *Runtime, err error) {
 	if err = d.Validate(); err != nil {
 		return nil, err
 	}
@@ -612,6 +612,9 @@ func (a *App) buildRuntime(d config.Document, saved *decisionCacheSnapshot, resp
 			}
 		}
 		preserved.UpdateDocument(d)
+		if swapAPI {
+			preserved.ReplaceAPI(ctx, d)
+		}
 		rt.routes = preserved
 	} else {
 		rt.routes = routing.New(a.ctx, d, func(severity, message string) { a.event(severity, "routing", message) })
@@ -884,12 +887,14 @@ func (a *App) monitor(ctx context.Context, rt *Runtime) {
 			rt.machine.DrainResponses()
 			rt.routes.ApplyNextHop4()
 		}
-		desired := rt.routes.Desired(controller && dnsReady && up["Database"], dnsReady && up["Real DNS"], plan.KeepSurgeRoutes)
-		e := rt.routes.Reconcile(routeCtx, desired)
-		ready, re := rt.routes.Refresh(routeCtx)
+		controllerReady := controller && dnsReady && up["Database"]
+		dnsRealReady := dnsReady && up["Real DNS"]
+		e := rt.routes.Reconcile(routeCtx, rt.routes.Desired(controllerReady, dnsRealReady, plan.KeepSurgeRoutes))
+		apiErr := rt.routes.ReconcileAPI(routeCtx, rt.routes.DesiredAPI(controllerReady, dnsRealReady, plan.KeepSurgeRoutes))
+		ready, _ := rt.routes.Refresh(routeCtx)
 		routeCancel()
 		peers := rt.routes.Status()
-		engineOK := peers.Enabled && e == nil && re == nil && peers.LastError == ""
+		engineOK := peers.Enabled && e == nil && peers.LastError == ""
 		rt.health.Observe("BGP engine", engineOK, 0, "BGP disabled or not ready")
 		rt.health.Observe("Fake-IP routing", ready, 0, "selected Fake-IP routing backend is not ready")
 		if s.DNS.InterceptionEnabled {
@@ -899,6 +904,11 @@ func (a *App) monitor(ctx context.Context, rt *Runtime) {
 		}
 		if !peers.BGPRequested {
 			rt.health.Disabled("BGP engine")
+		}
+		if peers.APIRequested {
+			rt.health.Observe("Routing API", peers.API.Enabled && peers.API.LastError == "" && apiErr == nil, 0, "router API backend is not ready")
+		} else {
+			rt.health.Disabled("Routing API")
 		}
 		for _, p := range peers.Peers {
 			rt.health.Observe("BGP peer "+p.Address, p.State == "ESTABLISHED", 0, "BGP session unavailable")
@@ -978,7 +988,7 @@ func (rt *Runtime) shutdownDNS(ctx context.Context, waitTTL bool) error {
 	reconcile := func(keepFake bool) {
 		routeCtx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 		defer cancel()
-		routingErr = errors.Join(routingErr, rt.routes.Reconcile(routeCtx, rt.routes.Desired(false, false, keepFake)))
+		routingErr = errors.Join(routingErr, rt.routes.ReconcileAll(routeCtx, false, false, keepFake))
 	}
 	keepFake := waitTTL && time.Now().Before(expiry)
 	reconcile(keepFake)
@@ -1089,10 +1099,10 @@ func (a *App) activateConfiguration(ctx context.Context, d config.Document) (res
 		var next *Runtime
 		e := stopErr
 		if e == nil {
-			next, e = a.buildRuntime(d, &decisions, &responses, retained, impact.Peers)
+			next, e = a.buildRuntime(d, &decisions, &responses, retained, impact.Peers, impact.API)
 		}
 		if e != nil {
-			restored, re := a.buildRuntime(old, &decisions, &responses, retained, false)
+			restored, re := a.buildRuntime(old, &decisions, &responses, retained, false, false)
 			if re == nil {
 				a.mu.Lock()
 				a.runtime = restored
@@ -1123,6 +1133,9 @@ func (a *App) activateConfiguration(ctx context.Context, d config.Document) (res
 						rt.routingMu.Unlock()
 						return fmt.Errorf("BGP neighbor update failed: %w", e)
 					}
+				}
+				if impact.API {
+					rt.routes.ReplaceAPI(ctx, d)
 				}
 				rt.routes.UpdateDocument(d)
 				rt.routingMu.Unlock()

@@ -12,9 +12,10 @@ import (
 
 // Dependencies follow the resources actually constructed by buildRuntime.
 // DNS sources also bind BGP peer sockets; route declarations alone do not
-// require replacing a speaker or its unrelated neighbor sessions.
+// require replacing a speaker or its unrelated neighbor sessions. The router
+// API backend swaps in place, so its configuration never rebuilds BGP.
 type configurationImpact struct {
-	DNS, BGP, Peers, Routes, Gate bool
+	DNS, BGP, Peers, Routes, Gate, API bool
 }
 
 func configurationChanges(old, next config.Document) configurationImpact {
@@ -34,14 +35,17 @@ func configurationChanges(old, next config.Document) configurationImpact {
 			}
 		}
 	}
+	oldAPI := old.Settings.Routing.UsesAPI()
+	nextAPI := next.Settings.Routing.UsesAPI()
+	api := oldAPI != nextAPI || oldAPI && nextAPI && !reflect.DeepEqual(old.Settings.RoutingAPI, next.Settings.RoutingAPI)
 	peers := !reflect.DeepEqual(old.Peers, next.Peers)
-	routes := bgp || peers || !reflect.DeepEqual(old.Settings.Routing, next.Settings.Routing) ||
+	routes := bgp || peers || api || !reflect.DeepEqual(old.Settings.Routing, next.Settings.Routing) ||
 		!reflect.DeepEqual(old.Settings.BGP, next.Settings.BGP) ||
 		old.Settings.DNS.InterceptionEnabled != next.Settings.DNS.InterceptionEnabled ||
 		!reflect.DeepEqual(routing.Definitions(old), routing.Definitions(next))
 	gate := !reflect.DeepEqual(old.Settings.Routing, next.Settings.Routing) ||
 		old.Settings.Surge.NextHop4 != next.Settings.Surge.NextHop4 || old.Settings.Surge.NextHop6 != next.Settings.Surge.NextHop6
-	return configurationImpact{DNS: !reflect.DeepEqual(dnsRuntimeDocument(old), dnsRuntimeDocument(next)), BGP: bgp, Peers: peers, Routes: routes, Gate: gate}
+	return configurationImpact{DNS: !reflect.DeepEqual(dnsRuntimeDocument(old), dnsRuntimeDocument(next)), BGP: bgp, Peers: peers, Routes: routes, Gate: gate, API: api}
 }
 
 // Called while routingMu excludes monitor reconciliation. Keep the old paths
@@ -72,6 +76,7 @@ func dnsRuntimeDocument(d config.Document) config.Document {
 	d.Settings.Updates = config.Updates{}
 	d.Settings.Logging = config.Logging{}
 	d.Settings.Routing = config.Routing{}
+	d.Settings.RoutingAPI = config.RoutingAPI{}
 	d.Settings.Surge.Restart = config.SurgeRestart{}
 	d.Settings.Surge.NextHop4, d.Settings.Surge.NextHop6 = "", ""
 	d.Settings.BGP = config.BGP{}

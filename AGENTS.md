@@ -226,6 +226,16 @@
 - 保留的无关改动：无。beta.4 旧包与 bin 备份至 `artifacts/pre-beta5-backup-20261018/`。
 - 下一步与依赖：无发布遗留。最终交接作为后续文档提交双推，不移动已发布标签。未安装或重启现用环境，真实 DHCP 客户端 / 路由采纳及长期资源占用仍待现场验收。
 
+## 任务交接（2026-10-19，v1.0.5-beta.6）
+
+- 目标与验收条件：发布路由器 API 模式（OpenWrt / UniFi 预设与自定义请求模板）测试版；双仓库提交 / 标签、GitHub 回归、两个 Release workflow 及三附件核验通过。
+- 当前状态：进行中（本地验证已通过，发布推送与 workflow 核验待完成；完成后由后续文档提交补齐本节并更新「最近已核验发布」）。
+- 已完成与修改文件：`internal/routingapi/`（`Manager` 对账与状态、`openwrt.go` ubus 会话 + uci 命名段、`unifi.go` Integration API、`custom.go` 模板渲染）、`internal/config/routing_api.go`（配置与校验，凭据加密存储、导出剥离）、`internal/routing/manager.go`（`DesiredAPI` / `ReconcileAPI` / `ReplaceAPI` 热替换，不重建 BGP）、`internal/app/configuration_impact.go`、`internal/api/`（状态与备份）、`internal/database/store.go`；UI 在 `web/src/routing-api-settings.jsx`、`routing.jsx`、`form-fields.jsx`、i18n；文档 `docs/routing-backends.md`、`docs/architecture.md`、README 与代码地图。版本 `internal/buildinfo/release.json` `1.0.5-beta.6 / build 118`，发行说明 `.gitea/release-notes/v1.0.5-beta.6.md`。安装 skill 继续指向正式版。
+- 验证：`env GOCACHE=/private/tmp/routepilot-beta6-go-build make verify-release` 通过（前端测试、Go 全包 race/vet、原生检查、18 页 / 14 分类 / 三宽度与 9 项缓存 UI、完整包校验 `PASS package`）；本地包 App / 后台 / CLI 均为 `1.0.5-beta.6 / build 118`；本地 DMG SHA256 `d08055d97e26cf7fb990fe996bef253b9c63a126be6c316db8cfd37aad70c318`、ZIP `90ef31eae8fac642ddcf794c93c671c258becfa7e5d96a819ebbebfd2428c28f`。证据 `artifacts/releases/v1.0.5-beta.6/local-verification.md`。未覆盖：真实 OpenWrt / UniFi / 自定义路由器的实际 API 对账、路由器故障重试、现用环境安装升级与非对称回程。
+- 已发布：待完成——发布推送后补齐提交 / 标签对象、GitHub 回归与两个 Release workflow 编号、双仓库发布页与附件哈希核验。
+- 保留的无关改动：无。beta.5 旧包与 bin 备份至 `artifacts/pre-beta6-backup-20261019/`。
+- 下一步与依赖：完成提交与双仓库推送（origin 双 pushurl 同步 GitHub 与 Gitea），核对 GitHub 回归、两个 Release workflow 与三附件；最终交接随发布后文档提交双推，不移动已发布标签。
+
 ## 代码地图：按任务定位
 
 先查下表，通常从“首读”开始，再跟随调用读取“关联”。函数名比行号稳定；模块位置变化时同步更新这里。不要预先通读 `app.go`、`api.go`、`main.jsx` 或 `main.swift` 的全部内容。
@@ -258,6 +268,7 @@
 | DHCPv4、租约与设备覆盖 | `internal/config/dhcp.go`；`internal/dhcpserver/engine.go` / `packet.go`（分配、状态转换、Option 121）；`server.go` / `check.go` / `address_darwin.go`（接口绑定、DHCPINFORM 探测、静态地址检查） | `internal/database/dhcp.go`；`internal/app/dhcp.go`；`internal/api/dhcp.go`；`web/src/dhcp.jsx`；`docs/dhcp.md`；独立配置接口 `dhcp/configuration`、状态 `dhcp/status`，不通过通用 settings PUT 覆盖 DHCP |
 | 透明 DNS / PF | `internal/dnsserver/transparent.go`、`pf_rules.go`、`pf_control.go`、`pf_darwin.go`；普通 UDP/TCP 监听在 `server.go` | `web/src/dns-interception.jsx`（DNS 拦截页的静态网关配置确认，复用 settings 保存）；`docs/routing-backends.md`、`phase-2-acceptance.md`、`phase-2-docker-evidence.md`；`scripts/*phase2*` |
 | BGP 邻居、详情与路由发布 | `internal/bgp/gobgp.go`（`peerConfig` / `SyncPeers` / `Peers` / `Exported`）；`manager.go`（`Reconcile` / `Refresh`） | `internal/routing/manager.go`；`web/src/bgp-peer-details.jsx`、`routing.jsx`、`main.jsx` 的 `Resource`；`docs/routing-backends.md` |
+| 路由器 API 模式（OpenWrt / UniFi / 自定义模板） | `internal/routingapi/`（`Manager` 对账与状态；`openwrt.go` ubus+uci 命名段；`unifi.go` Integration API；`custom.go` 模板渲染）；配置与校验在 `internal/config/routing_api.go`，凭据加密存储、导出剥离 | `internal/routing/manager.go` 的 `DesiredAPI` / `ReconcileAPI` / `ReplaceAPI`（热替换不重建 BGP）；`internal/app/configuration_impact.go` 的 `API` 影响；`web/src/routing-api-settings.jsx`、`routing.jsx` 的模式选择与 API 状态卡；`docs/routing-backends.md` |
 | URL 路由导入与定时同步 | `internal/routeimport/import.go`；`internal/api/api.go` 的 `RunRouteFeedScheduler` | `web/src/route-import.jsx`；配置中的 route feeds；导入与后台任务状态 |
 | 健康检查、异常通知、Surge 重启 | `internal/app/app.go` 的 `monitor`；`surge_recovery.go`；`notification_anomalies.go`（每秒统计告警采样）；`internal/state/machine.go` | `internal/surge/recovery.go`；`internal/notifications/notifications.go`、`anomalies.go`（有界核对窗口与持续计时，不驱动路由门禁）；`internal/config/notification_anomalies.go`；`native/notifications.swift`；`web/src/surge-restart.jsx`、`notification-errors.jsx`、`notification-anomalies.jsx`；`docs/notification-anomalies.md` |
 | 大屏监控、策略命中与 DNS 流向 | `internal/dnsserver/monitoring.go`（`Begin` / `FinishQuerySource` / `Snapshot`）；`monitoring_dimensions.go`（有界真实请求关联与组合筛选）；`monitoring_domains.go`（独立域名待写批次、保存唤醒与确认）；`source_policy_flows.go`（有界真实来源 / 命中策略 / 最终策略三元组）；`dispatcher.go` 的实际解析路径标记；`internal/app/statistics.go`；`internal/database/monitoring.go`（事务检查点与分钟增量桶）、`monitoring_domains.go`（磁盘累计 / 分钟域名排行与批次去重） | `internal/api/monitoring.go`（实时源详情 / 历史 GET）、`internal/remote/remote.go`；`app.go` 的 `status.dns_monitoring` / `Metrics`；`web/src/monitoring.jsx`、`monitoring-filters.jsx`（六维选择 / 域名占比）、`monitoring-flow-grid.jsx`（并列图自然高度同步 / 上下排列恢复）、`monitoring-source-label.jsx`（完整备注换行 / 点击 IP 切换）、`monitoring-history.jsx`、`monitoring-data.js`（三层共享比例尺）、`monitoring.css`；`docs/monitoring.md` |

@@ -49,7 +49,7 @@ export function settingsRequirement(category,name,draft,interception=[]){
 		if(name==='update_time'){result.required=Boolean(section.automatic_check&&section.automatic_install);result.disabled=!section.automatic_check||!section.automatic_install;if(result.required)result.hint='每天到达该本地时间后自动安装；当天最多尝试一次。'}
 	} if(category==='surge'&&(name==='next_hop4'||name==='next_hop6')){
   const backend=routing.mode==='hybrid'?routing.fake_ip_backend:(routing.mode||'bgp');
-  const active=backend==='bgp'?bgp.enabled:routing.static_fake_ip_configured;
+  const active=backend==='bgp'?bgp.enabled:backend==='api'?true:routing.static_fake_ip_configured;
   const family=name.endsWith('6')?6:4;
   result.required=Boolean(active&&(surge.fake_prefixes||[]).some(prefix=>prefix.includes(':')===(family===6)));
   if(result.required)result.hint='当前 Fake-IP 路由地址族需要 Surge 下一跳。';

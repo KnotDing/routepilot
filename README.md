@@ -46,7 +46,7 @@ RoutePilot 是一款 macOS 状态栏应用：向 Surge 查询分流策略，为 
 | --- | --- |
 | DNS 分流 | 根据 Surge 策略选择真实地址或 Fake-IP，支持 UDP / TCP / DoT / DoH 和策略专用上游 |
 | DHCPv4 | 可选地址分配服务，支持网关 / DNS / Option 121 路由 / NTP / 网络启动 / TFTP / 租期 / 域名，以及逐项设备覆盖和启用前检查；详见 [DHCP 配置](docs/dhcp.md) |
-| 路由发布 | BGP、Static、Hybrid 三种模式，管理 Fake-IP、DNS 拦截前缀与手动路由 |
+| 路由发布 | BGP、Static、Hybrid、API 四种模式，管理 Fake-IP、DNS 拦截前缀与手动路由；API 模式内置 OpenWrt / UniFi 预设并支持自定义请求模板 |
 | 规则维护 | URL 导入先预览，定时同步 IPv4、IPv6 或两者，支持批量删除 |
 | 本地解析 | 自定义域名、通配符和 TTL，也可导入 Surge `[Host]` 静态映射 |
 | 缓存与统计 | 持久化累计 DNS 统计和稳定决策，查看客户端分流统计；响应缓存可开启持久化与乐观刷新 |
@@ -117,8 +117,11 @@ RoutePilot 处理被送到它的 DNS 请求并发布受管理路由；普通应�
 | **BGP** | RoutePilot 向邻居发布 | 网关支持 BGP，希望路由随会话状态撤销 |
 | **Static** | 你在外部网关配置 | 不使用 BGP，自行维护静态路由与故障切换 |
 | **Hybrid** | Fake-IP 与 DNS 拦截分别选择 | 需要组合两种方式 |
+| **API** | RoutePilot 调用路由器管理 API | 网关不支持 BGP 但开放 OpenWrt ubus / UniFi Integration API 或自定义 REST 接口 |
 
 Static 的确认表示用户已完成外部配置，RoutePilot 不自动安装或验证。静态 DNS 拦截还需开启持久拦截许可，并准备外部故障切换。路由表显示发布或配置状态；独立 TCP 诊断只检查 Mac 到指定地址的连通性。
+
+API 模式通过路由器管理接口发布与撤销路由：内置 OpenWrt（ubus JSON-RPC 写入命名路由段）与 UniFi OS（Integration API + API 密钥）两种预设，也可用自定义请求模板适配其他设备；凭据加密保存，导出备份不包含。Hybrid 模式下 Fake-IP 与 DNS 拦截同样可以分别选择 API 后端。
 
 在 **BGP 邻居 → 详情** 查看会话状态、双方 ASN、远端 Router ID、连接地址与端口、协商计时器、消息收发、地址族前缀统计及双方通告能力。完整 GoBGP 快照可展开查看，认证密钥已隐藏；信息随页面刷新。本地与远程后端均支持，旧版后端仍显示已有配置与基本状态。
 

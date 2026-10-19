@@ -11,6 +11,7 @@ import (
 	"strconv"
 	"surge-controller/internal/bgp"
 	"surge-controller/internal/config"
+	"surge-controller/internal/routingapi"
 	"sync"
 	"time"
 )
@@ -19,6 +20,16 @@ type Backend interface {
 	Reconcile(context.Context, []bgp.Advertisement) error
 	Refresh(context.Context) (bool, error)
 	Status() bgp.Status
+	Close(context.Context) error
+}
+
+// APIBackend publishes routes to a third-party router through its HTTP API.
+// Refresh mirrors the BGP readiness contract: true only when every desired
+// route is present on the router.
+type APIBackend interface {
+	Reconcile(context.Context, []bgp.Advertisement) error
+	Refresh(context.Context) (bool, error)
+	Status() routingapi.Status
 	Close(context.Context) error
 }
 type Route struct {
@@ -42,31 +53,36 @@ type Verification struct {
 	Scope     string    `json:"scope"`
 }
 type Status struct {
-	NextHop4             NextHop4Status   `json:"surge_next_hop4"`
-	BGPRequested         bool             `json:"bgp_requested"`
-	Mode                 string           `json:"mode"`
-	FakeIPBackend        string           `json:"fake_ip_backend"`
-	DNSBackend           string           `json:"dns_backend"`
-	Enabled              bool             `json:"enabled"` // BGP engine, not DNS availability
-	Advertised           int              `json:"advertised"`
-	Limit                int              `json:"limit"`
-	Peers                []bgp.PeerStatus `json:"peers"`
-	Routes               []Route          `json:"routes"`
-	LastError            string           `json:"last_error"`
-	FakeIPReady          bool             `json:"fake_ip_ready"`
-	DNSInterceptionReady bool             `json:"dns_interception_ready"`
-	Limitations          []string         `json:"limitations"`
+	NextHop4             NextHop4Status    `json:"surge_next_hop4"`
+	BGPRequested         bool              `json:"bgp_requested"`
+	APIRequested         bool              `json:"api_requested"`
+	API                  routingapi.Status `json:"api"`
+	Mode                 string            `json:"mode"`
+	FakeIPBackend        string            `json:"fake_ip_backend"`
+	DNSBackend           string            `json:"dns_backend"`
+	Enabled              bool              `json:"enabled"` // BGP engine, not DNS availability
+	Advertised           int               `json:"advertised"`
+	Limit                int               `json:"limit"`
+	Peers                []bgp.PeerStatus  `json:"peers"`
+	Routes               []Route           `json:"routes"`
+	LastError            string            `json:"last_error"`
+	FakeIPReady          bool              `json:"fake_ip_ready"`
+	DNSInterceptionReady bool              `json:"dns_interception_ready"`
+	Limitations          []string          `json:"limitations"`
 }
 type Manager struct {
-	mu            sync.RWMutex
-	autoNextHop4  string
-	nextHop4      NextHop4Status
-	document      config.Document
-	bgp           Backend
-	startupError  string
-	verifications map[string]Verification
-	snapshot      Status
-	dial          func(context.Context, string, string) (net.Conn, error)
+	mu              sync.RWMutex
+	autoNextHop4    string
+	nextHop4        NextHop4Status
+	document        config.Document
+	bgp             Backend
+	api             APIBackend
+	apiStartupError string
+	notify          func(string, string)
+	startupError    string
+	verifications   map[string]Verification
+	snapshot        Status
+	dial            func(context.Context, string, string) (net.Conn, error)
 }
 
 func New(ctx context.Context, d config.Document, notify func(string, string)) *Manager {
@@ -83,7 +99,12 @@ func New(ctx context.Context, d config.Document, notify func(string, string)) *M
 			backend = bgp.NewManager(speaker, d.Settings.BGP.RouteLimit, notify)
 		}
 	}
-	return newManager(d, backend, failure)
+	m := newManager(d, backend, failure)
+	m.notify = notify
+	m.mu.Lock()
+	m.replaceAPILocked(d)
+	m.mu.Unlock()
+	return m
 }
 func newManager(d config.Document, backend Backend, failure string) *Manager {
 	m := &Manager{document: d.Clone(), bgp: backend, startupError: failure, verifications: map[string]Verification{}}
@@ -148,6 +169,74 @@ func (m *Manager) Desired(controller, dns, surge bool) []bgp.Advertisement {
 	}
 	return out
 }
+
+// DesiredAPI selects the routes the router API backend should publish. Manual
+// routes follow it only in the dedicated api mode; hybrid keeps them on BGP,
+// matching the behaviour of the existing backends.
+func (m *Manager) DesiredAPI(controller, dns, surge bool) []bgp.Advertisement {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	return m.desiredAPI(controller, dns, surge)
+}
+func (m *Manager) desiredAPI(controller, dns, surge bool) []bgp.Advertisement {
+	s := m.document.Settings
+	r := s.Routing.Effective()
+	out := []bgp.Advertisement{}
+	if m.api == nil {
+		return out
+	}
+	for _, row := range Definitions(m.effectiveDocument()) {
+		if row.NextHop == "" {
+			continue
+		}
+		switch row.Kind {
+		case "fake-ip":
+			if r.FakeIPBackend != "api" || !surge {
+				continue
+			}
+		case "dns-interception":
+			if r.DNSBackend != "api" || !s.DNS.InterceptionEnabled || !controller {
+				continue
+			}
+		case "manual":
+			if r.Mode != "api" {
+				continue
+			}
+			if row.Binding == "controller" && !controller || row.Binding == "dns" && !dns || row.Binding == "surge" && !surge {
+				continue
+			}
+		}
+		out = append(out, row)
+	}
+	return out
+}
+
+// ReconcileAll drives both backends with the same health inputs. Either may
+// fail independently; errors are joined so one broken backend never masks
+// the other.
+func (m *Manager) ReconcileAll(ctx context.Context, controller, dns, surge bool) error {
+	var errs []error
+	if m.HasBGPSpeaker() {
+		if e := m.Reconcile(ctx, m.Desired(controller, dns, surge)); e != nil {
+			errs = append(errs, e)
+		}
+	}
+	if e := m.ReconcileAPI(ctx, m.DesiredAPI(controller, dns, surge)); e != nil {
+		errs = append(errs, e)
+	}
+	return errors.Join(errs...)
+}
+
+// ReconcileAPI publishes the given routes through the router API backend.
+func (m *Manager) ReconcileAPI(ctx context.Context, desired []bgp.Advertisement) error {
+	m.mu.RLock()
+	api := m.api
+	m.mu.RUnlock()
+	if api == nil {
+		return nil
+	}
+	return api.Reconcile(ctx, desired)
+}
 func (m *Manager) Reconcile(ctx context.Context, desired []bgp.Advertisement) error {
 	if m.bgp == nil {
 		return nil
@@ -193,9 +282,10 @@ func (m *Manager) UpdateDocument(d config.Document) {
 }
 
 func (m *Manager) Refresh(ctx context.Context) (bool, error) {
-	var err error
+	var err, apiErr error
 	m.mu.RLock()
 	s := bgp.Status{Limit: m.document.Settings.BGP.RouteLimit, Peers: []bgp.PeerStatus{}, Routes: []bgp.Advertisement{}}
+	api := m.api
 	m.mu.RUnlock()
 	if m.bgp != nil {
 		_, err = m.bgp.Refresh(ctx)
@@ -204,18 +294,69 @@ func (m *Manager) Refresh(ctx context.Context) (bool, error) {
 			s.LastError = "BGP inspection failed"
 		}
 	}
+	if api != nil {
+		_, apiErr = api.Refresh(ctx)
+	}
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.snapshot = m.makeStatus(s)
-	return m.snapshot.FakeIPReady, err
+	return m.snapshot.FakeIPReady, errors.Join(err, apiErr)
+}
+
+// ReplaceAPI swaps the router API backend in place while keeping the BGP
+// speaker and its sessions untouched. The next reconciliation runs against
+// the new configuration.
+func (m *Manager) ReplaceAPI(ctx context.Context, d config.Document) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if m.api != nil {
+		_ = m.api.Close(ctx)
+	}
+	m.replaceAPILocked(d)
+	m.updateDocument(d)
+	s := bgp.Status{Limit: m.document.Settings.BGP.RouteLimit, Peers: []bgp.PeerStatus{}, Routes: []bgp.Advertisement{}}
+	if m.bgp != nil {
+		s = m.bgp.Status()
+	}
+	m.snapshot = m.makeStatus(s)
+}
+
+// replaceAPILocked requires m.mu. A failed construction keeps DNS available
+// and records the reason, mirroring the BGP startup failure contract.
+func (m *Manager) replaceAPILocked(d config.Document) {
+	m.api = nil
+	m.apiStartupError = ""
+	if !d.Settings.Routing.UsesAPI() {
+		return
+	}
+	impl, err := routingapi.New(d.Settings.RoutingAPI, m.notify)
+	if err != nil {
+		m.apiStartupError = "routing API backend unavailable: " + err.Error()
+		if m.notify != nil {
+			m.notify("ERROR", m.apiStartupError)
+		}
+		return
+	}
+	m.api = impl
 }
 func (m *Manager) makeStatus(s bgp.Status) Status {
 	effective := m.effectiveDocument()
 	cfg := effective.Settings
 	r := cfg.Routing.Effective()
-	v := Status{NextHop4: m.nextHop4Status(), BGPRequested: r.UsesBGP() && cfg.BGP.Enabled, Mode: r.Mode, FakeIPBackend: r.FakeIPBackend, DNSBackend: r.DNSBackend, Enabled: s.Enabled, Advertised: s.Advertised, Limit: cfg.BGP.RouteLimit, Peers: s.Peers, Routes: []Route{}, LastError: s.LastError, Limitations: []string{}}
+	v := Status{NextHop4: m.nextHop4Status(), BGPRequested: r.UsesBGP() && cfg.BGP.Enabled, APIRequested: r.UsesAPI(), Mode: r.Mode, FakeIPBackend: r.FakeIPBackend, DNSBackend: r.DNSBackend, Enabled: s.Enabled, Advertised: s.Advertised, Limit: cfg.BGP.RouteLimit, Peers: s.Peers, Routes: []Route{}, LastError: s.LastError, Limitations: []string{}}
+	v.API = routingapi.Status{Routes: []routingapi.RouteState{}}
+	if m.api != nil {
+		v.API = m.api.Status()
+	}
+	if m.apiStartupError != "" {
+		v.API.LastError = m.apiStartupError
+	}
 	if m.startupError != "" {
 		v.LastError = m.startupError
+	}
+	apiStates := map[string]routingapi.RouteState{}
+	for _, row := range v.API.Routes {
+		apiStates[row.Name] = row
 	}
 	present := map[string]bool{}
 	peersReady := len(s.Peers) > 0 && s.LastError == "" && m.startupError == ""
@@ -244,6 +385,9 @@ func (m *Manager) makeStatus(s bgp.Status) Status {
 		}
 		if a.Kind == "manual" {
 			backend = "bgp"
+			if r.Mode == "api" {
+				backend = "api"
+			}
 		}
 		if backend == "static" {
 			confirmed := r.StaticFakeIPConfigured
@@ -268,6 +412,23 @@ func (m *Manager) makeStatus(s bgp.Status) Status {
 			} else {
 				dnsCount++
 				dnsReady = dnsReady && confirmed
+			}
+		} else if backend == "api" {
+			apiReady := v.API.LastError == ""
+			state := apiStates[routingapi.RouteName(a.Kind, a.Prefix)]
+			published := apiReady && state.Present
+			installed := published
+			row := Route{Advertisement: a, Backend: "api", Managed: true, State: "api-pending"}
+			if published {
+				row.State = "api-published"
+			}
+			row.Installed = &installed
+			v.Routes = append(v.Routes, row)
+			if a.Kind == "fake-ip" {
+				fakeReady = fakeReady && published
+			} else {
+				dnsCount++
+				dnsReady = dnsReady && published
 			}
 		} else {
 			announced := false
@@ -296,6 +457,9 @@ func (m *Manager) makeStatus(s bgp.Status) Status {
 		if r.DNSBackend == "static" {
 			v.Limitations = append(v.Limitations, "Persistent DNS interception can cause DNS outages if RoutePilot stops. It is disabled unless explicitly opted in; external failover or manual removal is required.")
 		}
+	}
+	if r.UsesAPI() {
+		v.Limitations = append(v.Limitations, "Router API publication confirms the router accepted the configuration, not its forwarding-plane state.", "Router API credentials are stored encrypted and are never included in exported backups.", "Stopping the service withdraws routes it published, except Fake-IP paths kept for issued answer TTLs.")
 	}
 	v.Limitations = append(v.Limitations, "BGP advertised status confirms local RIB/Adj-RIB-Out, not the remote gateway FIB.")
 	sort.Slice(v.Routes, func(i, j int) bool { return v.Routes[i].Prefix < v.Routes[j].Prefix })
@@ -335,10 +499,18 @@ func (m *Manager) ActiveStatus() Status {
 // The first health snapshot may precede Refresh; it is not resource ownership.
 func (m *Manager) HasBGPSpeaker() bool { return m.bgp != nil }
 func (m *Manager) Close(ctx context.Context) error {
+	var errs []error
 	if m.bgp != nil {
-		return m.bgp.Close(ctx)
+		errs = append(errs, m.bgp.Close(ctx))
 	}
-	return nil
+	m.mu.Lock()
+	api := m.api
+	m.api = nil
+	m.mu.Unlock()
+	if api != nil {
+		errs = append(errs, api.Close(ctx))
+	}
+	return errors.Join(errs...)
 }
 func (m *Manager) Verify(ctx context.Context, prefix, target string, port int) (Verification, error) {
 	var route *Route

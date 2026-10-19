@@ -189,6 +189,9 @@ func (s *Store) SaveStatistics(ctx context.Context, id string, value any) error 
 	return err
 }
 func (s *Store) crypt(value string, encrypt bool) (string, error) {
+	return s.cryptPurpose(value, encrypt, "surge-api-token-v1")
+}
+func (s *Store) cryptPurpose(value string, encrypt bool, purpose string) (string, error) {
 	block, e := aes.NewCipher(s.key)
 	if e != nil {
 		return "", e
@@ -202,13 +205,13 @@ func (s *Store) crypt(value string, encrypt bool) (string, error) {
 		if _, e = rand.Read(nonce); e != nil {
 			return "", e
 		}
-		return base64.StdEncoding.EncodeToString(a.Seal(nonce, nonce, []byte(value), []byte("surge-api-token-v1"))), nil
+		return base64.StdEncoding.EncodeToString(a.Seal(nonce, nonce, []byte(value), []byte(purpose))), nil
 	}
 	raw, e := base64.StdEncoding.DecodeString(value)
 	if e != nil || len(raw) < a.NonceSize() {
 		return "", errors.New("invalid stored secret")
 	}
-	plain, e := a.Open(nil, raw[:a.NonceSize()], raw[a.NonceSize():], []byte("surge-api-token-v1"))
+	plain, e := a.Open(nil, raw[:a.NonceSize()], raw[a.NonceSize():], []byte(purpose))
 	return string(plain), e
 }
 func (s *Store) Save(ctx context.Context, d config.Document) error {
@@ -228,6 +231,19 @@ func (s *Store) Save(ctx context.Context, d config.Document) error {
 			return e
 		}
 		d.Settings.Surge.APIToken = v
+	}
+	for _, secret := range []struct {
+		value   *string
+		purpose string
+	}{{&d.Settings.RoutingAPI.Password, "routepilot-routing-api-password-v1"}, {&d.Settings.RoutingAPI.HeaderValue, "routepilot-routing-api-header-v1"}} {
+		if *secret.value == "" {
+			continue
+		}
+		v, e := s.cryptPurpose(*secret.value, true, secret.purpose)
+		if e != nil {
+			return e
+		}
+		*secret.value = v
 	}
 	d.Settings.Security.Password = ""
 	tx, e := s.DB.BeginTx(ctx, nil)
@@ -290,6 +306,18 @@ func (s *Store) Load(ctx context.Context) (config.Document, error) {
 	}
 	if d.Settings.Surge.APIToken != "" {
 		d.Settings.Surge.APIToken, e = s.crypt(d.Settings.Surge.APIToken, false)
+		if e != nil {
+			return d, e
+		}
+	}
+	for _, secret := range []struct {
+		value   *string
+		purpose string
+	}{{&d.Settings.RoutingAPI.Password, "routepilot-routing-api-password-v1"}, {&d.Settings.RoutingAPI.HeaderValue, "routepilot-routing-api-header-v1"}} {
+		if *secret.value == "" {
+			continue
+		}
+		*secret.value, e = s.cryptPurpose(*secret.value, false, secret.purpose)
 		if e != nil {
 			return d, e
 		}

@@ -224,11 +224,19 @@ The LaunchDaemon runs as root for PF and privileged ports, while Surge CLI child
 
 `internal/routing.Manager` is the routing contract consumed by application health,
 issuance state and shutdown. GoBGP is an optional implementation behind its
-`Backend` interface. The state machine accepts routing readiness, with no BGP
-input. Pure Static never starts a BGP speaker; Hybrid chooses Fake-IP and DNS
-interception backends independently. BGP startup/peer failures do not disable
-DNS policy, Surge or real resolvers, and cannot block confirmed static Fake-IP
+`Backend` interface; a router HTTP API is an optional implementation behind the
+`APIBackend` interface (`internal/routingapi`). The state machine accepts routing
+readiness, with no BGP input. Pure Static never starts a BGP speaker; Hybrid chooses
+Fake-IP and DNS interception backends independently. BGP startup/peer failures do not
+disable DNS policy, Surge or real resolvers, and cannot block confirmed static Fake-IP
 readiness when BGP belongs only to the interception path.
+
+The router API backend publishes through OpenWrt ubus/uci, the UniFi OS Integration
+API or operator-rendered custom templates. Every reconciliation reads the router
+first, so restarts recover state and leftovers are withdrawn; `api-published` claims
+acceptance by the router, never forwarding-plane installation. API configuration
+changes swap the backend in place without touching the BGP speaker or DNS. Credentials
+are encrypted with their own store purpose and stripped from exports.
 
 Static rows have `backend=static`, `managed=false`, `installed=null`,
 `verified=false` and an explicit operator-confirmed flag. The common manager

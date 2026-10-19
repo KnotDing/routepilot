@@ -184,6 +184,7 @@ type Settings struct {
 	DHCP           DHCP          `json:"dhcp"`
 	RemoteBackends []Backend     `json:"remote_backends"`
 	Routing        Routing       `json:"routing"`
+	RoutingAPI     RoutingAPI    `json:"routing_api"`
 	General        General       `json:"general"`
 	DNS            DNS           `json:"dns"`
 	Surge          Surge         `json:"surge"`
@@ -296,6 +297,7 @@ func HostPattern(domain, match string) (string, error) {
 func (d Document) Clone() Document {
 	c := d
 	c.Settings.DHCP = d.Settings.DHCP.Clone()
+	c.Settings.RoutingAPI = d.Settings.RoutingAPI.Clone()
 	c.Settings.Cache = cloneCachePolicies(d.Settings.Cache)
 	if d.Settings.Notifications.Errors != nil {
 		c.Settings.Notifications.Errors = append([]string{}, d.Settings.Notifications.Errors...)
@@ -460,6 +462,11 @@ func (d Document) Validate() error {
 	if e := routing.Validate(); e != nil {
 		return e
 	}
+	if routing.UsesAPI() {
+		if e := s.RoutingAPI.Effective().Validate(); e != nil {
+			return e
+		}
+	}
 	if s.DNS.InterceptionEnabled && routing.DNSBackend == "static" && !routing.StaticDNSInterception {
 		return errors.New("persistent static DNS interception requires explicit opt-in")
 	}
@@ -621,7 +628,7 @@ func (d Document) Validate() error {
 		if e != nil {
 			return e
 		}
-		if (routing.FakeIPBackend == "bgp" && s.BGP.Enabled || routing.FakeIPBackend == "static" && routing.StaticFakeIPConfigured) && prefix.Addr().Is6() && s.Surge.NextHop6 == "" {
+		if (routing.FakeIPBackend == "bgp" && s.BGP.Enabled || routing.FakeIPBackend == "static" && routing.StaticFakeIPConfigured || routing.FakeIPBackend == "api") && prefix.Addr().Is6() && s.Surge.NextHop6 == "" {
 			return errors.New("configured IPv6 Fake-IP routing requires a Surge IPv6 next hop")
 		}
 		if networks[p] {
@@ -794,6 +801,12 @@ func (d Document) Redacted() Document {
 	d.Settings.Notifications.ClearWebhook = false
 	d.Settings.Surge.TokenConfigured = d.Settings.Surge.APIToken != ""
 	d.Settings.Surge.APIToken = ""
+	d.Settings.RoutingAPI.PasswordConfigured = d.Settings.RoutingAPI.Password != ""
+	d.Settings.RoutingAPI.Password = ""
+	d.Settings.RoutingAPI.ClearPassword = false
+	d.Settings.RoutingAPI.HeaderConfigured = d.Settings.RoutingAPI.HeaderValue != ""
+	d.Settings.RoutingAPI.HeaderValue = ""
+	d.Settings.RoutingAPI.ClearHeader = false
 	d.Settings.Security.PasswordConfigured = d.Settings.Security.PasswordHash != ""
 	d.Settings.Security.PasswordHash = ""
 	d.Settings.Security.Password = ""

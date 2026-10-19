@@ -4,10 +4,75 @@
 |---|---|---|---|
 | BGP | BGP 发布至 Surge 下一跳 | BGP 发布至 Controller 下一跳 | 仅使用此后端时启用 |
 | Static | 用户手动配置外部路由 | 可选；需独立持久拦截许可 | 不启动 BGP |
-| Hybrid | 独立选择 BGP / Static | 独立选择 BGP / Static | 仅为选用 BGP 的路径启用 |
+| Hybrid | 独立选择 BGP / Static / API | 独立选择 BGP / Static / API | 仅为选用 BGP 的路径启用 |
+| API | 调用路由器管理 API 发布 | 调用路由器管理 API 发布 | 不启动 BGP |
 
 DNS 分类、Hosts、Surge CLI/Fake-IP DNS 和 Real-IP 转发与 BGP 生命周期独立。
 路由门禁决定是否允许向客户端发行新的 Fake-IP，不决定这些解析器是否可运行。
+
+## API 路由模式
+
+API 模式通过路由器的 HTTP 管理接口发布与撤销路由，面向不支持 BGP 的网关。
+在「设置 → 路由」选择 API 模式（或 Hybrid 中把某一类路由交给 API）后，配置
+「路由器 API」区块：预设、路由器地址、认证信息，预设为 `custom` 时再填写请求模板。
+
+### 预设
+
+- **OpenWrt**：通过 `POST /ubus` 的 JSON-RPC 调用 `session.login` 建立会话，用 `uci`
+  在 `/etc/config/network` 中创建 `rp_<hash>` 命名路由段（IPv4 为 `route` + `target`/`netmask`/
+  `gateway`，IPv6 为 `route6` + `target`/`gateway`），随后 `uci commit` 并 `network reload`
+  生效。需要路由器管理员账号（用户名 + 密码）；适配 OpenWrt 18.06 及以上。路由段以
+  `rp_` 前缀标识，重启后通过 `uci get` 恢复对照。
+- **UniFi OS**：使用 UniFi Network Application 的 Integration API
+  （`/proxy/network/integration/v1/routes`），以 `X-API-KEY` 请求头认证。路由以
+  `routepilot-` 开头的名称标识，支持创建（POST）、列出（GET）与删除（DELETE）。
+  仅适用于提供该接口的 UniFi OS 网关（UDM / UDR / UX 等）；API 密钥在网关系统设置中
+  生成。网关使用自签证书时可关闭证书校验。
+- **自定义**：完全自定义三个请求——添加（发布一条路由）、删除（按列表结果中的 ID 撤销）、
+  列表（读取路由器现状）。列表请求是必需的：RoutePilot 每轮对账先读取现状，再决定
+  增删，这也是重启后不重复创建、能清理残留路由的前提。
+
+### 自定义模板变量
+
+| 变量 | 含义 |
+|---|---|
+| `{{name}}` | 路由标识名，`routepilot-<用途>-<网段>`；**必须**用作路由名称，否则残留无法识别 |
+| `{{prefix}}` | 完整网段，如 `198.18.0.0/15` |
+| `{{target}}` | IPv4 网络地址或 IPv6 前缀 |
+| `{{netmask}}` | IPv4 掩码（IPv6 为空） |
+| `{{next_hop}}` | 下一跳地址 |
+| `{{route_type}}` | OpenWrt 风格的 `route` / `route6` |
+| `{{values}}` | 预构造的 OpenWrt uci values JSON 片段 |
+| `{{id}}` | 删除请求中列表返回的路由 ID |
+| `{{section}}` | OpenWrt 风格的 `rp_<hash>` 段名 |
+| `{{session}}` | ubus 会话令牌（认证方式为 ubus 时） |
+| `{{api_key}}` | 请求头密钥（认证方式为 header 时） |
+
+模板中的方法、路径、请求头与请求体都支持变量替换；请求头与请求体在提交前做 JSON
+校验，未知变量名会被拒绝。认证方式可选无认证、请求头密钥（名称 + 值）或 OpenWrt
+ubus 会话（用户名 + 密码）。
+
+### 行为与门禁
+
+- 发布状态 `api-published` 仅代表路由器接受了配置；它不证明转发平面已安装该路由，
+  等同于 BGP `announced` 只代表本地 Adj-RIB-Out 的边界。
+- 每个健康周期先读取路由器现状再对账：缺失的发布、变更的先删后建、不再需要的
+  （含重启前残留）撤销。路由器不可达时本轮跳过变更并报告错误，下轮重试。
+- Fake-IP 发放门禁要求所选路由已发布且最近一次对账无错误；Surge 不可用、
+  下一跳未就绪时的行为与 BGP 模式一致。
+- 服务停止时撤销已发布路由；已发行 Fake-IP 答案的 TTL / 宽限期保留逻辑与 BGP
+  相同（`KeepSurgeRoutes`）。
+- 手动路由在 API 模式下同样通过 API 发布；Hybrid 模式下手动路由仍走 BGP。
+- API 配置变更只热替换 API 后端，不重建 BGP 会话，也不重启 DNS。
+
+### 安全边界
+
+- 路由器 API 凭据（密码、密钥）加密存储在后台数据库，与 Webhook、Surge API 凭据
+  相同的合并与加密机制；管理页面留空表示保留，可显式清除；导出备份不含凭据。
+- 路由器地址必须是 HTTP(S) URL，不允许内嵌用户信息、查询串或 fragment。
+- 关闭证书校验仅应作用于局域网自签路由器；该选择会在配置中明文记录。
+- RoutePilot 只通过配置的 API 操作路由，不执行路由器命令、不安装系统路由，
+  也不读取路由器上的其他配置。`network reload` 期间路由器按自身行为应用配置。
 
 ## Surge IPv4 下一跳自动探测
 

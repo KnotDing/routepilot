@@ -36,6 +36,7 @@ import {AppIcon} from './app-icon';
 import {LanguageSelector} from './language';
 import {cacheText} from './cache-i18n';
 import {RoutingPanel,RoutingSettingsFields} from './routing';
+import {RoutingAPISettings} from './routing-api-settings';
 import {SurgeNextHop4Status} from './surge-next-hop';
 import {DNSInterceptionConfirmation} from './dns-interception';
 import {ClientsPanel,clientDisplaySettings} from './clients';
@@ -73,7 +74,7 @@ const labels={automatic_check:'自动检查新版本',check_beta:'自动检查 B
 const detailLabels={persistent:'长期缓存',query_type:'查询类型',client_ip:'客户端 IP',client_port:'客户端端口',original_destination_ip:'原始目标 IP',original_destination_port:'原始目标端口',transport:'传输协议',question:'问题',intercepted:'透明拦截',received_at:'接收时间',confidence:'置信度',matched_rule:'匹配规则',policy:'策略',final_policy:'最终策略',reason:'原因',created_at:'创建时间',expires_at:'过期时间',classification_ms:'规则求值耗时（毫秒）',resolver_ms:'解析耗时（毫秒）',resolver:'解析器',rcode:'响应代码',latency_ms:'总耗时（毫秒）',last_success:'最近成功',last_failure:'最近失败',successes:'连续成功次数',failures:'连续失败次数',last_error:'最近错误',kind:'类型',backend:'路由方式',state:'服务状态',advertised:'已发布前缀'};
 const securityHints={allowed_networks:'这些网段允许访问管理接口，但仍需登录；免认证白名单中的 IP 自动获得访问权限。',auth_bypass_networks:'匹配的客户端直接进入管理页面和 CLI，无需用户名密码。留空关闭；写操作仍校验 CSRF。',trusted_proxies:'只填写实际代理的来源地址。非可信连接的转发头会被忽略；缺少真实客户端 IP 时不免认证。',proxy_origins:'例如 https://routepilot.example.com；不包含路径。代理访问域名需要在此登记；HTTPS 终止后仍使用安全 Cookie。',proxy_client_ip_header:'默认 X-Forwarded-For。代理必须改写选中的 IP 头，以及转发的 Host 和 Proto；不从其他 IP 头回退。'};
 const securityNetworkFields=['allowed_networks','auth_bypass_networks','trusted_proxies','proxy_origins','proxy_client_ip_header'];
-const choices={proxy_client_ip_header:['X-Forwarded-For','X-Real-IP','Forwarded'],update_source:['github','gitea'],aaaa_fallback:['surge','block','upstream'],fake_ip_backend:['bgp','static'],dns_backend:['bgp','static'],mode:['auto','force-direct','force-surge'],theme:['system','light','dark'],health_binding:['none','controller','surge','dns'],match:['exact','suffix'],decision:['DIRECT','SURGE','REJECT'],protocol:['udp','tcp','dot','doh'],level:['debug','info','warn','error']};
+const choices={proxy_client_ip_header:['X-Forwarded-For','X-Real-IP','Forwarded'],update_source:['github','gitea'],aaaa_fallback:['surge','block','upstream'],fake_ip_backend:['bgp','static','api'],dns_backend:['bgp','static','api'],mode:['auto','force-direct','force-surge'],theme:['system','light','dark'],health_binding:['none','controller','surge','dns'],match:['exact','suffix'],decision:['DIRECT','SURGE','REJECT'],protocol:['udp','tcp','dot','doh'],level:['debug','info','warn','error']};
 export function Field({name,value,onChange,options,label:overrideLabel,autoComplete:autocompleteOverride,required=false,hint,tooltip,disabled=false,...limits}){
  const t=useT();
  if(name==='policy_upstreams')return <PolicyDNSEditor value={value} onChange={onChange}/>;
@@ -143,6 +144,7 @@ export function Settings({settings,refresh,notify,status={},backend=null,interce
      {category==='routing'?<>
       <div className="form-grid"><Field name="mode" label={t('分流模式')} required value={draft.general?.mode||'auto'} hint="选择当前后端的全局 DNS 分流策略，保存设置后生效。" onChange={mode=>setDraft({...draft,general:{...draft.general,mode}})}/></div>
       <RoutingSettingsFields automatic={!draft.surge?.next_hop4} nextHop4={surgeStatus.next_hop4} draft={draft.routing} onChange={routing=>setDraft({...draft,routing})}/>
+      {(draft.routing?.mode==='api'||draft.routing?.mode==='hybrid'&&(draft.routing?.fake_ip_backend==='api'||draft.routing?.dns_backend==='api'))&&<RoutingAPISettings draft={draft.routing_api||{}} onChange={api=>setDraft({...draft,routing_api:api})} disabled={saving}/>}
       {['bgp','hybrid'].includes(draft.routing?.mode)&&<section className="panel"><h3>BGP</h3><div className="form-grid">{Object.entries(draft.bgp||{}).filter(([,value])=>typeof value!=='boolean').map(entry=>renderField(entry,'bgp'))}</div><div className="option-grid">{Object.entries(draft.bgp||{}).filter(([,value])=>typeof value==='boolean').map(entry=>renderField(entry,'bgp'))}</div></section>}
      </>:category==='dns'?<DNSSettingsFields entries={entries} renderField={renderField}/>:category==='security'?<>
       <section className="panel"><h3>{t('管理认证与 TLS')}</h3><div className="option-grid">{entries.filter(([k,v])=>typeof v==='boolean').map(renderField)}</div><div className="form-grid">{entries.filter(([k,v])=>typeof v!=='boolean'&&!securityNetworkFields.includes(k)).map(renderField)}</div></section>

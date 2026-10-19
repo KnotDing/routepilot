@@ -68,6 +68,7 @@ func makeConfigurationBackup(document config.Document, sections []string) (confi
 	}
 	if selected["routing"] {
 		filtered.Settings.Routing = document.Settings.Routing
+		filtered.Settings.RoutingAPI = document.Settings.RoutingAPI.Clone()
 	}
 	if selected["bgp"] {
 		filtered.Settings.BGP = document.Settings.BGP
@@ -145,6 +146,13 @@ func mergeBackup(current, incoming config.Document, sections []string) (config.D
 	}
 	if selected["routing"] {
 		merged.Settings.Routing = incoming.Settings.Routing
+		// Backups never carry credentials; the incoming template and address
+		// replace the local ones while mergeSecrets preserves stored secrets.
+		merged.Settings.RoutingAPI = incoming.Settings.RoutingAPI.Clone()
+		merged.Settings.RoutingAPI.Password = current.Settings.RoutingAPI.Password
+		merged.Settings.RoutingAPI.PasswordConfigured = current.Settings.RoutingAPI.PasswordConfigured
+		merged.Settings.RoutingAPI.HeaderValue = current.Settings.RoutingAPI.HeaderValue
+		merged.Settings.RoutingAPI.HeaderConfigured = current.Settings.RoutingAPI.HeaderConfigured
 	}
 	if selected["bgp"] {
 		merged.Settings.BGP = incoming.Settings.BGP

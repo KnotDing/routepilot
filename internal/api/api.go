@@ -870,6 +870,20 @@ func mergeSecrets(d, old *config.Document) error {
 	if d.Settings.Surge.APIToken == "" {
 		d.Settings.Surge.APIToken = old.Settings.Surge.APIToken
 	}
+	if d.Settings.RoutingAPI.ClearPassword {
+		d.Settings.RoutingAPI.Password = ""
+	} else if d.Settings.RoutingAPI.Password == "" {
+		d.Settings.RoutingAPI.Password = old.Settings.RoutingAPI.Password
+	}
+	d.Settings.RoutingAPI.ClearPassword = false
+	d.Settings.RoutingAPI.PasswordConfigured = false
+	if d.Settings.RoutingAPI.ClearHeader {
+		d.Settings.RoutingAPI.HeaderValue = ""
+	} else if d.Settings.RoutingAPI.HeaderValue == "" {
+		d.Settings.RoutingAPI.HeaderValue = old.Settings.RoutingAPI.HeaderValue
+	}
+	d.Settings.RoutingAPI.ClearHeader = false
+	d.Settings.RoutingAPI.HeaderConfigured = false
 	d.Settings.Security.PasswordHash = old.Settings.Security.PasswordHash
 	if p := d.Settings.Security.Password; p != "" {
 		if len(p) < 12 || len(p) > 72 {

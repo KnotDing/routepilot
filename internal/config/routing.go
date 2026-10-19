@@ -28,6 +28,9 @@ func (r Routing) Effective() Routing {
 	case "static":
 		r.FakeIPBackend = "static"
 		r.DNSBackend = "static"
+	case "api":
+		r.FakeIPBackend = "api"
+		r.DNSBackend = "api"
 	}
 	return r
 }
@@ -39,17 +42,25 @@ func (r Routing) Validate() error {
 			return errors.New("invalid confirmed static Fake-IP IPv4 next hop")
 		}
 	}
-	if r.Mode != "bgp" && r.Mode != "static" && r.Mode != "hybrid" {
-		return errors.New("routing mode must be bgp, static or hybrid")
+	if r.Mode != "bgp" && r.Mode != "static" && r.Mode != "hybrid" && r.Mode != "api" {
+		return errors.New("routing mode must be bgp, static, hybrid or api")
 	}
 	for _, b := range []string{r.FakeIPBackend, r.DNSBackend} {
-		if b != "bgp" && b != "static" {
-			return errors.New("routing backend must be bgp or static")
+		if b != "bgp" && b != "static" && b != "api" {
+			return errors.New("routing backend must be bgp, static or api")
 		}
 	}
 	return nil
 }
 func (r Routing) UsesBGP() bool {
 	r = r.Effective()
-	return r.Mode != "static" && (r.FakeIPBackend == "bgp" || r.DNSBackend == "bgp")
+	return r.Mode != "static" && r.Mode != "api" && (r.FakeIPBackend == "bgp" || r.DNSBackend == "bgp")
+}
+
+// UsesAPI reports whether any routing path relies on the router API backend.
+// Manual routes follow it only in the dedicated api mode, matching the BGP
+// behaviour where manual routes are announced when that mode is selected.
+func (r Routing) UsesAPI() bool {
+	r = r.Effective()
+	return r.Mode == "api" || r.Mode == "hybrid" && (r.FakeIPBackend == "api" || r.DNSBackend == "api")
 }
