@@ -227,7 +227,8 @@ issuance state and shutdown. GoBGP is an optional implementation behind its
 `Backend` interface; a router HTTP API is an optional implementation behind the
 `APIBackend` interface (`internal/routingapi`). The state machine accepts routing
 readiness, with no BGP input. Pure Static never starts a BGP speaker; Hybrid chooses
-Fake-IP and DNS interception backends independently. BGP startup/peer failures do not
+Fake-IP, DNS interception and manual-route backends independently, and documents saved
+without a manual selection keep those routes on BGP. BGP startup/peer failures do not
 disable DNS policy, Surge or real resolvers, and cannot block confirmed static Fake-IP
 readiness when BGP belongs only to the interception path.
 

@@ -64,7 +64,7 @@ func TestRoutingAPIValidate(t *testing.T) {
 
 func TestRoutingModeAPI(t *testing.T) {
 	api := Routing{Mode: "api"}.Effective()
-	if api.FakeIPBackend != "api" || api.DNSBackend != "api" {
+	if api.FakeIPBackend != "api" || api.DNSBackend != "api" || api.ManualBackend != "api" {
 		t.Fatalf("api mode must select the api backend: %+v", api)
 	}
 	if !api.UsesAPI() || api.UsesBGP() {
@@ -77,7 +77,15 @@ func TestRoutingModeAPI(t *testing.T) {
 	if !hybrid.UsesAPI() || !hybrid.UsesBGP() {
 		t.Fatal("hybrid must report both backends when mixed")
 	}
-	hybridStatic := Routing{Mode: "hybrid", FakeIPBackend: "static", DNSBackend: "static"}
+	hybridManual := Routing{Mode: "hybrid", FakeIPBackend: "bgp", DNSBackend: "bgp", ManualBackend: "api"}
+	if !hybridManual.UsesAPI() || !hybridManual.UsesBGP() {
+		t.Fatal("hybrid manual api selection must report both backends")
+	}
+	legacyHybrid := Routing{Mode: "hybrid", FakeIPBackend: "static", DNSBackend: "bgp"}
+	if legacyHybrid.Effective().ManualBackend != "bgp" {
+		t.Fatal("older hybrid documents without a manual selection keep manual routes on BGP")
+	}
+	hybridStatic := Routing{Mode: "hybrid", FakeIPBackend: "static", DNSBackend: "static", ManualBackend: "static"}
 	if hybridStatic.UsesAPI() || hybridStatic.UsesBGP() {
 		t.Fatal("hybrid without selected backends must report neither")
 	}
@@ -89,6 +97,9 @@ func TestRoutingModeAPI(t *testing.T) {
 	}
 	if (Routing{Mode: "api", FakeIPBackend: "static"}).Effective().FakeIPBackend != "api" {
 		t.Fatal("api mode must pin the backend selection")
+	}
+	if e := (Routing{Mode: "hybrid", FakeIPBackend: "bgp", DNSBackend: "bgp", ManualBackend: "custom"}).Validate(); e == nil {
+		t.Fatal("invalid manual backend must be rejected")
 	}
 }
 

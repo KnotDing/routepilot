@@ -4,16 +4,16 @@ import React,{useState} from 'react';
 import {request} from './client';
 import {routingText} from './routing-i18n';
 import {useLocale} from './locale';
-const initialRouting={mode:'bgp',fake_ip_backend:'bgp',dns_backend:'bgp',static_fake_ip_configured:false,static_dns_interception:false,static_dns_configured:false};
+const initialRouting={mode:'bgp',fake_ip_backend:'bgp',dns_backend:'bgp',manual_backend:'bgp',static_fake_ip_configured:false,static_dns_interception:false,static_dns_configured:false};
 const backendLabel=value=>({bgp:'BGP',static:'Static',hybrid:'Hybrid',api:'API'})[value]||value;
 export function RoutingSettingsFields({draft=initialRouting,onChange,automatic=false,nextHop4}) {
  const [locale]=useLocale(),t=routingText(locale);
- const effective=draft.mode==='hybrid'?draft:{...draft,fake_ip_backend:draft.mode,dns_backend:draft.mode};
+ const effective=draft.mode==='hybrid'?draft:{...draft,fake_ip_backend:draft.mode,dns_backend:draft.mode,manual_backend:draft.mode};
  const edit=(key,value)=>onChange({...draft,[key]:value,...['mode','fake_ip_backend','dns_backend'].includes(key)?{static_fake_ip_configured:false,static_dns_configured:false}:key==='static_dns_interception'?{static_dns_configured:false}:key==='static_fake_ip_configured'?{static_fake_ip_next_hop4:''}:{}});
  const selection=(key,label,values)=><FieldLabel label={t(label)} required><select aria-label={t(label)} value={draft[key]} onChange={e=>edit(key,e.target.value)}>{values.map(value=><option key={value} value={value}>{backendLabel(value)}</option>)}</select></FieldLabel>;
  const staleConfirmation=effective.fake_ip_backend==='static'&&draft.static_fake_ip_configured&&automatic&&draft.static_fake_ip_next_hop4&&nextHop4?.address&&draft.static_fake_ip_next_hop4!==nextHop4.address;
  const check=(key,label)=><label className="check"><input type="checkbox" checked={Boolean(draft[key])&&!(key==='static_fake_ip_configured'&&staleConfirmation)} onChange={e=>edit(key,e.target.checked)}/>{t(label)}</label>;
- return <><div className="form-grid">{selection('mode','mode',['bgp','static','hybrid','api'])}{draft.mode==='hybrid'&&<>{selection('fake_ip_backend','fakeBackend',['bgp','static','api'])}{selection('dns_backend','dnsBackend',['bgp','static','api'])}</>}</div><div className="option-grid">{effective.fake_ip_backend==='static'&&check('static_fake_ip_configured','fakeConfirmed')}{effective.dns_backend==='static'&&check('static_dns_interception','staticDNS')}</div>{staleConfirmation&&<p role="alert">{t('autoNextHopChanged')}</p>}<p className="routing-limit">{t((draft.mode||'bgp')+'Limit')}{effective.dns_backend==='static'&&draft.static_dns_interception&&' '+t('staticRisk')}</p></>;
+ return <><div className="form-grid">{selection('mode','mode',['bgp','static','hybrid','api'])}{draft.mode==='hybrid'&&<>{selection('fake_ip_backend','fakeBackend',['bgp','static','api'])}{selection('dns_backend','dnsBackend',['bgp','static','api'])}{selection('manual_backend','manualBackend',['bgp','static','api'])}</>}</div><div className="option-grid">{effective.fake_ip_backend==='static'&&check('static_fake_ip_configured','fakeConfirmed')}{effective.dns_backend==='static'&&check('static_dns_interception','staticDNS')}</div>{staleConfirmation&&<p role="alert">{t('autoNextHopChanged')}</p>}<p className="routing-limit">{t((draft.mode||'bgp')+'Limit')}{effective.dns_backend==='static'&&draft.static_dns_interception&&' '+t('staticRisk')}</p></>;
 }
 export function RoutingPanel({settings,snapshot,refresh,notify}) {
  const [probe,setProbe]=useState({prefix:'',target:'',port:443}),[result,setResult]=useState(null),[busy,setBusy]=useState(false);

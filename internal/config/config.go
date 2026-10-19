@@ -340,7 +340,7 @@ func (d Document) Clone() Document {
 
 func Default() Document {
 	return Document{Version: 1, Settings: Settings{
-		Routing: Routing{Mode: "bgp", FakeIPBackend: "bgp", DNSBackend: "bgp"},
+		Routing: Routing{Mode: "bgp", FakeIPBackend: "bgp", DNSBackend: "bgp", ManualBackend: "bgp"},
 		General: General{"127.0.0.1:1055", "auto", "system"},
 		DNS:     DNS{AAAAFallback: "surge", Listeners: []string{"127.0.0.1:1053"}, PreserveOriginal: true, TimeoutMS: 2000, SourcePortFirst: 20000, SourcePortLast: 20999, Upstreams: []resolver.ResolverEndpoint{{Name: "Cloudflare", Protocol: "udp", Address: "1.1.1.1:53", Enabled: true}}},
 		Surge:   Surge{CLIPath: "/Applications/Surge.app/Contents/Applications/surge-cli", DNS: "198.18.0.2:53", FakePrefixes: []string{"198.18.0.0/15"}},

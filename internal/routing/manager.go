@@ -60,6 +60,7 @@ type Status struct {
 	Mode                 string            `json:"mode"`
 	FakeIPBackend        string            `json:"fake_ip_backend"`
 	DNSBackend           string            `json:"dns_backend"`
+	ManualBackend        string            `json:"manual_backend"`
 	Enabled              bool              `json:"enabled"` // BGP engine, not DNS availability
 	Advertised           int               `json:"advertised"`
 	Limit                int               `json:"limit"`
@@ -161,6 +162,9 @@ func (m *Manager) Desired(controller, dns, surge bool) []bgp.Advertisement {
 				continue
 			}
 		case "manual":
+			if r.ManualBackend != "bgp" {
+				continue
+			}
 			if row.Binding == "controller" && !controller || row.Binding == "dns" && !dns || row.Binding == "surge" && !surge {
 				continue
 			}
@@ -171,8 +175,9 @@ func (m *Manager) Desired(controller, dns, surge bool) []bgp.Advertisement {
 }
 
 // DesiredAPI selects the routes the router API backend should publish. Manual
-// routes follow it only in the dedicated api mode; hybrid keeps them on BGP,
-// matching the behaviour of the existing backends.
+// routes join it whenever the manual backend selection picks the API, in the
+// dedicated api mode and in hybrid alike, mirroring Fake-IP and DNS
+// interception.
 func (m *Manager) DesiredAPI(controller, dns, surge bool) []bgp.Advertisement {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
@@ -199,7 +204,7 @@ func (m *Manager) desiredAPI(controller, dns, surge bool) []bgp.Advertisement {
 				continue
 			}
 		case "manual":
-			if r.Mode != "api" {
+			if r.ManualBackend != "api" {
 				continue
 			}
 			if row.Binding == "controller" && !controller || row.Binding == "dns" && !dns || row.Binding == "surge" && !surge {
@@ -245,7 +250,7 @@ func (m *Manager) Reconcile(ctx context.Context, desired []bgp.Advertisement) er
 	r := m.document.Settings.Routing.Effective()
 	m.mu.RUnlock()
 	for _, row := range desired {
-		if row.Kind == "fake-ip" && r.FakeIPBackend != "bgp" || row.Kind == "dns-interception" && r.DNSBackend != "bgp" {
+		if row.Kind == "fake-ip" && r.FakeIPBackend != "bgp" || row.Kind == "dns-interception" && r.DNSBackend != "bgp" || row.Kind == "manual" && r.ManualBackend != "bgp" {
 			return errors.New("external static routes cannot be sent to BGP")
 		}
 	}
@@ -343,7 +348,7 @@ func (m *Manager) makeStatus(s bgp.Status) Status {
 	effective := m.effectiveDocument()
 	cfg := effective.Settings
 	r := cfg.Routing.Effective()
-	v := Status{NextHop4: m.nextHop4Status(), BGPRequested: r.UsesBGP() && cfg.BGP.Enabled, APIRequested: r.UsesAPI(), Mode: r.Mode, FakeIPBackend: r.FakeIPBackend, DNSBackend: r.DNSBackend, Enabled: s.Enabled, Advertised: s.Advertised, Limit: cfg.BGP.RouteLimit, Peers: s.Peers, Routes: []Route{}, LastError: s.LastError, Limitations: []string{}}
+	v := Status{NextHop4: m.nextHop4Status(), BGPRequested: r.UsesBGP() && cfg.BGP.Enabled, APIRequested: r.UsesAPI(), Mode: r.Mode, FakeIPBackend: r.FakeIPBackend, DNSBackend: r.DNSBackend, ManualBackend: r.ManualBackend, Enabled: s.Enabled, Advertised: s.Advertised, Limit: cfg.BGP.RouteLimit, Peers: s.Peers, Routes: []Route{}, LastError: s.LastError, Limitations: []string{}}
 	v.API = routingapi.Status{Routes: []routingapi.RouteState{}}
 	if m.api != nil {
 		v.API = m.api.Status()
@@ -384,14 +389,14 @@ func (m *Manager) makeStatus(s bgp.Status) Status {
 			backend = r.DNSBackend
 		}
 		if a.Kind == "manual" {
-			backend = "bgp"
-			if r.Mode == "api" {
-				backend = "api"
-			}
+			backend = r.ManualBackend
 		}
 		if backend == "static" {
-			confirmed := r.StaticFakeIPConfigured
-			if a.Kind == "dns-interception" {
+			confirmed := false
+			switch a.Kind {
+			case "fake-ip":
+				confirmed = r.StaticFakeIPConfigured
+			case "dns-interception":
 				confirmed = r.StaticDNSInterception && r.StaticDNSConfigured
 			}
 			state := "declared"
@@ -409,7 +414,7 @@ func (m *Manager) makeStatus(s bgp.Status) Status {
 			v.Routes = append(v.Routes, row)
 			if a.Kind == "fake-ip" {
 				fakeReady = fakeReady && confirmed && a.NextHop != ""
-			} else {
+			} else if a.Kind == "dns-interception" {
 				dnsCount++
 				dnsReady = dnsReady && confirmed
 			}
@@ -426,7 +431,7 @@ func (m *Manager) makeStatus(s bgp.Status) Status {
 			v.Routes = append(v.Routes, row)
 			if a.Kind == "fake-ip" {
 				fakeReady = fakeReady && published
-			} else {
+			} else if a.Kind == "dns-interception" {
 				dnsCount++
 				dnsReady = dnsReady && published
 			}
@@ -452,8 +457,11 @@ func (m *Manager) makeStatus(s bgp.Status) Status {
 	}
 	v.FakeIPReady = fakeReady && m.nextHop4Ready()
 	v.DNSInterceptionReady = !cfg.DNS.InterceptionEnabled || dnsCount > 0 && dnsReady
-	if r.FakeIPBackend == "static" || r.DNSBackend == "static" {
-		v.Limitations = append(v.Limitations, "External static routes are operator declarations; installation is unknown and RoutePilot never installs or withdraws them.", "Operator confirmation permits Fake-IP issuance; optional Mac connectivity probes do not prove gateway or LAN route installation.", "Static Fake-IP routes remain after Surge or RoutePilot stops.")
+	if r.FakeIPBackend == "static" || r.DNSBackend == "static" || r.ManualBackend == "static" {
+		v.Limitations = append(v.Limitations, "External static routes are operator declarations; installation is unknown and RoutePilot never installs or withdraws them.")
+		if r.FakeIPBackend == "static" {
+			v.Limitations = append(v.Limitations, "Operator confirmation permits Fake-IP issuance; optional Mac connectivity probes do not prove gateway or LAN route installation.", "Static Fake-IP routes remain after Surge or RoutePilot stops.")
+		}
 		if r.DNSBackend == "static" {
 			v.Limitations = append(v.Limitations, "Persistent DNS interception can cause DNS outages if RoutePilot stops. It is disabled unless explicitly opted in; external failover or manual removal is required.")
 		}

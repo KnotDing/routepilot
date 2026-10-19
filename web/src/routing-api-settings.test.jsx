@@ -11,7 +11,7 @@ function Harness({children,initial}){
 }
 
 it('offers the API routing mode and backend option',()=>{
- render(<Harness initial={{mode:'bgp',fake_ip_backend:'bgp',dns_backend:'bgp',static_fake_ip_configured:false,static_dns_interception:false,static_dns_configured:false}}>
+ render(<Harness initial={{mode:'bgp',fake_ip_backend:'bgp',dns_backend:'bgp',manual_backend:'bgp',static_fake_ip_configured:false,static_dns_interception:false,static_dns_configured:false}}>
   {(draft,setDraft)=>{draft.mode;return <RoutingSettingsFields draft={draft} onChange={setDraft}/>}}
  </Harness>);
  const mode=screen.getByLabelText(/路由模式|Routing mode/);
@@ -22,6 +22,9 @@ it('offers the API routing mode and backend option',()=>{
  fireEvent.change(backend,{target:{value:'api'}});
  const dns=screen.getByLabelText(/DNS 拦截路由方式|DNS interception method/);
  fireEvent.change(dns,{target:{value:'api'}});
+ const manual=screen.getByLabelText(/手动路由方式|Manual route method/);
+ expect(within(manual).queryByRole('option',{name:'API'})).toBeInTheDocument();
+ fireEvent.change(manual,{target:{value:'api'}});
 });
 
 it('renders router API settings with preset auth fields',()=>{

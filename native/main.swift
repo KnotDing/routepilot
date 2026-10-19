@@ -650,7 +650,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
                 guard remoteNotificationWatches[key] === watch else { continue }
                 let routing = settings["routing"] as? [String: Any] ?? [:]
                 let mode = routing["mode"] as? String ?? "bgp"
-                let usesBGP = mode == "bgp" || mode == "hybrid" && (routing["fake_ip_backend"] as? String == "bgp" || routing["dns_backend"] as? String == "bgp")
+                let usesBGP = mode == "bgp" || mode == "hybrid" && (routing["fake_ip_backend"] as? String == "bgp" || routing["dns_backend"] as? String == "bgp" || routing["manual_backend"] as? String == "bgp")
                 let bgpEnabled = usesBGP && (settings["bgp"] as? [String: Any])?["enabled"] as? Bool == true
                 let active = Set(peers.filter { bgpEnabled && $0["enabled"] as? Bool == true }.compactMap { ($0["address"] as? String).map { "BGP peer " + $0 } })
                 watch.health = health.filter { !($0["name"] as? String ?? "").hasPrefix("BGP peer ") || active.contains($0["name"] as? String ?? "") }
@@ -744,7 +744,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
             let peers = bgp["peers"] as? [[String: Any]] ?? []
             let up = peers.filter { ($0["state"] as? String)?.uppercased() == "ESTABLISHED" }.count
             details.append(item(L("BGP：{up}/{total} 邻居 · {routes} 路由", ["up": up, "total": peers.count, "routes": bgp["advertised"] ?? 0]), enabled: false))
-            details.append(item(L("路由：{mode} · Fake-IP {fake} / DNS {dns}", ["mode": stateText(bgp["mode"] ?? "bgp"), "fake": stateText(bgp["fake_ip_backend"] ?? "bgp"), "dns": stateText(bgp["dns_backend"] ?? "bgp")]), enabled: false))
+            details.append(item(L("路由：{mode} · Fake-IP {fake} / DNS {dns} / 手动 {manual}", ["mode": stateText(bgp["mode"] ?? "bgp"), "fake": stateText(bgp["fake_ip_backend"] ?? "bgp"), "dns": stateText(bgp["dns_backend"] ?? "bgp"), "manual": stateText(bgp["manual_backend"] ?? "bgp")]), enabled: false))
             details.append(item(L("查询：{count} / 分钟", ["count": status["queries_per_minute"] ?? 0]), enabled: false))
         } else {
             let error = L(lastError)
@@ -1313,10 +1313,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
                   let routes = staticView["routes"] as? [[String: Any]], let first = routes.first,
                   first["installed"] is NSNull, first["verified"] as? Bool == false else { throw AppFailure(message: "Static route declaration was reported as installed or verified") }
             report["static_routing_without_bgp"] = true
-            settings["routing"] = ["mode": "hybrid", "fake_ip_backend": "static", "dns_backend": "bgp", "static_fake_ip_configured": false, "static_dns_interception": false, "static_dns_configured": false]
+            settings["routing"] = ["mode": "hybrid", "fake_ip_backend": "static", "dns_backend": "bgp", "manual_backend": "static", "static_fake_ip_configured": false, "static_dns_interception": false, "static_dns_configured": false]
             _ = try await client.call("settings", method: "PUT", body: settings)
             let hybridView = try await client.call("routing/status") as? [String: Any] ?? [:]
-            guard hybridView["fake_ip_backend"] as? String == "static", hybridView["dns_backend"] as? String == "bgp" else { throw AppFailure(message: "Hybrid backend selection failed") }
+            guard hybridView["fake_ip_backend"] as? String == "static", hybridView["dns_backend"] as? String == "bgp", hybridView["manual_backend"] as? String == "static" else { throw AppFailure(message: "Hybrid backend selection failed") }
             report["hybrid_backend_selection"] = true
             settings["routing"] = previousRouting
             _ = try await client.call("settings", method: "PUT", body: settings)

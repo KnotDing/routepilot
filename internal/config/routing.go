@@ -11,6 +11,7 @@ type Routing struct {
 	Mode                   string `json:"mode"`
 	FakeIPBackend          string `json:"fake_ip_backend"`
 	DNSBackend             string `json:"dns_backend"`
+	ManualBackend          string `json:"manual_backend"`
 	StaticFakeIPNextHop4   string `json:"static_fake_ip_next_hop4,omitempty"`
 	StaticFakeIPConfigured bool   `json:"static_fake_ip_configured"`
 	StaticDNSInterception  bool   `json:"static_dns_interception"`
@@ -21,16 +22,24 @@ func (r Routing) Effective() Routing {
 	if r.Mode == "" {
 		r.Mode = "bgp"
 	}
+	// Older hybrid documents carry no manual backend selection; keep those
+	// manual routes on BGP, matching the behaviour they were saved with.
+	if r.ManualBackend == "" {
+		r.ManualBackend = "bgp"
+	}
 	switch r.Mode {
 	case "bgp":
 		r.FakeIPBackend = "bgp"
 		r.DNSBackend = "bgp"
+		r.ManualBackend = "bgp"
 	case "static":
 		r.FakeIPBackend = "static"
 		r.DNSBackend = "static"
+		r.ManualBackend = "static"
 	case "api":
 		r.FakeIPBackend = "api"
 		r.DNSBackend = "api"
+		r.ManualBackend = "api"
 	}
 	return r
 }
@@ -45,7 +54,7 @@ func (r Routing) Validate() error {
 	if r.Mode != "bgp" && r.Mode != "static" && r.Mode != "hybrid" && r.Mode != "api" {
 		return errors.New("routing mode must be bgp, static, hybrid or api")
 	}
-	for _, b := range []string{r.FakeIPBackend, r.DNSBackend} {
+	for _, b := range []string{r.FakeIPBackend, r.DNSBackend, r.ManualBackend} {
 		if b != "bgp" && b != "static" && b != "api" {
 			return errors.New("routing backend must be bgp, static or api")
 		}
@@ -54,13 +63,14 @@ func (r Routing) Validate() error {
 }
 func (r Routing) UsesBGP() bool {
 	r = r.Effective()
-	return r.Mode != "static" && r.Mode != "api" && (r.FakeIPBackend == "bgp" || r.DNSBackend == "bgp")
+	return r.Mode != "static" && r.Mode != "api" && (r.FakeIPBackend == "bgp" || r.DNSBackend == "bgp" || r.ManualBackend == "bgp")
 }
 
 // UsesAPI reports whether any routing path relies on the router API backend.
-// Manual routes follow it only in the dedicated api mode, matching the BGP
-// behaviour where manual routes are announced when that mode is selected.
+// Manual routes follow it in the dedicated api mode and whenever the hybrid
+// manual backend selection picks the API, mirroring Fake-IP and DNS
+// interception.
 func (r Routing) UsesAPI() bool {
 	r = r.Effective()
-	return r.Mode == "api" || r.Mode == "hybrid" && (r.FakeIPBackend == "api" || r.DNSBackend == "api")
+	return r.Mode == "api" || r.Mode == "hybrid" && (r.FakeIPBackend == "api" || r.DNSBackend == "api" || r.ManualBackend == "api")
 }

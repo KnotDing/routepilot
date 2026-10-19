@@ -1,11 +1,11 @@
 # 路由配置
 
-| 模式 | Fake-IP 路径 | DNS 拦截路径 | BGP 是否必需 |
-|---|---|---|---|
-| BGP | BGP 发布至 Surge 下一跳 | BGP 发布至 Controller 下一跳 | 仅使用此后端时启用 |
-| Static | 用户手动配置外部路由 | 可选；需独立持久拦截许可 | 不启动 BGP |
-| Hybrid | 独立选择 BGP / Static / API | 独立选择 BGP / Static / API | 仅为选用 BGP 的路径启用 |
-| API | 调用路由器管理 API 发布 | 调用路由器管理 API 发布 | 不启动 BGP |
+| 模式 | Fake-IP 路径 | DNS 拦截路径 | 手动路由 | BGP 是否必需 |
+|---|---|---|---|---|
+| BGP | BGP 发布至 Surge 下一跳 | BGP 发布至 Controller 下一跳 | BGP 发布 | 仅使用此后端时启用 |
+| Static | 用户手动配置外部路由 | 可选；需独立持久拦截许可 | 用户手动配置外部路由 | 不启动 BGP |
+| Hybrid | 独立选择 BGP / Static / API | 独立选择 BGP / Static / API | 独立选择 BGP / Static / API | 仅为选用 BGP 的路径启用 |
+| API | 调用路由器管理 API 发布 | 调用路由器管理 API 发布 | 调用路由器管理 API 发布 | 不启动 BGP |
 
 DNS 分类、Hosts、Surge CLI/Fake-IP DNS 和 Real-IP 转发与 BGP 生命周期独立。
 路由门禁决定是否允许向客户端发行新的 Fake-IP，不决定这些解析器是否可运行。
@@ -62,7 +62,7 @@ ubus 会话（用户名 + 密码）。
   下一跳未就绪时的行为与 BGP 模式一致。
 - 服务停止时撤销已发布路由；已发行 Fake-IP 答案的 TTL / 宽限期保留逻辑与 BGP
   相同（`KeepSurgeRoutes`）。
-- 手动路由在 API 模式下同样通过 API 发布；Hybrid 模式下手动路由仍走 BGP。
+- 手动路由在 API 模式下同样通过 API 发布；Hybrid 模式下通过「手动路由方式」选择 BGP / Static / API，与 Fake-IP 和 DNS 拦截的选择相互独立。未保存过该选择的旧配置默认保持 BGP；选择 Static 时 RoutePilot 不安装或撤销，路由表显示为外部声明。
 - API 配置变更只热替换 API 后端，不重建 BGP 会话，也不重启 DNS。
 
 ### 安全边界

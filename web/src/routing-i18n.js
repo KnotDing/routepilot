@@ -1,8 +1,8 @@
 const messages={
  'zh-CN':{
   autoNextHopChanged:'Surge VM IPv4 地址已变化，请更新网关静态路由后重新勾选确认并保存。',
-  language:'页面语言',configuration:'路由配置',mode:'路由模式',fakeBackend:'Fake-IP 路由方式',dnsBackend:'DNS 拦截路由方式',
-  bgpLimit:'自动发布与撤销路由；需要可用的 BGP 邻居。',staticLimit:'网关路由由外部管理，停止服务后仍保留。',hybridLimit:'两类路由分别选择后端；静态路由由外部维护。',apiLimit:'通过路由器管理 API 自动发布与撤销路由；需要路由器可达且凭据有效。',
+  language:'页面语言',configuration:'路由配置',mode:'路由模式',fakeBackend:'Fake-IP 路由方式',dnsBackend:'DNS 拦截路由方式',manualBackend:'手动路由方式',
+  bgpLimit:'自动发布与撤销路由；需要可用的 BGP 邻居。',staticLimit:'网关路由由外部管理，停止服务后仍保留。',hybridLimit:'Fake-IP、DNS 拦截与手动路由分别选择后端；选择 Static 的路由由外部维护。',apiLimit:'通过路由器管理 API 自动发布与撤销路由；需要路由器可达且凭据有效。',
   fakeConfirmed:'Fake-IP 路由已在网关配置',staticDNS:'启用静态 DNS 拦截',dnsConfirmAction:'确认网关路由已配置',dnsConfirmed:'✓ 网关路由已确认',staticRisk:'静态 DNS 路由不会随服务停止撤销。',
   dnsConfirmationHint:'点击按钮后立即保存确认；此项仅代表用户确认，不会自动配置或验证网关路由。',dnsConfirmationSaved:'DNS 拦截路由确认已保存',dnsConfigurationChanged:'DNS 拦截路由配置已变更，请刷新后重新确认。',
   save:'保存路由设置',saved:'路由设置已保存',confirmReset:'路由变更后，请重新确认网关配置。',status:'路由状态',fakeRoute:'Fake-IP 路由',dnsRoute:'DNS 拦截路由',engine:'BGP 引擎',apiEngine:'路由器 API',running:'运行中',disabled:'未启用',ready:'就绪',notReady:'未就绪',confirmed:'用户已确认',pending:'待确认',unused:'未启用',apiRunning:'已连接',apiError:'异常',
@@ -20,8 +20,8 @@ const messages={
  },
  en:{
   autoNextHopChanged:'The Surge VM IPv4 address changed. Update the static routes on the gateway, then confirm again and save.',
-  language:'Page language',configuration:'Routing configuration',mode:'Routing mode',fakeBackend:'Fake-IP routing method',dnsBackend:'DNS interception method',
-  bgpLimit:'Routes are announced and withdrawn automatically; an available BGP neighbor is required.',staticLimit:'Gateway routes are managed externally and remain after the service stops.',hybridLimit:'Choose a backend for each route type; static routes are maintained externally.',apiLimit:'Routes are published and withdrawn automatically through the router management API; the router must be reachable with valid credentials.',
+  language:'Page language',configuration:'Routing configuration',mode:'Routing mode',fakeBackend:'Fake-IP routing method',dnsBackend:'DNS interception method',manualBackend:'Manual route method',
+  bgpLimit:'Routes are announced and withdrawn automatically; an available BGP neighbor is required.',staticLimit:'Gateway routes are managed externally and remain after the service stops.',hybridLimit:'Fake-IP, DNS interception and manual routes each choose a backend; routes set to Static are maintained externally.',apiLimit:'Routes are published and withdrawn automatically through the router management API; the router must be reachable with valid credentials.',
   fakeConfirmed:'Fake-IP routes configured on the gateway',staticDNS:'Enable static DNS interception',dnsConfirmAction:'Confirm gateway routes are configured',dnsConfirmed:'✓ Gateway routes confirmed',staticRisk:'Static DNS routes remain when the service stops.',
   dnsConfirmationHint:'Click the button to save confirmation immediately. This is a user declaration; gateway routes are not automatically configured or verified.',dnsConfirmationSaved:'DNS interception route confirmation saved',dnsConfigurationChanged:'DNS interception routing configuration changed. Refresh and confirm again.',
   save:'Save routing settings',saved:'Routing settings saved',confirmReset:'Confirm the gateway configuration again after route changes.',status:'Route status',fakeRoute:'Fake-IP routing',dnsRoute:'DNS interception',engine:'BGP engine',apiEngine:'Router API',running:'Running',disabled:'Disabled',ready:'Ready',notReady:'Not ready',confirmed:'User confirmed',pending:'Pending confirmation',unused:'Disabled',apiRunning:'Connected',apiError:'Error',

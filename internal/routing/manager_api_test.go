@@ -150,19 +150,50 @@ func TestHybridAPIBackendSelection(t *testing.T) {
 	if e := d.Validate(); e != nil {
 		t.Fatal(e)
 	}
-	m := New(context.Background(), d, nil)
+	// A fake BGP backend keeps this test off the shared speaker port.
+	b := &backend{ready: true}
+	m := newManager(d, b, "")
 	fake := &fakeAPI{ready: true}
 	m.api = fake
 	if got := m.DesiredAPI(true, true, true); len(got) != 1 || got[0].Kind != "fake-ip" {
 		t.Fatalf("hybrid must route only fake-ip through the API, got %+v", got)
 	}
-	// Manual routes stay on BGP in hybrid mode.
+	// Without an explicit selection manual routes stay on BGP in hybrid mode.
 	d.Routes = []config.Route{{ID: "r1", Prefix: "203.0.113.0/24", NextHop: "192.0.2.9", Enabled: true}}
 	m.UpdateDocument(d)
 	if got := m.DesiredAPI(true, true, true); len(got) != 1 {
-		t.Fatalf("manual routes must not join the api backend in hybrid, got %+v", got)
+		t.Fatalf("unselected manual routes must not join the api backend in hybrid, got %+v", got)
 	}
-	// In the dedicated api mode they do.
+	if got := m.Desired(true, true, true); len(got) != 1 || got[0].Kind != "manual" {
+		t.Fatalf("unselected manual routes stay on BGP, got %+v", got)
+	}
+	// Selecting the api backend for manual routes moves them off BGP.
+	d.Settings.Routing.ManualBackend = "api"
+	m.UpdateDocument(d)
+	if got := m.DesiredAPI(true, true, true); len(got) != 2 {
+		t.Fatalf("manual routes with the api selection must join the api backend, got %+v", got)
+	}
+	if got := m.Desired(true, true, true); len(got) != 0 {
+		t.Fatalf("manual routes must leave BGP once the api backend is selected, got %+v", got)
+	}
+	if e := m.Reconcile(context.Background(), []bgp.Advertisement{{Prefix: "203.0.113.0/24", NextHop: "192.0.2.9", Kind: "manual"}}); e == nil {
+		t.Fatal("manual rows moved off BGP must not be reconciled into the speaker")
+	}
+	// Static selection hands manual routes to the operator instead.
+	d.Settings.Routing.ManualBackend = "static"
+	m.UpdateDocument(d)
+	if got := m.DesiredAPI(true, true, true); len(got) != 1 {
+		t.Fatalf("static manual routes must not join the api backend, got %+v", got)
+	}
+	if got := m.Desired(true, true, true); len(got) != 0 {
+		t.Fatalf("static manual routes must not be announced over BGP, got %+v", got)
+	}
+	for _, row := range m.Status().Routes {
+		if row.Kind == "manual" && (row.Backend != "static" || row.Managed || row.OperatorConfirmed) {
+			t.Fatalf("static manual routes stay operator declarations, got %+v", row)
+		}
+	}
+	// In the dedicated api mode they do without an explicit selection.
 	d.Settings.Routing = config.Routing{Mode: "api"}
 	m.UpdateDocument(d)
 	if got := m.DesiredAPI(true, true, true); len(got) != 2 {
