@@ -236,6 +236,16 @@
 - 保留的无关改动：无。beta.5 旧包与 bin 备份至 `artifacts/pre-beta6-backup-20261019/`。
 - 下一步与依赖：无发布遗留。最终交接作为发布后的文档提交双推，不移动已发布标签。已知事项：GitHub SSH 22 端口再次关闭，推送沿用 `artifacts/releases/v1.0.4/github-ssh443.sh` 的 `ssh.github.com:443` 通道（`git -c core.sshCommand=<绝对路径> push origin ...`），未修改全局配置；`web/src/session-recovery.test.jsx` 存在偶发时序脆弱性（上一 main 提交 6198ef8 的回归 39138529934 因此失败，本地与本次发布提交回归均通过），后续任务可跟进修复。未安装或重启现用环境。
 
+## 任务交接（2026-10-19，v1.0.5-beta.7）
+
+- 目标与验收条件：发布 Hybrid 手动路由分发方式选择（BGP / Static / API）测试版；双仓库提交 / 标签、GitHub 回归、两个 Release workflow 及三附件核验通过。
+- 当前状态：进行中（本地验证已通过，发布推送与 workflow 核验待完成；完成后由后续文档提交补齐本节并更新「最近已核验发布」）。
+- 已完成与修改文件：`internal/config/routing.go`（`ManualBackend` 字段、`Effective` 旧配置默认 BGP、`UsesBGP` / `UsesAPI` 纳入手动选择）、`internal/config/config.go` 默认值、`internal/routing/manager.go`（`Desired` / `DesiredAPI` / `Reconcile` 门禁、`Status.ManualBackend`、状态行按选择显示、静态确认与 DNS 就绪分母修正）、前端 `web/src/routing.jsx`（Hybrid 选择器）、`main.jsx`（标签 / choices / 提交归一 / API 区块显示条件）、`routing-i18n.js` 与 `localization/ui-en.json` 双语、`native/main.swift`（状态栏详情与 usesBGP 判定、smoke 测试）；文档 `docs/routing-backends.md`（模式表新增手动路由列）、`docs/architecture.md`、`docs/configuration-application.md`、README 与代码地图。版本 `internal/buildinfo/release.json` `1.0.5-beta.7 / build 119`，发行说明 `.gitea/release-notes/v1.0.5-beta.7.md`。功能提交 `732ffc5` 已双推且回归成功。安装 skill 继续指向正式版。
+- 验证：`env GOCACHE=/private/tmp/routepilot-beta6-go-build make verify-release` 通过（前端测试、Go 全包 race/vet、原生检查、18 页 / 14 分类 / 三宽度与 9 项缓存 UI、完整包校验 `PASS package`）；本地包 App / 后台 / CLI 均为 `1.0.5-beta.7 / build 119`；本地 DMG SHA256 `340e41ba07a65af13014a27b223df4530e1c0a8e578f3661f4d7fc13b60dcacc`、ZIP `1197d5420edf9507c9b4f5227e3e2de8ccc37933653330e4adcb18f0352292bf4`。证据 `artifacts/releases/v1.0.5-beta.7/local-verification.md`。未覆盖：真实路由器上手动路由的 API 发布 / 撤销、现用环境安装升级与非对称回程。
+- 已发布：待完成——发布推送后补齐提交 / 标签对象、GitHub 回归与两个 Release workflow 编号、双仓库发布页与附件哈希核验。
+- 保留的无关改动：无。beta.6 旧包与 bin 备份至 `artifacts/pre-beta7-backup-20261019/`。
+- 下一步与依赖：完成提交与双仓库推送（GitHub 22 端口关闭时沿用 `artifacts/releases/v1.0.4/github-ssh443.sh` 的 443 通道），核对 GitHub 回归、两个 Release workflow 与三附件；最终交接随发布后文档提交双推，不移动已发布标签。
+
 ## 代码地图：按任务定位
 
 先查下表，通常从“首读”开始，再跟随调用读取“关联”。函数名比行号稳定；模块位置变化时同步更新这里。不要预先通读 `app.go`、`api.go`、`main.jsx` 或 `main.swift` 的全部内容。
