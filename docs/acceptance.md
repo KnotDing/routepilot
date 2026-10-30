@@ -950,4 +950,4 @@ acceptance was performed. Configuration runtime application is unchanged.
 ## 2026-10-30：Dock 图标尺寸（v1.0.5-beta.8）
 
 - App 图标绘制整体缩小 10%，四周保留透明空间；独立生成的图标已目视检查，状态栏图标 PNG 与修改前逐字节一致。
-- 本地 `make package package-check` 在沙箱外通过，App 与后台为 `1.0.5-beta.8 / build 120`；沙箱内首次运行因 hdiutil 创建设备失败。实际 Dock 显示及现用 App 升级尚未验收，发布工作流与附件核验进行中。
+- 本地 `make package package-check` 在沙箱外通过，App 与后台为 `1.0.5-beta.8 / build 120`；沙箱内首次运行因 hdiutil 创建设备失败。GitHub 回归 [41048034118](https://github.com/KnotDing/routepilot/actions/runs/41048034118)、GitHub Release [41048041288](https://github.com/KnotDing/routepilot/actions/runs/41048041288) 和 [Gitea Release 2149](https://gitea.knotding.com/knot/routepilot/actions/runs/2149) 成功。双仓库六项附件下载并校验 SHA256、逐字节一致；下载包 App 与后台均为 `1.0.5-beta.8 / build 46`，签名及 DMG 完整性通过。实际 Dock 显示及现用 App 升级尚未验收。

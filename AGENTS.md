@@ -133,16 +133,16 @@
 ## 任务交接（2026-10-30，v1.0.5-beta.8）
 
 - 目标与验收条件：发布 Dock App 图标尺寸调整；双仓库分支和标签、GitHub 回归、两个 Release workflow 与三项附件均核验通过。
-- 当前状态：进行中；发布前双仓库 main 均为 `b3d71c23e3143817d8105ed94a8be8f5cedf144e`，最新测试版为 beta.7，beta.8 标签尚不存在。
+- 当前状态：已完成。`v1.0.5-beta.8` 已在 GitHub 与 Gitea 发布并核验；源码 / 本地包 build 120，双仓库制品 build 46。
 - 已完成与修改文件：`native/icon.swift` 对 App 图标绘制整体缩小 10% 并留出透明边距；`internal/buildinfo/release.json` 更新为 `1.0.5-beta.8 / build 120`；README 和 `.gitea/release-notes/v1.0.5-beta.8.md` 更新。正式 skill 安装来源保持 v1.0.4。
-- 验证：独立编译图标生成器并查看生成图像，图案居中且四周留白；原版与新版状态栏图标 PNG 逐字节一致。`env GOCACHE="$PWD/.cache/go-build" GOMODCACHE="$PWD/.cache/go-mod" make package package-check` 在沙箱外通过（5 项包检查测试、App / 后台版本与签名、ZIP / DMG / SHA256 校验；源码及本地包 build 120）；沙箱内首次打包的 hdiutil 创建设备失败。未覆盖实际 Dock 显示与现用环境升级。
-- 已发布：尚未发布；需完成提交和注释标签双推、工作流及附件核验。
+- 验证：独立编译图标生成器并查看生成图像，图案居中且四周留白；原版与新版状态栏图标 PNG 逐字节一致。`env GOCACHE="$PWD/.cache/go-build" GOMODCACHE="$PWD/.cache/go-mod" make package package-check` 在沙箱外通过（5 项包检查测试、App / 后台版本与签名、ZIP / DMG / SHA256 校验；源码及本地包 build 120）；沙箱内首次打包的 hdiutil 创建设备失败。双仓库六附件均下载、SHA256 校验并逐字节比较一致；下载的 ZIP 内 App / 后台均为 `1.0.5-beta.8 / build 46`，签名及 DMG 完整性通过。未覆盖实际 Dock 显示与现用环境升级。
+- 已发布：tag `v1.0.5-beta.8` 指向提交 `49cef90416fd5a3a137abbfc961b3c23e486fe98`，注释标签对象 `227935d259dfa7cda89f9f876067416508903d1b`，双仓库引用一致。GitHub 回归 [41048034118](https://github.com/KnotDing/routepilot/actions/runs/41048034118)、GitHub Release [41048041288](https://github.com/KnotDing/routepilot/actions/runs/41048041288) 和 [Gitea Release 2149](https://gitea.knotding.com/knot/routepilot/actions/runs/2149) 成功；Gitea 复用 GitHub 制品、回退跳过。两个页面均为非草稿测试版，各有 DMG、ZIP、SHA256SUMS 三项附件：DMG SHA256 `5fa01dacdc3904e55be6a610e84eaa5f0befcc1458d7f2aa593b3da24b86836b`，ZIP SHA256 `6e1445cf9fc2aa3a95f4cb46ea3b3d647c1cd0b10c52a169fc005b2fb983976b`。链接：https://github.com/KnotDing/routepilot/releases/tag/v1.0.5-beta.8 ；https://gitea.knotding.com/knot/routepilot/releases/tag/v1.0.5-beta.8 。
 - 保留的无关改动：无。原安装包、bin 和图标生成缓存备份至 `artifacts/pre-beta8-backup-20261030/`。
-- 下一步与依赖：确认发布提交与两个远端标签，等待 GitHub 回归和两个 Release workflow，下载并核验六项附件后更新本交接并双推。GitHub 未认证 API 当前速率受限；本地构建日志在 `artifacts/releases/v1.0.5-beta.8/`。
+- 下一步与依赖：无发布遗留；发布后交接文档另行提交并双推，不移动标签。GitHub 未认证 API 本轮速率受限，工作流与发布页由已登录页面核验；本地构建日志及下载附件在 `artifacts/releases/v1.0.5-beta.8/`。
 
-## 最近已核验发布（更新于 2026-10-19）
+## 最近已核验发布（更新于 2026-10-30）
 
-- 最新完整核验正式版为 `v1.0.4`，标签指向 `6d336a770028a18690914eeaf2733cdd42e86ed3`，注释标签对象为 `cd460ac01058ff470afdd5fb9762a6f56e208219`。最新已核验测试版为 `v1.0.5-beta.7`（`910d63f`，双仓库 App / 后台 build 45；源码 / 本地包 build 119），详见下方交接。`v1.0.4-beta.29` 为误基准历史发布，不移动标签。后续交接文档提交不移动发布标签。
+- 最新完整核验正式版为 `v1.0.4`，标签指向 `6d336a770028a18690914eeaf2733cdd42e86ed3`，注释标签对象为 `cd460ac01058ff470afdd5fb9762a6f56e208219`。最新已核验测试版为 `v1.0.5-beta.8`（`49cef90`，双仓库 App / 后台 build 46；源码 / 本地包 build 120），详见上方交接。`v1.0.4-beta.29` 为误基准历史发布，不移动标签。后续交接文档提交不移动发布标签。
 - 正式发布提交的 GitHub 回归 [run 38844597375](https://github.com/KnotDing/routepilot/actions/runs/38844597375) 与完整 [Release run 38844625516](https://github.com/KnotDing/routepilot/actions/runs/38844625516) 成功；[Gitea run 2109](https://gitea.knotding.com/knot/routepilot/actions/runs/2109) 成功复用 GitHub 制品，macOS 回退任务跳过。发布提交及注释标签对象已核对双仓库一致。
 - [GitHub Release](https://github.com/KnotDing/routepilot/releases/tag/v1.0.4) 与 [Gitea 备用 Release](https://gitea.knotding.com/knot/routepilot/releases/tag/v1.0.4) 均为 `prerelease=false`、`draft=false`，只有 DMG、ZIP、SHA256SUMS 三项非空附件。六项附件均下载，双仓库 SHA256 完全一致；ZIP、签名、DMG 完整性 / 布局及 DMG 与 ZIP 的 App / CLI / 后台二进制一致性通过。App 与后台均为 `1.0.4 / build 37`（CI run number）；源码及本地包 build 为 111，不混为一谈。GitHub latest 已指向 v1.0.4。
 - v1.0.4 归并上次正式版 v1.0.3 之后 beta.1–28 的最终变更：实时 / 七天历史监控和六维筛选、客户端备注 / 强制策略 / 主机名、分项普通 / 乐观缓存、模块化配置应用、Surge IPv4 下一跳自动探测、多后端窗口隔离、更新进度 / 远端 App 重启、通知 / 导航 / 资源优化及历史恢复修复。完整说明见 `.gitea/release-notes/v1.0.4.md`；README 含摘要与入口，`scripts/install_skill.sh` 正式 tag / 提示版本已同步。
