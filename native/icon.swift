@@ -7,6 +7,11 @@ func render(_ pixels: Int, background: Bool) throws -> Data {
     NSGraphicsContext.saveGraphicsState()
     NSGraphicsContext.current = context
     let scale = NSAffineTransform(); scale.scale(by: CGFloat(pixels) / 64); scale.concat()
+    if background {
+        // Leave a little transparent space around the Dock icon so its solid
+        // rounded-square silhouette has the same visual weight as other apps.
+        let inset = NSAffineTransform(); inset.translateX(by: 3.2, yBy: 3.2); inset.scale(by: 0.9); inset.concat()
+    }
     if !background {
         let zoom = NSAffineTransform(); zoom.translateX(by: -11.2, yBy: -11.2); zoom.scale(by: 1.35); zoom.concat()
     }

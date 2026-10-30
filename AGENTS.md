@@ -130,6 +130,16 @@
 - 下一步与依赖：
 ```
 
+## 任务交接（2026-10-30，v1.0.5-beta.8）
+
+- 目标与验收条件：发布 Dock App 图标尺寸调整；双仓库分支和标签、GitHub 回归、两个 Release workflow 与三项附件均核验通过。
+- 当前状态：进行中；发布前双仓库 main 均为 `b3d71c23e3143817d8105ed94a8be8f5cedf144e`，最新测试版为 beta.7，beta.8 标签尚不存在。
+- 已完成与修改文件：`native/icon.swift` 对 App 图标绘制整体缩小 10% 并留出透明边距；`internal/buildinfo/release.json` 更新为 `1.0.5-beta.8 / build 120`；README 和 `.gitea/release-notes/v1.0.5-beta.8.md` 更新。正式 skill 安装来源保持 v1.0.4。
+- 验证：独立编译图标生成器并查看生成图像，图案居中且四周留白；原版与新版状态栏图标 PNG 逐字节一致。`env GOCACHE="$PWD/.cache/go-build" GOMODCACHE="$PWD/.cache/go-mod" make package package-check` 在沙箱外通过（5 项包检查测试、App / 后台版本与签名、ZIP / DMG / SHA256 校验；源码及本地包 build 120）；沙箱内首次打包的 hdiutil 创建设备失败。未覆盖实际 Dock 显示与现用环境升级。
+- 已发布：尚未发布；需完成提交和注释标签双推、工作流及附件核验。
+- 保留的无关改动：无。原安装包、bin 和图标生成缓存备份至 `artifacts/pre-beta8-backup-20261030/`。
+- 下一步与依赖：确认发布提交与两个远端标签，等待 GitHub 回归和两个 Release workflow，下载并核验六项附件后更新本交接并双推。GitHub 未认证 API 当前速率受限；本地构建日志在 `artifacts/releases/v1.0.5-beta.8/`。
+
 ## 最近已核验发布（更新于 2026-10-19）
 
 - 最新完整核验正式版为 `v1.0.4`，标签指向 `6d336a770028a18690914eeaf2733cdd42e86ed3`，注释标签对象为 `cd460ac01058ff470afdd5fb9762a6f56e208219`。最新已核验测试版为 `v1.0.5-beta.7`（`910d63f`，双仓库 App / 后台 build 45；源码 / 本地包 build 119），详见下方交接。`v1.0.4-beta.29` 为误基准历史发布，不移动标签。后续交接文档提交不移动发布标签。

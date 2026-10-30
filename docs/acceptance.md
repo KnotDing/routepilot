@@ -946,3 +946,8 @@ acceptance was performed. Configuration runtime application is unchanged.
 - `npm --prefix web test`：38 文件 / 201 项通过，覆盖内容变化、缩小 / 恢复、隐藏零宽度、共享 observer 清理和无 ResizeObserver 的 resize 回退。
 - 前端构建与 `make ui-test` 通过（18 页面 / 14 分类 / 1440、1120、390 宽度及 9 项缓存 UI）；真实浏览器使用 16 位数值验证不换行 / 不溢出 / 不缩写和扩宽恢复。
 - `env GOCACHE=/private/tmp/routepilot-dhcp-gocache make package package-check` 通过，本地 App / 后台 `1.0.5-beta.5 / build 117`。本轮未重复本地 Go / 原生测试，发布提交仍需完整 CI；未安装或重启现用环境。已发布 `v1.0.5-beta.5`（`cc8f34d`），GitHub 回归 `39137981766` / Release `39137997174` 及 Gitea `2121` 全部成功；双仓库六附件下载 / SHA256 / 签名 / ZIP / DMG / 包内身份校验通过且哈希一致，App / 后台为 build 43。最新统计字号 / 无分割线 CSS 已在捆绑后台中核对。证据：`artifacts/releases/v1.0.5-beta.5/publication-verification.json`。
+
+## 2026-10-30：Dock 图标尺寸（v1.0.5-beta.8）
+
+- App 图标绘制整体缩小 10%，四周保留透明空间；独立生成的图标已目视检查，状态栏图标 PNG 与修改前逐字节一致。
+- 本地 `make package package-check` 在沙箱外通过，App 与后台为 `1.0.5-beta.8 / build 120`；沙箱内首次运行因 hdiutil 创建设备失败。实际 Dock 显示及现用 App 升级尚未验收，发布工作流与附件核验进行中。
