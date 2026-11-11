@@ -47,6 +47,19 @@ it('exposes custom request templates with variable validation',()=>{
  expect(screen.getByText(/\{\{name\}\} \{\{prefix\}\}/)).toBeInTheDocument();
 });
 
+it('accepts quoted variables in JSON request body templates',()=>{
+ const initial={preset:'custom',auth:'header',base_url:'https://192.168.1.1',header_name:'X-API-KEY',header_value:'k',add:{method:'POST',path:'/routes',body:''}};
+ const body='{"static-route_network":"{{prefix}}","name":"{{name}}"}';
+ render(<Harness initial={initial}>
+  {(draft,setDraft)=><RoutingAPISettings draft={draft} onChange={setDraft}/>}
+ </Harness>);
+ const addSection=screen.getByText(/添加路由请求|Add route request/).closest('details');
+ const field=within(addSection).getByLabelText(/请求体.*支持变量|Body.*supports variables/);
+ fireEvent.change(field,{target:{value:body}});
+ fireEvent.blur(field);
+ expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+});
+
 it('prefills the preset base address and auth when switching',()=>{
  render(<Harness initial={{preset:'',base_url:''}}>
   {(draft,setDraft)=>{draft.preset;return <RoutingAPISettings draft={draft} onChange={setDraft}/>}}

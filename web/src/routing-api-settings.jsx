@@ -34,7 +34,12 @@ function BodyField({label,value,onChange,disabled}){
  const commit=()=>{
   const trimmed=text.trim();
   if(!trimmed){setError(false);onChange('');return}
-  try{JSON.parse(trimmed.replace(/\{\{\s*([a-z_]+)\s*\}\}/g,'"__var__"'));setError(false);onChange(text)}catch{setError(true)}
+  try{
+   // Keep surrounding JSON quotes intact: templates commonly use "{{prefix}}"
+   // as a string value, so the placeholder itself must become an unquoted token.
+   JSON.parse(trimmed.replace(/\{\{\s*([a-z_]+)\s*\}\}/g,'__template_value__'));
+   setError(false);onChange(text)
+  }catch{setError(true)}
  };
  return <>
   <FieldLabel label={label}><textarea rows={4} disabled={disabled} aria-invalid={error||undefined} value={text} onChange={e=>setText(e.target.value)} onBlur={commit}/></FieldLabel>
