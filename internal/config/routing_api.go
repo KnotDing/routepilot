@@ -8,7 +8,7 @@ import (
 
 // RoutingAPI describes a third-party router that RoutePilot manages through
 // its HTTP API instead of BGP. Presets cover OpenWrt (ubus/uci) and UniFi OS
-// (Integration API); the custom preset exposes request templates so operators
+// (Network routing API); the custom preset exposes request templates so operators
 // can describe any REST endpoint. Secrets are merged on save and stored
 // encrypted, never exported in backups.
 type RoutingAPI struct {

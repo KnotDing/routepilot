@@ -206,7 +206,7 @@ func TestOpenWrtRejectedCredentials(t *testing.T) {
 	}
 }
 
-// unifiServer emulates the UniFi OS Integration API.
+// unifiServer emulates the UniFi OS Network routing API.
 type unifiServer struct {
 	mu     sync.Mutex
 	routes []map[string]any
@@ -221,14 +221,18 @@ func (s *unifiServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	w.Header().Set("Content-Type", "application/json")
+	if !strings.HasPrefix(r.URL.Path, "/proxy/network/api/s/default/rest/routing") {
+		http.NotFound(w, r)
+		return
+	}
 	if r.Method == "GET" {
-		_ = json.NewEncoder(w).Encode(s.routes)
+		_ = json.NewEncoder(w).Encode(map[string]any{"meta": map[string]any{"rc": "ok"}, "data": s.routes})
 		return
 	}
 	if r.Method == "DELETE" {
-		id := strings.TrimPrefix(r.URL.Path, "/proxy/network/integration/v1/routes/")
+		id := strings.TrimPrefix(r.URL.Path, "/proxy/network/api/s/default/rest/routing/")
 		for i, row := range s.routes {
-			if row["routeId"] == id {
+			if row["_id"] == id {
 				s.routes = append(s.routes[:i], s.routes[i+1:]...)
 				break
 			}
@@ -238,14 +242,22 @@ func (s *unifiServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	var body map[string]any
 	_ = json.NewDecoder(r.Body).Decode(&body)
+	if body["site_id"] != "8d830bc2-43b0-4d17-aad1-5ae316c9ba2c" || body["gateway_device"] != "1c:0b:8b:12:46:88" || body["gateway_type"] != "default" || body["static-route_type"] != "nexthop-route" || body["type"] != "static-route" || body["static-route_distance"] != float64(1) || body["enabled"] != true {
+		http.Error(w, "invalid route payload", http.StatusBadRequest)
+		return
+	}
 	s.nextID++
-	body["routeId"] = fmt.Sprintf("rt%d", s.nextID)
+	body["_id"] = fmt.Sprintf("rt%d", s.nextID)
 	s.routes = append(s.routes, body)
 	_, _ = w.Write([]byte(`{}`))
 }
 
 func TestUniFiLifecycle(t *testing.T) {
-	server := &unifiServer{}
+	server := &unifiServer{routes: []map[string]any{{
+		"_id": "existing", "site_id": "8d830bc2-43b0-4d17-aad1-5ae316c9ba2c",
+		"gateway_device": "1c:0b:8b:12:46:88", "name": "Existing", "static-route_network": "10.0.0.0/8",
+		"static-route_nexthop": "192.0.2.1",
+	}}}
 	api := httptest.NewServer(server)
 	defer api.Close()
 	cfg := config.RoutingAPI{Preset: "unifi", BaseURL: api.URL, HeaderValue: "key123"}
@@ -258,8 +270,8 @@ func TestUniFiLifecycle(t *testing.T) {
 	if e := m.Reconcile(ctx, []bgp.Advertisement{advertisement("198.18.0.0/15", "192.0.2.2", "fake-ip"), advertisement("203.0.113.0/24", "192.0.2.3", "dns-interception")}); e != nil {
 		t.Fatalf("publish failed: %v", e)
 	}
-	if len(server.routes) != 2 {
-		t.Fatalf("expected two routes, got %+v", server.routes)
+	if len(server.routes) != 3 {
+		t.Fatalf("expected existing route plus two new routes, got %+v", server.routes)
 	}
 	ready, e := m.Refresh(ctx)
 	if e != nil || !ready {
@@ -268,7 +280,7 @@ func TestUniFiLifecycle(t *testing.T) {
 	if e := m.Reconcile(ctx, []bgp.Advertisement{advertisement("198.18.0.0/15", "192.0.2.2", "fake-ip")}); e != nil {
 		t.Fatalf("withdraw failed: %v", e)
 	}
-	if len(server.routes) != 1 || server.routes[0]["name"] != RouteName("fake-ip", "198.18.0.0/15") {
+	if len(server.routes) != 2 {
 		t.Fatalf("unexpected remaining routes: %+v", server.routes)
 	}
 	status := m.Status()
@@ -358,7 +370,11 @@ func TestCustomTemplateLifecycle(t *testing.T) {
 }
 
 func TestSteadyStateThrottling(t *testing.T) {
-	server := &unifiServer{}
+	server := &unifiServer{routes: []map[string]any{{
+		"_id": "existing", "site_id": "8d830bc2-43b0-4d17-aad1-5ae316c9ba2c",
+		"gateway_device": "1c:0b:8b:12:46:88", "name": "Existing", "static-route_network": "10.0.0.0/8",
+		"static-route_nexthop": "192.0.2.1",
+	}}}
 	api := httptest.NewServer(server)
 	defer api.Close()
 	cfg := config.RoutingAPI{Preset: "unifi", BaseURL: api.URL, HeaderValue: "key123"}
@@ -403,7 +419,7 @@ func TestSteadyStateThrottling(t *testing.T) {
 	nextHop := ""
 	for _, row := range routesOnRouter() {
 		if row["name"] == RouteName("fake-ip", "198.18.0.0/15") {
-			nextHop, _ = row["nextHop"].(string)
+			nextHop, _ = row["static-route_nexthop"].(string)
 		}
 	}
 	if nextHop != "192.0.2.7" {

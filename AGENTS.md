@@ -143,12 +143,22 @@
 ## 任务交接（2026-11-11，v1.0.5-beta.9）
 
 - 目标与验收条件：修复自定义路由器 API 请求体模板中带引号变量的 JSON 校验误报；发布 `v1.0.5-beta.9`，双仓库分支 / 标签、GitHub 回归、两个 Release workflow 与三项附件均核验通过。
-- 当前状态：进行中，已创建并双推 beta.9 提交 / 标签。GitHub 首次触发的回归与 Release 在启动阶段被取消，用户提供错误 `The configuration 'macos-14-arm64-us-default' is not supported`；已确认 macOS 14 runner 于 2026-11-02 退役，正在把两个 workflow 迁移到 `macos-15` 并重新触发。
+- 当前状态：Gitea beta.9 Release 已由 fallback-build 发布并完成附件校验；GitHub 原始运行因 macOS 14 runner 退役而取消。迁移至 `macos-15` 的提交已双推，GitHub 回归和手动 Release 运行已启动，但本轮未能读取最终状态。
 - 已完成与修改文件：修复位于 `web/src/routing-api-settings.jsx`；回归用例位于 `web/src/routing-api-settings.test.jsx`；版本、README 与发行说明正在更新。beta.8 根目录 DMG / ZIP、包校验记录及 `bin/` 已备份到 `artifacts/pre-beta9-backup-20261111/`。
 - 验证：聚焦前端用例通过（`npm --prefix web test -- src/routing-api-settings.test.jsx`，1 文件 / 7 项）；`git diff --check` 通过。完整本地打包因依赖下载长时间无输出已停止，未完成包校验。GitHub 首次回归 #43052807040 与 Release #43052822867 均因已退役的 `macos-14` runner 在任务步骤开始前取消。
-- 已发布：源代码提交 `0530b0d` 与注释标签 `v1.0.5-beta.9` 已推送至 Gitea / GitHub，远端分支和标签一致；GitHub Release、Gitea Release 与附件尚未核验。
+- 已发布：源代码提交 `0530b0d` 与注释标签 `v1.0.5-beta.9` 已推送至 Gitea / GitHub，远端分支和标签一致。Gitea Release `https://gitea.knotding.com/knot/routepilot/releases/tag/v1.0.5-beta.9` 为非草稿测试版，三项附件由 run #141 fallback-build 生成并成功发布；SHA256SUMS、DMG 完整性及 ZIP 内 App / 后台 `1.0.5-beta.9 / build 141` 身份核验通过。DMG SHA256 `8d7c22604d8dc2ffc93687dea6e1d50dcabac436291b17a5ea0f0eb873ab3d01`，ZIP SHA256 `6f49562580ce653050a15226d97fe7eb45a10d78e1b3133c29155655597a10ea`。GitHub Release 仍待核验。
 - 保留的无关改动：无。
-- 下一步与依赖：将 `.github/workflows/test.yaml` 和 `release.yaml` 的 runner 改为受支持的 `macos-15`，提交并双推 `main`；确认 GitHub 回归通过，通过 workflow_dispatch 以 `release_tag=v1.0.5-beta.9` 重跑 GitHub Release（不移动标签）；核验 Gitea workflow、双 Release 与附件哈希，随后补齐本交接。
+- 下一步与依赖：恢复 GitHub 可访问后核验回归 run `43053780497` 和 workflow_dispatch Release run `43054201628`，确认 beta.9 GitHub Release 与制品。
+
+## 任务交接（2026-11-12，v1.0.5-beta.10）
+
+- 目标与验收条件：将 UniFi OS API 预设改为固定 `/proxy/network/api/s/default/rest/routing` 路径；从该查询返回的路由数据自动读取 `site_id`、`gateway_device`，并使用用户提供的 static-route 请求字段发布与撤销路由。发布 beta.10，双仓库分支 / 标签、GitHub 回归、两个 Release workflow 与附件均核验。
+- 当前状态：实现与针对性测试已完成；beta.10 标签确认未使用，发布提交 / 标签尚未创建。
+- 已完成与修改文件：UniFi 预设请求实现 `internal/routingapi/unifi.go`；fixture 与验证 `internal/routingapi/routingapi_test.go`；双语提示与 UI 测试 `web/src/routing-i18n.js`、`web/src/routing-api-settings.test.jsx`；版本、README 和发行说明已更新。
+- 验证：`npm --prefix web test -- src/routing-api-settings.test.jsx` 通过（1 文件 / 7 项）；`GOCACHE="$PWD/.cache/go-build" go test ./internal/config` 通过；获准沙箱外运行 `GOCACHE="$PWD/.cache/go-build" go test ./internal/routingapi` 通过；`git diff --check` 通过。未执行完整 package。
+- 已发布：未发布。beta.10 发布需要新的 Conventional Commit、注释标签和双仓库推送；beta.9 标签不得移动。
+- 保留的无关改动：无。
+- 下一步与依赖：完善 handoff，提交并双推 main 与 beta.10 标签；等待 GitHub 回归和 Release、Gitea Release 完成，校验三附件与包内版本身份，并补齐本记录。
 
 ## 最近已核验发布（更新于 2026-10-30）
 

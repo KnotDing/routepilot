@@ -22,6 +22,10 @@ RoutePilot 是一款 macOS 状态栏应用：向 Surge 查询分流策略，为 
 </p>
 <p align="center"><sub>管理界面预览 · 3840 × 2160 · 页面中的指标、地址和事件均为虚构示例数据</sub></p>
 
+## v1.0.5-beta.10 测试版
+
+UniFi OS API 预设改用 Network routing API，从路由列表查询结果自动读取 `site_id` 和 `gateway_device`。详见 [测试版更新记录](.gitea/release-notes/v1.0.5-beta.10.md) · [下载测试版](https://github.com/KnotDing/routepilot/releases/tag/v1.0.5-beta.10)。
+
 ## v1.0.5-beta.9 测试版
 
 修复自定义路由器 API 请求体模板对带引号变量的 JSON 校验误报，例如 `"{{prefix}}"`。本系列还新增可选 DHCPv4 服务和路由器 API 路由模式，Hybrid 模式支持独立选择手动路由的分发方式。DHCP 默认关闭，真实客户端租约及路由采纳仍待现场验收。详见 [测试版更新记录](.gitea/release-notes/v1.0.5-beta.9.md) · [下载测试版](https://github.com/KnotDing/routepilot/releases/tag/v1.0.5-beta.9)。
@@ -117,11 +121,11 @@ RoutePilot 处理被送到它的 DNS 请求并发布受管理路由；普通应�
 | **BGP** | RoutePilot 向邻居发布 | 网关支持 BGP，希望路由随会话状态撤销 |
 | **Static** | 你在外部网关配置 | 不使用 BGP，自行维护静态路由与故障切换 |
 | **Hybrid** | Fake-IP 与 DNS 拦截分别选择 | 需要组合两种方式 |
-| **API** | RoutePilot 调用路由器管理 API | 网关不支持 BGP 但开放 OpenWrt ubus / UniFi Integration API 或自定义 REST 接口 |
+| **API** | RoutePilot 调用路由器管理 API | 网关不支持 BGP 但开放 OpenWrt ubus / UniFi Network API 或自定义 REST 接口 |
 
 Static 的确认表示用户已完成外部配置，RoutePilot 不自动安装或验证。静态 DNS 拦截还需开启持久拦截许可，并准备外部故障切换。路由表显示发布或配置状态；独立 TCP 诊断只检查 Mac 到指定地址的连通性。
 
-API 模式通过路由器管理接口发布与撤销路由：内置 OpenWrt（ubus JSON-RPC 写入命名路由段）与 UniFi OS（Integration API + API 密钥）两种预设，也可用自定义请求模板适配其他设备；凭据加密保存，导出备份不包含。Hybrid 模式下 Fake-IP、DNS 拦截与手动路由同样可以分别选择 API 后端。
+API 模式通过路由器管理接口发布与撤销路由：内置 OpenWrt（ubus JSON-RPC 写入命名路由段）与 UniFi OS（Network routing API + API 密钥，从路由列表查询结果读取 `site_id` 和 `gateway_device`）两种预设，也可用自定义请求模板适配其他设备；凭据加密保存，导出备份不包含。Hybrid 模式下 Fake-IP、DNS 拦截与手动路由同样可以分别选择 API 后端。
 
 在 **BGP 邻居 → 详情** 查看会话状态、双方 ASN、远端 Router ID、连接地址与端口、协商计时器、消息收发、地址族前缀统计及双方通告能力。完整 GoBGP 快照可展开查看，认证密钥已隐藏；信息随页面刷新。本地与远程后端均支持，旧版后端仍显示已有配置与基本状态。
 

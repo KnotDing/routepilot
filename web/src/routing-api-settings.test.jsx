@@ -66,6 +66,8 @@ it('prefills the preset base address and auth when switching',()=>{
  </Harness>);
  fireEvent.change(screen.getByLabelText(/API 预设|API preset/),{target:{value:'unifi'}});
  expect(screen.getByLabelText(/API 密钥|API key/)).toBeInTheDocument();
+ expect(screen.queryByLabelText('site_id')).not.toBeInTheDocument();
+ expect(screen.queryByLabelText('gateway_device')).not.toBeInTheDocument();
  expect(screen.queryByDisplayValue('https://192.168.1.1')).toBeInTheDocument();
 });
 
