@@ -163,12 +163,12 @@
 ## 任务交接（2026-11-12，v1.0.5-beta.11）
 
 - 目标与验收条件：UniFi 路由列表查询缺少 `site_id` 或 `gateway_device` 时，创建路由的 POST 请求省略缺失字段；发布测试版并核对双仓库、CI、Release 与附件。
-- 当前状态：beta.11 提交 / 标签已推送，但 GitHub 回归编译失败；该标签不可移动，保留为失败版本。失败注解指向 `internal/routingapi/unifi.go` 中元数据变量作用域错误，已在 beta.12 修复。Gitea run #2183 仍在重试获取不存在的 GitHub beta.11 制品；目前没有 beta.11 Release 页面。
+- 当前状态：beta.11 提交 / 标签已推送，但 GitHub 回归编译失败；该标签不可移动，保留为失败版本。失败注解指向 `internal/routingapi/unifi.go` 中元数据变量作用域错误，已在 beta.12 修复。Gitea run #2183 的制品获取重试结束后，回退构建也因相同编译错误失败；没有 beta.11 Release 页面。
 - 已完成与修改文件：`internal/routingapi/unifi.go` 按本次查询结果选择性组装元数据字段；`internal/routingapi/routingapi_test.go` 覆盖只缺一项及两项都缺；`internal/buildinfo/release.json`、README、`.gitea/release-notes/v1.0.5-beta.11.md` 更新至 beta.11。
 - 验证：首次 beta.11 本地定向测试通过，但后续变量移动未重新运行；GitHub 回归 run [43059741831](https://github.com/KnotDing/routepilot/actions/runs/43059741831) 在 `Check frontend and backend` 编译步骤报告 `siteID` / `gatewayDevice` 未定义及无用变量。GitHub Release run [43059788741](https://github.com/KnotDing/routepilot/actions/runs/43059788741) 失败。修正后 `GOCACHE="$PWD/.cache/go-build" go test ./internal/routingapi` 通过，`git diff --check` 通过。
-- 已发布：提交 `afe3a1eab5f1b81d853ffebd4bbf51c73103b650`，注释标签对象 `20dd83dad66d97d81ffe5fb90fda8a87bc1eab5f`；Gitea / GitHub `main` 和 beta.11 标签引用一致。GitHub 回归与 Release 均失败；Gitea run #2183 仍等待资产获取超时后的回退构建。beta.11 不可移动或复用。
+- 已发布：提交 `afe3a1eab5f1b81d853ffebd4bbf51c73103b650`，注释标签对象 `20dd83dad66d97d81ffe5fb90fda8a87bc1eab5f`；Gitea / GitHub `main` 和 beta.11 标签引用一致。GitHub 回归与 Release 均失败；Gitea run #2183 的资产获取与 fallback-build 均失败，fallback 编译报告 `siteID` / `gatewayDevice` 未定义；没有发布附件。beta.11 不可移动或复用。
 - 保留的无关改动：无。
-- 下一步与依赖：记录 Gitea run #2183 最终回退状态；失败 beta.11 标签不得移动或复用。
+- 下一步与依赖：无；beta.11 失败标签不得移动或复用。
 
 ## 任务交接（2026-11-12，v1.0.5-beta.12）
 
