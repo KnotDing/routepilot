@@ -153,12 +153,22 @@
 ## 任务交接（2026-11-12，v1.0.5-beta.10）
 
 - 目标与验收条件：将 UniFi OS API 预设改为固定 `/proxy/network/api/s/default/rest/routing` 路径；从该查询返回的路由数据自动读取 `site_id`、`gateway_device`，并使用用户提供的 static-route 请求字段发布与撤销路由。发布 beta.10，双仓库分支 / 标签、GitHub 回归、两个 Release workflow 与附件均核验。
-- 当前状态：实现与针对性测试已完成；beta.10 标签确认未使用，发布提交 / 标签尚未创建。
+- 当前状态：已发布。Gitea Release run #2182 成功复用 GitHub Actions 制品，beta.10 在 Gitea 为非草稿测试版；该版本的 GitHub 回归结果仍需补核。
 - 已完成与修改文件：UniFi 预设请求实现 `internal/routingapi/unifi.go`；fixture 与验证 `internal/routingapi/routingapi_test.go`；双语提示与 UI 测试 `web/src/routing-i18n.js`、`web/src/routing-api-settings.test.jsx`；版本、README 和发行说明已更新。
 - 验证：`npm --prefix web test -- src/routing-api-settings.test.jsx` 通过（1 文件 / 7 项）；`GOCACHE="$PWD/.cache/go-build" go test ./internal/config` 通过；获准沙箱外运行 `GOCACHE="$PWD/.cache/go-build" go test ./internal/routingapi` 通过；`git diff --check` 通过。未执行完整 package。
-- 已发布：未发布。beta.10 发布需要新的 Conventional Commit、注释标签和双仓库推送；beta.9 标签不得移动。
+- 已发布：提交 `8c24c43b0372e8eb1ba59cd5c3d877535567c845`，注释标签对象 `d17a9b1b7a34a340ffd649f62d92eb3e88a7c99b`；`main` 和 `v1.0.5-beta.10` 已在 Gitea / GitHub 两边一致。Gitea run #2182 成功，Release 为非草稿测试版并声明附件由 GitHub Actions 构建、Gitea run #142 镜像；链接：https://gitea.knotding.com/knot/routepilot/releases/tag/v1.0.5-beta.10 。尚未核实 GitHub 回归状态及两边附件校验。
 - 保留的无关改动：无。
-- 下一步与依赖：完善 handoff，提交并双推 main 与 beta.10 标签；等待 GitHub 回归和 Release、Gitea Release 完成，校验三附件与包内版本身份，并补齐本记录。
+- 下一步与依赖：补核 beta.10 GitHub 回归与 GitHub / Gitea 附件校验；本轮 beta.11 发布另见下方交接。
+
+## 任务交接（2026-11-12，v1.0.5-beta.11）
+
+- 目标与验收条件：UniFi 路由列表查询缺少 `site_id` 或 `gateway_device` 时，创建路由的 POST 请求省略缺失字段；发布测试版并核对双仓库、CI、Release 与附件。
+- 当前状态：实现和定向 Go 测试已完成；beta.11 尚未提交或发布。
+- 已完成与修改文件：`internal/routingapi/unifi.go` 按本次查询结果选择性组装元数据字段；`internal/routingapi/routingapi_test.go` 覆盖只缺一项及两项都缺；`internal/buildinfo/release.json`、README、`.gitea/release-notes/v1.0.5-beta.11.md` 更新至 beta.11。
+- 验证：沙箱内测试因 loopback bind 被系统拒绝；获准沙箱外执行 `GOCACHE="$PWD/.cache/go-build" go test ./internal/routingapi` 通过；`git diff --check` 通过。未执行完整 package。
+- 已发布：未发布。beta.11 使用唯一递增标签；beta.10 标签保持不变。
+- 保留的无关改动：无。
+- 下一步与依赖：完成差异复核和最小检查，提交 Conventional Commit，双推 `main`，推送注释 beta.11 标签；等待 GitHub 回归 / Release 与 Gitea Release，核验三项附件和包内版本身份，并更新本交接。
 
 ## 最近已核验发布（更新于 2026-10-30）
 

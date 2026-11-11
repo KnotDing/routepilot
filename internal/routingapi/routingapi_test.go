@@ -242,7 +242,20 @@ func (s *unifiServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	var body map[string]any
 	_ = json.NewDecoder(r.Body).Decode(&body)
-	if body["site_id"] != "8d830bc2-43b0-4d17-aad1-5ae316c9ba2c" || body["gateway_device"] != "1c:0b:8b:12:46:88" || body["gateway_type"] != "default" || body["static-route_type"] != "nexthop-route" || body["type"] != "static-route" || body["static-route_distance"] != float64(1) || body["enabled"] != true {
+	expectedSiteID, expectedGatewayDevice := "", ""
+	for _, route := range s.routes {
+		if expectedSiteID == "" && route["site_id"] != nil {
+			expectedSiteID, _ = route["site_id"].(string)
+		}
+		if expectedGatewayDevice == "" && route["gateway_device"] != nil {
+			expectedGatewayDevice, _ = route["gateway_device"].(string)
+		}
+	}
+	siteID, hasSiteID := body["site_id"]
+	gatewayDevice, hasGatewayDevice := body["gateway_device"]
+	if hasSiteID != (expectedSiteID != "") || (hasSiteID && siteID != expectedSiteID) ||
+		hasGatewayDevice != (expectedGatewayDevice != "") || (hasGatewayDevice && gatewayDevice != expectedGatewayDevice) ||
+		body["gateway_type"] != "default" || body["static-route_type"] != "nexthop-route" || body["type"] != "static-route" || body["static-route_distance"] != float64(1) || body["enabled"] != true {
 		http.Error(w, "invalid route payload", http.StatusBadRequest)
 		return
 	}
@@ -286,6 +299,53 @@ func TestUniFiLifecycle(t *testing.T) {
 	status := m.Status()
 	if status.Published != 1 {
 		t.Fatalf("expected one published route, got %+v", status)
+	}
+}
+
+func TestUniFiOmitsUnavailableRouteMetadata(t *testing.T) {
+	const siteID = "8d830bc2-43b0-4d17-aad1-5ae316c9ba2c"
+	const gatewayDevice = "1c:0b:8b:12:46:88"
+	tests := []struct {
+		name        string
+		existing    map[string]any
+		wantSiteID  bool
+		wantGateway bool
+	}{
+		{name: "site_id missing", existing: map[string]any{"gateway_device": gatewayDevice}, wantGateway: true},
+		{name: "gateway_device missing", existing: map[string]any{"site_id": siteID}, wantSiteID: true},
+		{name: "both missing", existing: map[string]any{}},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			route := map[string]any{
+				"_id": "existing", "name": "Existing", "static-route_network": "10.0.0.0/8",
+				"static-route_nexthop": "192.0.2.1",
+			}
+			for key, value := range tc.existing {
+				route[key] = value
+			}
+			server := &unifiServer{routes: []map[string]any{route}}
+			api := httptest.NewServer(server)
+			defer api.Close()
+			m, err := New(config.RoutingAPI{Preset: "unifi", BaseURL: api.URL, HeaderValue: "key123"}, nil)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer m.Close(context.Background())
+			if err := m.Reconcile(context.Background(), []bgp.Advertisement{advertisement("198.18.0.0/15", "192.0.2.2", "fake-ip")}); err != nil {
+				t.Fatalf("publish failed: %v", err)
+			}
+			if len(server.routes) != 2 {
+				t.Fatalf("expected route to be published, got %+v", server.routes)
+			}
+			created := server.routes[1]
+			if _, ok := created["site_id"]; ok != tc.wantSiteID {
+				t.Errorf("site_id present = %v, want %v: %+v", ok, tc.wantSiteID, created)
+			}
+			if _, ok := created["gateway_device"]; ok != tc.wantGateway {
+				t.Errorf("gateway_device present = %v, want %v: %+v", ok, tc.wantGateway, created)
+			}
+		})
 	}
 }
 

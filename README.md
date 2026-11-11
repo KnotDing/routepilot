@@ -22,9 +22,9 @@ RoutePilot 是一款 macOS 状态栏应用：向 Surge 查询分流策略，为 
 </p>
 <p align="center"><sub>管理界面预览 · 3840 × 2160 · 页面中的指标、地址和事件均为虚构示例数据</sub></p>
 
-## v1.0.5-beta.10 测试版
+## v1.0.5-beta.11 测试版
 
-UniFi OS API 预设改用 Network routing API，从路由列表查询结果自动读取 `site_id` 和 `gateway_device`。详见 [测试版更新记录](.gitea/release-notes/v1.0.5-beta.10.md) · [下载测试版](https://github.com/KnotDing/routepilot/releases/tag/v1.0.5-beta.10)。
+UniFi OS API 预设现在会按路由列表查询结果选择性发送 `site_id` 和 `gateway_device`；未返回的字段会从新增路由请求中省略。详见 [测试版更新记录](.gitea/release-notes/v1.0.5-beta.11.md) · [下载测试版](https://github.com/KnotDing/routepilot/releases/tag/v1.0.5-beta.11)。
 
 ## v1.0.5-beta.9 测试版
 

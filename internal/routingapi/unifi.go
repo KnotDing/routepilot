@@ -12,11 +12,9 @@ import (
 // uniFi manages routes through the UniFi OS Network routing API. Site and
 // gateway identifiers are read from the existing route list response.
 type uniFi struct {
-	http          *httpClient
-	apiKey        string
-	siteID        string
-	gatewayDevice string
-	notify        func(severity, message string)
+	http   *httpClient
+	apiKey string
+	notify func(severity, message string)
 }
 
 func newUniFi(cfg config.RoutingAPI, notify func(string, string)) backend {
@@ -55,9 +53,6 @@ func (u *uniFi) list(ctx context.Context) ([]uniFiRoute, error) {
 	if response.Data == nil {
 		return nil, errors.New("UniFi route listing failed: response has no data array")
 	}
-	if len(response.Data) == 0 && (u.siteID == "" || u.gatewayDevice == "") {
-		return nil, errors.New("UniFi route listing is empty; site_id and gateway_device cannot be read from the query result")
-	}
 	siteID, gatewayDevice := "", ""
 	for _, row := range response.Data {
 		if row.SiteID != "" {
@@ -73,20 +68,24 @@ func (u *uniFi) list(ctx context.Context) ([]uniFiRoute, error) {
 			gatewayDevice = row.GatewayDevice
 		}
 	}
-	if siteID != "" {
-		u.siteID = siteID
-	}
-	if gatewayDevice != "" {
-		u.gatewayDevice = gatewayDevice
-	}
-	if u.siteID == "" || u.gatewayDevice == "" {
-		return nil, errors.New("UniFi route listing is missing site_id or gateway_device")
-	}
 	return response.Data, nil
+}
+
+func uniFiRouteMetadata(rows []uniFiRoute) (siteID, gatewayDevice string) {
+	for _, row := range rows {
+		if siteID == "" && row.SiteID != "" {
+			siteID = row.SiteID
+		}
+		if gatewayDevice == "" && row.GatewayDevice != "" {
+			gatewayDevice = row.GatewayDevice
+		}
+	}
+	return siteID, gatewayDevice
 }
 
 func (u *uniFi) statesFrom(rows []uniFiRoute, desired []desiredRoute) []RouteState {
 	states := []RouteState{}
+	siteID, gatewayDevice := uniFiRouteMetadata(rows)
 	for _, d := range desired {
 		state := RouteState{Name: d.name, Prefix: d.adv.Prefix, NextHop: d.adv.NextHop}
 		for _, row := range rows {
@@ -164,18 +163,23 @@ func (u *uniFi) sync(ctx context.Context, desired []desiredRoute) ([]RouteState,
 		if row, exists := current[d.name]; exists && row.Network == d.adv.Prefix && row.NextHop == d.adv.NextHop {
 			continue
 		}
-		body, _ := json.Marshal(map[string]any{
+		payload := map[string]any{
 			"static-route_nexthop":  d.adv.NextHop,
-			"gateway_device":        u.gatewayDevice,
 			"static-route_network":  d.adv.Prefix,
 			"name":                  d.name,
-			"site_id":               u.siteID,
 			"gateway_type":          "default",
 			"static-route_type":     "nexthop-route",
 			"static-route_distance": 1,
 			"type":                  "static-route",
 			"enabled":               true,
-		})
+		}
+		if siteID != "" {
+			payload["site_id"] = siteID
+		}
+		if gatewayDevice != "" {
+			payload["gateway_device"] = gatewayDevice
+		}
+		body, _ := json.Marshal(payload)
 		status, data, err := u.http.do(ctx, "POST", uniFiRoutesPath, u.headers(), body)
 		if err != nil {
 			return nil, err
