@@ -143,12 +143,12 @@
 ## 任务交接（2026-11-11，v1.0.5-beta.9）
 
 - 目标与验收条件：修复自定义路由器 API 请求体模板中带引号变量的 JSON 校验误报；发布 `v1.0.5-beta.9`，双仓库分支 / 标签、GitHub 回归、两个 Release workflow 与三项附件均核验通过。
-- 当前状态：进行中，发布前准备。`main` 双仓库基线均为 `68efd81`；`v1.0.5-beta.9` 标签尚未占用。
+- 当前状态：进行中，已创建并双推 beta.9 提交 / 标签。GitHub 首次触发的回归与 Release 在启动阶段被取消，用户提供错误 `The configuration 'macos-14-arm64-us-default' is not supported`；已确认 macOS 14 runner 于 2026-11-02 退役，正在把两个 workflow 迁移到 `macos-15` 并重新触发。
 - 已完成与修改文件：修复位于 `web/src/routing-api-settings.jsx`；回归用例位于 `web/src/routing-api-settings.test.jsx`；版本、README 与发行说明正在更新。beta.8 根目录 DMG / ZIP、包校验记录及 `bin/` 已备份到 `artifacts/pre-beta9-backup-20261111/`。
-- 验证：目前仅完成 `git diff --check`（模板校验补丁阶段通过）；发布验证尚未运行。
-- 已发布：尚未发布。不得将 beta.8 发布状态当作 beta.9 证据。
+- 验证：聚焦前端用例通过（`npm --prefix web test -- src/routing-api-settings.test.jsx`，1 文件 / 7 项）；`git diff --check` 通过。完整本地打包因依赖下载长时间无输出已停止，未完成包校验。GitHub 首次回归 #43052807040 与 Release #43052822867 均因已退役的 `macos-14` runner 在任务步骤开始前取消。
+- 已发布：源代码提交 `0530b0d` 与注释标签 `v1.0.5-beta.9` 已推送至 Gitea / GitHub，远端分支和标签一致；GitHub Release、Gitea Release 与附件尚未核验。
 - 保留的无关改动：无。
-- 下一步与依赖：完成 beta.9 版本文件和双语发行说明；运行发布所需的本地验证；提交并双推 `main` 与注释标签；核验 GitHub 回归、两边 Release workflow / 页面及附件哈希，随后补齐本交接。
+- 下一步与依赖：将 `.github/workflows/test.yaml` 和 `release.yaml` 的 runner 改为受支持的 `macos-15`，提交并双推 `main`；确认 GitHub 回归通过，通过 workflow_dispatch 以 `release_tag=v1.0.5-beta.9` 重跑 GitHub Release（不移动标签）；核验 Gitea workflow、双 Release 与附件哈希，随后补齐本交接。
 
 ## 最近已核验发布（更新于 2026-10-30）
 
