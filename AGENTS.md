@@ -163,12 +163,22 @@
 ## 任务交接（2026-11-12，v1.0.5-beta.11）
 
 - 目标与验收条件：UniFi 路由列表查询缺少 `site_id` 或 `gateway_device` 时，创建路由的 POST 请求省略缺失字段；发布测试版并核对双仓库、CI、Release 与附件。
-- 当前状态：实现和定向 Go 测试已完成；beta.11 尚未提交或发布。
+- 当前状态：beta.11 提交 / 标签已推送，但 GitHub 回归编译失败；该标签不可移动，保留为失败版本。失败注解指向 `internal/routingapi/unifi.go` 中元数据变量作用域错误，已在 beta.12 工作区修复。
 - 已完成与修改文件：`internal/routingapi/unifi.go` 按本次查询结果选择性组装元数据字段；`internal/routingapi/routingapi_test.go` 覆盖只缺一项及两项都缺；`internal/buildinfo/release.json`、README、`.gitea/release-notes/v1.0.5-beta.11.md` 更新至 beta.11。
-- 验证：沙箱内测试因 loopback bind 被系统拒绝；获准沙箱外执行 `GOCACHE="$PWD/.cache/go-build" go test ./internal/routingapi` 通过；`git diff --check` 通过。未执行完整 package。
-- 已发布：未发布。beta.11 使用唯一递增标签；beta.10 标签保持不变。
+- 验证：首次 beta.11 本地定向测试通过，但后续变量移动未重新运行，GitHub run `43059741831` 在 `Check frontend and backend` 编译步骤报告 `siteID` / `gatewayDevice` 未定义及无用变量。修正后 `GOCACHE="$PWD/.cache/go-build" go test ./internal/routingapi` 通过，`git diff --check` 通过。beta.11 标签对应构建尚未确认成功。
+- 已发布：提交 `afe3a1eab5f1b81d853ffebd4bbf51c73103b650`，注释标签对象 `20dd83dad66d97d81ffe5fb90fda8a87bc1eab5f`；Gitea / GitHub `main` 和 beta.11 标签引用一致。GitHub 回归 run `43059741831` 失败；Release run `43059788741` 排队中；Gitea Release run #2183 等待 GitHub 资产。beta.11 不可移动或复用。
 - 保留的无关改动：无。
-- 下一步与依赖：完成差异复核和最小检查，提交 Conventional Commit，双推 `main`，推送注释 beta.11 标签；等待 GitHub 回归 / Release 与 Gitea Release，核验三项附件和包内版本身份，并更新本交接。
+- 下一步与依赖：beta.12 提交包含作用域修复；核验 beta.12 GitHub 回归、GitHub Release、Gitea Release 与附件，记录 beta.11 workflow 最终状态。
+
+## 任务交接（2026-11-12，v1.0.5-beta.12）
+
+- 目标与验收条件：修复 beta.11 的编译错误，同时确保查询返回缺少 `site_id` 或 `gateway_device` 时，UniFi 新路由 POST 省略对应字段；发布测试版并核验双仓库和制品。
+- 当前状态：修正与定向 Go 测试已完成；beta.12 尚未提交或发布。
+- 已完成与修改文件：`internal/routingapi/unifi.go` 将查询元数据提取移入同步函数；`internal/routingapi/routingapi_test.go` 覆盖仅缺一项及两项都缺；`internal/buildinfo/release.json`、README 与 `.gitea/release-notes/v1.0.5-beta.12.md` 更新至 beta.12。
+- 验证：`gofmt -w internal/routingapi/unifi.go`；获准沙箱外 `GOCACHE="$PWD/.cache/go-build" go test ./internal/routingapi` 通过；`git diff --check` 通过。未执行完整 package。
+- 已发布：未发布。beta.11 失败标签保留，beta.12 用递增的唯一标签。
+- 保留的无关改动：无。
+- 下一步与依赖：提交 Conventional Commit，推送 `main` 与注释 beta.12 标签至 Gitea / GitHub；等待 GitHub 回归和 Release、Gitea Release，核验三项附件及包内版本身份。
 
 ## 最近已核验发布（更新于 2026-10-30）
 

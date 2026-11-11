@@ -85,7 +85,6 @@ func uniFiRouteMetadata(rows []uniFiRoute) (siteID, gatewayDevice string) {
 
 func (u *uniFi) statesFrom(rows []uniFiRoute, desired []desiredRoute) []RouteState {
 	states := []RouteState{}
-	siteID, gatewayDevice := uniFiRouteMetadata(rows)
 	for _, d := range desired {
 		state := RouteState{Name: d.name, Prefix: d.adv.Prefix, NextHop: d.adv.NextHop}
 		for _, row := range rows {
@@ -134,6 +133,7 @@ func (u *uniFi) sync(ctx context.Context, desired []desiredRoute) ([]RouteState,
 			current[row.Name] = row
 		}
 	}
+	siteID, gatewayDevice := uniFiRouteMetadata(rows)
 	for name, row := range current {
 		wanted := false
 		for _, d := range desired {
