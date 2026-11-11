@@ -153,36 +153,36 @@
 ## 任务交接（2026-11-12，v1.0.5-beta.10）
 
 - 目标与验收条件：将 UniFi OS API 预设改为固定 `/proxy/network/api/s/default/rest/routing` 路径；从该查询返回的路由数据自动读取 `site_id`、`gateway_device`，并使用用户提供的 static-route 请求字段发布与撤销路由。发布 beta.10，双仓库分支 / 标签、GitHub 回归、两个 Release workflow 与附件均核验。
-- 当前状态：已发布。Gitea Release run #2182 成功复用 GitHub Actions 制品，beta.10 在 Gitea 为非草稿测试版；该版本的 GitHub 回归结果仍需补核。
+- 当前状态：已发布并核验。Gitea Release run #2182 成功复用 GitHub Actions 制品；GitHub 回归与 Release workflow 均成功。
 - 已完成与修改文件：UniFi 预设请求实现 `internal/routingapi/unifi.go`；fixture 与验证 `internal/routingapi/routingapi_test.go`；双语提示与 UI 测试 `web/src/routing-i18n.js`、`web/src/routing-api-settings.test.jsx`；版本、README 和发行说明已更新。
-- 验证：`npm --prefix web test -- src/routing-api-settings.test.jsx` 通过（1 文件 / 7 项）；`GOCACHE="$PWD/.cache/go-build" go test ./internal/config` 通过；获准沙箱外运行 `GOCACHE="$PWD/.cache/go-build" go test ./internal/routingapi` 通过；`git diff --check` 通过。未执行完整 package。
-- 已发布：提交 `8c24c43b0372e8eb1ba59cd5c3d877535567c845`，注释标签对象 `d17a9b1b7a34a340ffd649f62d92eb3e88a7c99b`；`main` 和 `v1.0.5-beta.10` 已在 Gitea / GitHub 两边一致。Gitea run #2182 成功，Release 为非草稿测试版并声明附件由 GitHub Actions 构建、Gitea run #142 镜像；链接：https://gitea.knotding.com/knot/routepilot/releases/tag/v1.0.5-beta.10 。尚未核实 GitHub 回归状态及两边附件校验。
+- 验证：`npm --prefix web test -- src/routing-api-settings.test.jsx` 通过（1 文件 / 7 项）；`GOCACHE="$PWD/.cache/go-build" go test ./internal/config` 通过；获准沙箱外运行 `GOCACHE="$PWD/.cache/go-build" go test ./internal/routingapi` 通过；`git diff --check` 通过。Gitea 三项附件 SHA256SUMS 校验通过，DMG 完整性 / App 签名通过；ZIP 内 App 与后台均报告 `1.0.5-beta.10 / build 49`。未执行完整 package。
+- 已发布：提交 `8c24c43b0372e8eb1ba59cd5c3d877535567c845`，注释标签对象 `d17a9b1b7a34a340ffd649f62d92eb3e88a7c99b`；`main` 和 `v1.0.5-beta.10` 已在 Gitea / GitHub 两边一致。GitHub 回归 [run 43058107639](https://github.com/KnotDing/routepilot/actions/runs/43058107639) 与 Release [run 43058107630](https://github.com/KnotDing/routepilot/actions/runs/43058107630) 成功；Gitea run #2182 成功镜像附件。Gitea Release 为非草稿测试版，链接：https://gitea.knotding.com/knot/routepilot/releases/tag/v1.0.5-beta.10 。DMG SHA256 `8d853db43b59ae22a3b7058ce56b3ea508f1d674f935fbd6e80874e7d7444654`，ZIP SHA256 `6704ff82f6e763fb1e90a15cd74d2b28fbed99ea3d0e5742f99a6b3caacc0330`。
 - 保留的无关改动：无。
-- 下一步与依赖：补核 beta.10 GitHub 回归与 GitHub / Gitea 附件校验；本轮 beta.11 发布另见下方交接。
+- 下一步与依赖：无。beta.11 和 beta.12 见下方交接。
 
 ## 任务交接（2026-11-12，v1.0.5-beta.11）
 
 - 目标与验收条件：UniFi 路由列表查询缺少 `site_id` 或 `gateway_device` 时，创建路由的 POST 请求省略缺失字段；发布测试版并核对双仓库、CI、Release 与附件。
-- 当前状态：beta.11 提交 / 标签已推送，但 GitHub 回归编译失败；该标签不可移动，保留为失败版本。失败注解指向 `internal/routingapi/unifi.go` 中元数据变量作用域错误，已在 beta.12 工作区修复。
+- 当前状态：beta.11 提交 / 标签已推送，但 GitHub 回归编译失败；该标签不可移动，保留为失败版本。失败注解指向 `internal/routingapi/unifi.go` 中元数据变量作用域错误，已在 beta.12 修复。Gitea run #2183 仍在重试获取不存在的 GitHub beta.11 制品；目前没有 beta.11 Release 页面。
 - 已完成与修改文件：`internal/routingapi/unifi.go` 按本次查询结果选择性组装元数据字段；`internal/routingapi/routingapi_test.go` 覆盖只缺一项及两项都缺；`internal/buildinfo/release.json`、README、`.gitea/release-notes/v1.0.5-beta.11.md` 更新至 beta.11。
-- 验证：首次 beta.11 本地定向测试通过，但后续变量移动未重新运行，GitHub run `43059741831` 在 `Check frontend and backend` 编译步骤报告 `siteID` / `gatewayDevice` 未定义及无用变量。修正后 `GOCACHE="$PWD/.cache/go-build" go test ./internal/routingapi` 通过，`git diff --check` 通过。beta.11 标签对应构建尚未确认成功。
-- 已发布：提交 `afe3a1eab5f1b81d853ffebd4bbf51c73103b650`，注释标签对象 `20dd83dad66d97d81ffe5fb90fda8a87bc1eab5f`；Gitea / GitHub `main` 和 beta.11 标签引用一致。GitHub 回归 run `43059741831` 失败；Release run `43059788741` 排队中；Gitea Release run #2183 等待 GitHub 资产。beta.11 不可移动或复用。
+- 验证：首次 beta.11 本地定向测试通过，但后续变量移动未重新运行；GitHub 回归 run [43059741831](https://github.com/KnotDing/routepilot/actions/runs/43059741831) 在 `Check frontend and backend` 编译步骤报告 `siteID` / `gatewayDevice` 未定义及无用变量。GitHub Release run [43059788741](https://github.com/KnotDing/routepilot/actions/runs/43059788741) 失败。修正后 `GOCACHE="$PWD/.cache/go-build" go test ./internal/routingapi` 通过，`git diff --check` 通过。
+- 已发布：提交 `afe3a1eab5f1b81d853ffebd4bbf51c73103b650`，注释标签对象 `20dd83dad66d97d81ffe5fb90fda8a87bc1eab5f`；Gitea / GitHub `main` 和 beta.11 标签引用一致。GitHub 回归与 Release 均失败；Gitea run #2183 仍等待资产获取超时后的回退构建。beta.11 不可移动或复用。
 - 保留的无关改动：无。
-- 下一步与依赖：beta.12 提交包含作用域修复；核验 beta.12 GitHub 回归、GitHub Release、Gitea Release 与附件，记录 beta.11 workflow 最终状态。
+- 下一步与依赖：记录 Gitea run #2183 最终回退状态；失败 beta.11 标签不得移动或复用。
 
 ## 任务交接（2026-11-12，v1.0.5-beta.12）
 
 - 目标与验收条件：修复 beta.11 的编译错误，同时确保查询返回缺少 `site_id` 或 `gateway_device` 时，UniFi 新路由 POST 省略对应字段；发布测试版并核验双仓库和制品。
-- 当前状态：修正与定向 Go 测试已完成；beta.12 尚未提交或发布。
+- 当前状态：已完成。beta.12 已在 Gitea 与 GitHub 发布并核验。
 - 已完成与修改文件：`internal/routingapi/unifi.go` 将查询元数据提取移入同步函数；`internal/routingapi/routingapi_test.go` 覆盖仅缺一项及两项都缺；`internal/buildinfo/release.json`、README 与 `.gitea/release-notes/v1.0.5-beta.12.md` 更新至 beta.12。
-- 验证：`gofmt -w internal/routingapi/unifi.go`；获准沙箱外 `GOCACHE="$PWD/.cache/go-build" go test ./internal/routingapi` 通过；`git diff --check` 通过。未执行完整 package。
-- 已发布：未发布。beta.11 失败标签保留，beta.12 用递增的唯一标签。
+- 验证：`gofmt -w internal/routingapi/unifi.go`；获准沙箱外 `GOCACHE="$PWD/.cache/go-build" go test ./internal/routingapi` 通过；`git diff --check` 通过。Gitea 附件 SHA256SUMS 校验通过，并与 GitHub 发布页摘要一致；DMG `hdiutil verify` 通过，App 签名有效。ZIP 中 App 与后台 `routepilot version` / `surge-controller version` 均为 `1.0.5-beta.12 / build 51`；App 的 `CFBundleVersion` 为 51。DMG SHA256 `acd17de4515cb836bdf9173f54f7bb71913cdff2eaec6c45557ab7aaf83abb6e`，ZIP SHA256 `bbd18b6bf8cbe8e009f8bf7e84aec23c16a05c725b468c50ecc6cd7261f05f32`，SHA256SUMS 文件 SHA256 `d74819b8c9761b05eb6791a027b7a1fdc70a0182b177e5bbd66bd5e10ea7af81`。未执行完整本地 package。
+- 已发布：提交 `bcffdbdf4fd82d2f6f748fc60521f8ef582e05a6`，注释标签对象 `ea4410c1a750affa305c734cbb0aa6a40b0e3827`，tag 指向提交；双仓库 `main` 与标签引用一致。GitHub 回归 [run 43060701625](https://github.com/KnotDing/routepilot/actions/runs/43060701625) 和 Release [run 43060720599](https://github.com/KnotDing/routepilot/actions/runs/43060720599) 成功；Gitea run #2184 成功镜像 GitHub 制品，回退任务跳过。GitHub: https://github.com/KnotDing/routepilot/releases/tag/v1.0.5-beta.12；Gitea: https://gitea.knotding.com/knot/routepilot/releases/tag/v1.0.5-beta.12。两边均为非草稿测试版，各有 DMG、ZIP、SHA256SUMS 三项附件。
 - 保留的无关改动：无。
-- 下一步与依赖：提交 Conventional Commit，推送 `main` 与注释 beta.12 标签至 Gitea / GitHub；等待 GitHub 回归和 Release、Gitea Release，核验三项附件及包内版本身份。
+- 下一步与依赖：记录本次交接更新并双推；不移动已发布 beta.12 标签。
 
-## 最近已核验发布（更新于 2026-10-30）
+## 最近已核验发布（更新于 2026-11-12）
 
-- 最新完整核验正式版为 `v1.0.4`，标签指向 `6d336a770028a18690914eeaf2733cdd42e86ed3`，注释标签对象为 `cd460ac01058ff470afdd5fb9762a6f56e208219`。最新已核验测试版为 `v1.0.5-beta.8`（`49cef90`，双仓库 App / 后台 build 46；源码 / 本地包 build 120），详见上方交接。`v1.0.4-beta.29` 为误基准历史发布，不移动标签。后续交接文档提交不移动发布标签。
+- 最新完整核验测试版为 `v1.0.5-beta.12`，标签指向 `bcffdbdf4fd82d2f6f748fc60521f8ef582e05a6`，注释标签对象为 `ea4410c1a750affa305c734cbb0aa6a40b0e3827`；App / 后台 build 51。beta.11 因编译失败保留为不可移动的失败标签。最新完整核验正式版仍为 `v1.0.4`，标签指向 `6d336a770028a18690914eeaf2733cdd42e86ed3`，注释标签对象为 `cd460ac01058ff470afdd5fb9762a6f56e208219`。`v1.0.4-beta.29` 为误基准历史发布，不移动标签。后续交接文档提交不移动发布标签。
 - 正式发布提交的 GitHub 回归 [run 38844597375](https://github.com/KnotDing/routepilot/actions/runs/38844597375) 与完整 [Release run 38844625516](https://github.com/KnotDing/routepilot/actions/runs/38844625516) 成功；[Gitea run 2109](https://gitea.knotding.com/knot/routepilot/actions/runs/2109) 成功复用 GitHub 制品，macOS 回退任务跳过。发布提交及注释标签对象已核对双仓库一致。
 - [GitHub Release](https://github.com/KnotDing/routepilot/releases/tag/v1.0.4) 与 [Gitea 备用 Release](https://gitea.knotding.com/knot/routepilot/releases/tag/v1.0.4) 均为 `prerelease=false`、`draft=false`，只有 DMG、ZIP、SHA256SUMS 三项非空附件。六项附件均下载，双仓库 SHA256 完全一致；ZIP、签名、DMG 完整性 / 布局及 DMG 与 ZIP 的 App / CLI / 后台二进制一致性通过。App 与后台均为 `1.0.4 / build 37`（CI run number）；源码及本地包 build 为 111，不混为一谈。GitHub latest 已指向 v1.0.4。
 - v1.0.4 归并上次正式版 v1.0.3 之后 beta.1–28 的最终变更：实时 / 七天历史监控和六维筛选、客户端备注 / 强制策略 / 主机名、分项普通 / 乐观缓存、模块化配置应用、Surge IPv4 下一跳自动探测、多后端窗口隔离、更新进度 / 远端 App 重启、通知 / 导航 / 资源优化及历史恢复修复。完整说明见 `.gitea/release-notes/v1.0.4.md`；README 含摘要与入口，`scripts/install_skill.sh` 正式 tag / 提示版本已同步。
